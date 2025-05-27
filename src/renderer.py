@@ -10,7 +10,10 @@ class Renderer:
         
         # Initialize mesh and plotter
         self.mesh = pv.read(cube_path)
+        
+        # Create plotter with proper initialization
         self.plotter = pv.Plotter(off_screen=True, window_size=(width, height))
+        self.plotter.add_mesh(self.mesh, show_edges=True)  # Add mesh first
         
         # Define colors for each face (RGB format)
         self.face_colors = [
@@ -25,6 +28,12 @@ class Renderer:
         # Apply colors and setup display
         self.color_cube()
         self.plotter.set_background('white')
+        
+        # Store camera elevation for vertical rotation
+        self.elevation = 0
+        
+        # Ensure the render window is initialized before use
+        self.plotter.show(auto_close=False)
         
     def color_cube(self):
         """Apply colors to different parts of the cube mesh"""
@@ -55,14 +64,34 @@ class Renderer:
             else:                             # Interior (black)
                 scalars[i] = [0.2, 0.2, 0.2]
         
+        # Clear existing actors before adding the new mesh
+        self.plotter.clear_actors()
         self.plotter.add_mesh(self.mesh, scalars=scalars, rgb=True)
         
-    def rotate_camera(self, azimuth=0):
-        """Rotate camera around the cube"""
+    def rotate_camera(self, azimuth=0, elevation=0):
+        """Rotate camera around the cube
+        
+        Args:
+            azimuth: Horizontal rotation angle (around z-axis)
+            elevation: Vertical rotation angle (around x-axis)
+        """
+        # Apply horizontal rotation
         self.plotter.camera.azimuth += azimuth
+        
+        # Apply vertical rotation with limits to prevent flipping
+        self.elevation += elevation
+        self.elevation = max(-80, min(80, self.elevation))  # Limit elevation to ±80 degrees
+        self.plotter.camera.elevation = self.elevation
+        
+        # Ensure changes take effect
+        self.plotter.render()
         
     def render_frame(self):
         """Render a frame and return as pygame surface"""
+        # Make sure rendering is up to date
+        self.plotter.render()
+        
+        # Capture screenshot
         image = self.plotter.screenshot(return_img=True)
         img_height, img_width, _ = image.shape
         return pygame.image.frombuffer(image.tobytes(), 
@@ -70,4 +99,6 @@ class Renderer:
                                       "RGB")
     
     def close(self):
-        self.plotter.close()
+        # Clean up resources
+        if hasattr(self, 'plotter') and self.plotter is not None:
+            self.plotter.close()

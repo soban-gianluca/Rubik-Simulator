@@ -1,6 +1,5 @@
 import pyvista as pv
 import pygame
-import numpy as np
 
 # Initialize PyGame
 pygame.init()
@@ -31,8 +30,9 @@ while running:
     image = plotter.screenshot(transparent_background=False, return_img=True)
     
     # Convert to pygame surface
+    img_height, img_width, _ = image.shape
     pygame_image = pygame.image.frombuffer(image.tobytes(), 
-                                          (width, height), 
+                                          (img_width, img_height), 
                                           "RGB")
     
     # Draw to screen

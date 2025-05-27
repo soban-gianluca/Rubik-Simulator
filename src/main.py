@@ -9,7 +9,7 @@ def main():
     pygame.init()
     
     # Set the window icon
-    icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "utils", "rubicksCube_Icon.ico")
+    icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "utils", "rubiksCube_Icon.ico")
     if os.path.exists(icon_path):
         icon = pygame.image.load(icon_path)
         pygame.display.set_icon(icon)

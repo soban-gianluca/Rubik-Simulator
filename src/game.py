@@ -1,73 +1,72 @@
 import pygame
 import sys
-from pygame.locals import *
-
-# Initialize pygame
-pygame.init()
-
-# Constants
-WIDTH, HEIGHT = 800, 600
-BACKGROUND_COLOR = (33, 33, 33)
-WHITE = (255, 255, 255)
-FPS = 120
-
-# Set up the display
-screen = pygame.display.set_mode((WIDTH, HEIGHT), DOUBLEBUF | OPENGL)
-pygame.display.set_caption("Rubik's Cube Simulator")
-clock = pygame.time.Clock()
+from renderer import Renderer
 
 class Game:
     def __init__(self):
-        from renderer import Renderer
+        # Initialize pygame
+        pygame.init()
+        self.width, self.height = 800, 600
+        self.screen = pygame.display.set_mode((self.width, self.height))
+        pygame.display.set_caption("Rubik's Cube Simulator")
+        self.clock = pygame.time.Clock()
         
-        # Initialize rotation values
-        self.rotation_x = 0
-        self.rotation_y = 0
+        # Initialize renderer
+        self.renderer = Renderer(self.width, self.height)
+        
+        # Game state
         self.running = True
-    
+        self.auto_rotate = True  # Auto rotation by default
+        
+        # Print instructions
+        print("Controls:")
+        print("  Space: Toggle auto-rotation")
+        print("  Left/Right arrows: Manual rotation")
+        print("  ESC: Quit")
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-                pygame.quit()
-                sys.exit()
+                
             elif event.type == pygame.KEYDOWN:
+                # Quit
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
-                    pygame.quit()
-                    sys.exit()
+                elif event.key == pygame.K_SPACE:
+                    self.auto_rotate = not self.auto_rotate
+                    
+            # Handle key presses for manual rotation
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT]:
+                self.renderer.rotate_camera(1)
+            if keys[pygame.K_RIGHT]:
+                self.renderer.rotate_camera(-1)
     
     def update(self):
-        # Auto-rotate the model (comment out if you don't want this)
-        self.rotation_y += 1
+        # Auto-rotate if enabled
+        if self.auto_rotate:
+            self.renderer.rotate_camera(0.5)
         
-        # Handle arrow key presses for manual rotation
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_UP]:
-            self.rotation_x += 1
-        if keys[pygame.K_DOWN]:
-            self.rotation_x -= 1
-        if keys[pygame.K_LEFT]:
-            self.rotation_y += 1
-        if keys[pygame.K_RIGHT]:
-            self.rotation_y -= 1
-    
     def render(self):
-        
-        # Render the model
-        self.model_renderer.render(self.rotation_x, self.rotation_y)
-        
-        # Flip the display
+        # Render the cube
+        pygame_image = self.renderer.render_frame()
+        self.screen.blit(pygame_image, (0, 0))
         pygame.display.flip()
-    
+        
     def run(self):
+        # Main game loop
         while self.running:
             self.handle_events()
             self.update()
             self.render()
-            clock.tick(FPS)
+            self.clock.tick(60)  # 60 FPS
+            
+        # Clean up
+        self.renderer.close()
+        pygame.quit()
+        sys.exit()
 
-pygame.display.flip()
-clock.tick(FPS)
-
-screen.fill(BACKGROUND_COLOR)
+if __name__ == "__main__":
+    game = Game()
+    game.run()

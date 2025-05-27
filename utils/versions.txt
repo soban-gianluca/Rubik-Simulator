@@ -1,0 +1,19 @@
+27/05/2025 - v1.0
+
+    --- Changes --- 
+        Created workspace
+        Edits: main.py, game.py, rendered.py
+        Added model
+        Made UI
+        Added model into UI
+        Changed program's icon (desktop icon still needs to be fixed)
+        Added auto-rotation + keybind--> *Space bar*
+        Added manual-rotation + keybind --> grab with *left mouse button* / *left/right arow keys*
+        Added exit + keybind --> *Esc*
+
+    --- Logic ---
+    main.py
+        --> game.py
+            --> rendered.py
+
+27/05/2025 - v1.-

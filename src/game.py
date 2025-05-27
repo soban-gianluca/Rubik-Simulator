@@ -6,41 +6,16 @@ pygame.init()
 
 # Constants
 WIDTH, HEIGHT = 800, 600
-BACKGROUND_COLOR = (30, 30, 30)
+BACKGROUND_COLOR = (33, 33, 33)
 WHITE = (255, 255, 255)
-FPS = 60
+FPS = 120
 
 # Set up the display
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Rubik's Cube Simulator")
 clock = pygame.time.Clock()
 
-class Button:
-    def __init__(self, x, y, width, height, text, color, hover_color):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.color = color
-        self.hover_color = hover_color
-        self.text = text
-        self.font = pygame.font.SysFont('Arial', 20)
-        self.is_hovered = False
-    
-    def draw(self, surface):
-        color = self.hover_color if self.is_hovered else self.color
-        pygame.draw.rect(surface, color, self.rect, border_radius=5)
-        pygame.draw.rect(surface, WHITE, self.rect, 2, border_radius=5)
-        
-        text_surface = self.font.render(self.text, True, WHITE)
-        text_rect = text_surface.get_rect(center=self.rect.center)
-        surface.blit(text_surface, text_rect)
-    
-    def update(self):
-        mouse_pos = pygame.mouse.get_pos()
-        self.is_hovered = self.rect.collidepoint(mouse_pos)
-    
-    def is_clicked(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            return self.is_hovered
-        return False
+
 
 def main():
     # Create some buttons
@@ -69,7 +44,6 @@ def main():
         
         # Update
         scramble_button.update()
-        solve_button.update()
         reset_button.update()
         quit_button.update()
         
@@ -88,7 +62,6 @@ def main():
         
         # Draw buttons
         scramble_button.draw(screen)
-        solve_button.draw(screen)
         reset_button.draw(screen)
         quit_button.draw(screen)
         

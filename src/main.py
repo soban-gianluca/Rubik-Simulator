@@ -1,7 +1,5 @@
 import pygame
 import sys
-from OpenGL.GL import *
-from OpenGL.GLU import *
 
 def main():
     

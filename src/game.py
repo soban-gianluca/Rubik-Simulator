@@ -1,8 +1,6 @@
 import pygame
 import sys
 from pygame.locals import *
-from OpenGL.GL import *
-from OpenGL.GLU import *
 
 # Initialize pygame
 pygame.init()
@@ -20,14 +18,7 @@ clock = pygame.time.Clock()
 
 class Game:
     def __init__(self):
-        from model_renderer import ModelRenderer
-        
-        # Path to your OBJ file - adjust as needed
-        obj_path = "../utils/Rubik's Cube.obj"
-        
-        # Initialize the model renderer
-        self.model_renderer = ModelRenderer(obj_path)
-        self.model_renderer.setup_gl(WIDTH, HEIGHT)
+        from renderer import Renderer
         
         # Initialize rotation values
         self.rotation_x = 0
@@ -62,8 +53,6 @@ class Game:
             self.rotation_y -= 1
     
     def render(self):
-        # Clear the screen with the background color
-        glClearColor(BACKGROUND_COLOR[0]/255, BACKGROUND_COLOR[1]/255, BACKGROUND_COLOR[2]/255, 1)
         
         # Render the model
         self.model_renderer.render(self.rotation_x, self.rotation_y)

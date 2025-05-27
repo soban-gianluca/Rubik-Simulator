@@ -10,7 +10,7 @@ BACKGROUND_COLOR = (30, 30, 30)
 WHITE = (255, 255, 255)
 FPS = 120
 
-# Set up the displayGTYHYHYHYHYHYHYHYHYHYHYHYHYHYH
+# Set up the display
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Rubik's Cube Simulator")
 clock = pygame.time.Clock()

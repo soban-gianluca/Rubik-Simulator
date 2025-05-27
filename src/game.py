@@ -11,6 +11,9 @@ class Game:
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         
+        icon = pygame.image.load("utils/rubiksCube_Icon.ico")
+        pygame.display.set_icon(icon)
+
         # Initialize renderer
         self.renderer = Renderer(self.width, self.height)
         

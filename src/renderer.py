@@ -45,7 +45,7 @@ class Renderer:
         scalars = np.zeros((self.mesh.n_points, 3))
         
         # Tolerance for face detection
-        tol = 0.01
+        tol = 2
         
         # Apply colors based on position
         for i, (x, y, z) in enumerate(points):

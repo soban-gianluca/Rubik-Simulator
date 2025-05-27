@@ -8,7 +8,7 @@ pygame.init()
 WIDTH, HEIGHT = 800, 600
 BACKGROUND_COLOR = (30, 30, 30)
 WHITE = (255, 255, 255)
-FPS = 60
+FPS = 120
 
 # Set up the display
 screen = pygame.display.set_mode((WIDTH, HEIGHT))

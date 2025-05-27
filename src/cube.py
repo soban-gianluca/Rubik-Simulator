@@ -44,31 +44,63 @@ class RubiksCube:
         temp = self.faces[Face.UP][:, 2].copy()
         
         if clockwise:
-            # Move UP to FRONT
-            self.faces[Face.UP][:, 2] = self.faces[Face.BACK][::-1, 0]
-            # Move BACK to DOWN
-            self.faces[Face.BACK][:, 0] = self.faces[Face.DOWN][::-1, 2]
-            # Move DOWN to FRONT
-            self.faces[Face.DOWN][:, 2] = self.faces[Face.FRONT][:, 2]
-            # Move FRONT to UP
-            self.faces[Face.FRONT][:, 2] = temp
+            # Move pieces clockwise around the right face
+            self.faces[Face.UP][:, 2] = self.faces[Face.FRONT][:, 2]
+            self.faces[Face.FRONT][:, 2] = self.faces[Face.DOWN][:, 2]
+            self.faces[Face.DOWN][:, 2] = self.faces[Face.BACK][::-1, 0]
+            self.faces[Face.BACK][:, 0] = temp[::-1]
             
             # Rotate RIGHT face
             self.rotate_face_clockwise(Face.RIGHT)
         else:
-            # Move UP to BACK
-            self.faces[Face.UP][:, 2] = self.faces[Face.FRONT][:, 2][::-1]
-            # Move BACK to DOWN
-            self.faces[Face.BACK][:, 0] = self.faces[Face.UP][:, 2][::-1]
-            # Move DOWN to FRONT
-            self.faces[Face.DOWN][:, 2] = self.faces[Face.BACK][:, 0][::-1]
-            # Move FRONT to UP
+            # Move pieces counter-clockwise around the right face
+            self.faces[Face.UP][:, 2] = self.faces[Face.BACK][::-1, 0]
+            self.faces[Face.BACK][:, 0] = self.faces[Face.DOWN][::-1, 2]
+            self.faces[Face.DOWN][:, 2] = self.faces[Face.FRONT][:, 2]
             self.faces[Face.FRONT][:, 2] = temp
             
             # Rotate RIGHT face
             self.rotate_face_counter_clockwise(Face.RIGHT)
     
-    # Add more moves (U, D, F, B, L) following the same pattern
+    def move_left(self, clockwise=True):
+        """Perform L move (left face rotation)"""
+        temp = self.faces[Face.UP][:, 0].copy()
+        
+        if clockwise:
+            self.faces[Face.UP][:, 0] = self.faces[Face.BACK][::-1, 2]
+            self.faces[Face.BACK][:, 2] = self.faces[Face.DOWN][::-1, 0]
+            self.faces[Face.DOWN][:, 0] = self.faces[Face.FRONT][:, 0]
+            self.faces[Face.FRONT][:, 0] = temp
+            
+            self.rotate_face_clockwise(Face.LEFT)
+        else:
+            self.faces[Face.UP][:, 0] = self.faces[Face.FRONT][:, 0]
+            self.faces[Face.FRONT][:, 0] = self.faces[Face.DOWN][:, 0]
+            self.faces[Face.DOWN][:, 0] = self.faces[Face.BACK][::-1, 2]
+            self.faces[Face.BACK][:, 2] = temp[::-1]
+            
+            self.rotate_face_counter_clockwise(Face.LEFT)
+    
+    def move_up(self, clockwise=True):
+        """Perform U move (up face rotation)"""
+        temp = self.faces[Face.FRONT][0, :].copy()
+        
+        if clockwise:
+            self.faces[Face.FRONT][0, :] = self.faces[Face.RIGHT][0, :]
+            self.faces[Face.RIGHT][0, :] = self.faces[Face.BACK][0, :]
+            self.faces[Face.BACK][0, :] = self.faces[Face.LEFT][0, :]
+            self.faces[Face.LEFT][0, :] = temp
+            
+            self.rotate_face_clockwise(Face.UP)
+        else:
+            self.faces[Face.FRONT][0, :] = self.faces[Face.LEFT][0, :]
+            self.faces[Face.LEFT][0, :] = self.faces[Face.BACK][0, :]
+            self.faces[Face.BACK][0, :] = self.faces[Face.RIGHT][0, :]
+            self.faces[Face.RIGHT][0, :] = temp
+            
+            self.rotate_face_counter_clockwise(Face.UP)
+    
+    # Add more moves (D, F, B) following the same pattern
     
     def is_solved(self):
         """Check if the cube is solved"""
@@ -98,7 +130,6 @@ class RubiksCube:
             result.append("      " + " ".join(str(color.value) for color in row))
         
         return "\n".join(result)
-
 
 if __name__ == "__main__":
     # Example usage

@@ -20,7 +20,7 @@ class Game:
         
         # Game state
         self.running = True
-        self.auto_rotate = True  # Auto rotation by default
+        self.auto_rotate = False  # Auto rotation by default
         
         # Mouse rotation variables
         self.mouse_rotating = False
@@ -28,13 +28,14 @@ class Game:
         self.prev_mouse_y = 0
         self.rotation_sensitivity = 0.5  # Sensitivity for horizontal rotation
         self.vertical_sensitivity = 0.5  # Sensitivity for vertical rotation
-        self.debug_mode = True  # Set to False to disable debug prints
+        self.debug_mode = False  # Set to False to disable debug prints
         
         # Print instructions
         print("Controls:")
         print("  Space: Toggle auto-rotation")
         print("  Left/Right arrows: Manual rotation")
         print("  Click and drag: Rotate cube with mouse")
+        print("  D: Toggle debug mode")
         print("  ESC: Quit")
 
     def debug_print(self, message):
@@ -53,6 +54,8 @@ class Game:
                 elif event.key == pygame.K_SPACE:
                     self.auto_rotate = not self.auto_rotate
                     self.debug_print(f"Auto-rotate: {'ON' if self.auto_rotate else 'OFF'}")
+                elif event.key == pygame.K_d:  # Toggle debug mode
+                    self.debug_mode = not self.debug_mode
         
             # Handle mouse events for rotation
             elif event.type == pygame.MOUSEBUTTONDOWN:

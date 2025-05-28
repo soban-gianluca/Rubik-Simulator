@@ -1,4 +1,4 @@
-27/05/2025 - v1.0
+28/05/2025 - v1.0
 
     --- Changes --- 
         Created workspace
@@ -10,10 +10,9 @@
         Added auto-rotation + keybind--> *Space bar*
         Added manual-rotation + keybind --> grab with *left mouse button* / *left/right arow keys*
         Added exit + keybind --> *Esc*
+        Added debug keybind --> *B*
 
     --- Logic ---
     main.py
         --> game.py
             --> rendered.py
-
-27/05/2025 - v1.-

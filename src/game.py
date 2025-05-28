@@ -12,12 +12,14 @@ class Game:
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         
+        # Load playback music
+        """ pygame.mixer.music.load("utils/rubiksCube_Playback.mp3")
+        pygame.mixer.music.set_volume(1)
+        pygame.mixer.music.play(-1) """
+        
         # Load icon
-        try:
-            icon = pygame.image.load("utils/rubiksCube_Icon.ico")
-            pygame.display.set_icon(icon)
-        except:
-            print("Could not load icon file")
+        icon = pygame.image.load("utils/rubiksCube_Icon.ico")
+        pygame.display.set_icon(icon)
 
         # Initialize renderer
         self.renderer = Renderer(self.width, self.height)

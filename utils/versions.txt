@@ -12,6 +12,7 @@
         Added exit + keybind --> *Esc*
         Added debug keybind --> *B*
         Removed unecessary code
+        Added playback Music --> Have to create the actual music
 
     --- Logic ---
     main.py
@@ -19,8 +20,10 @@
             --> rendered.py
 
 --- TO DO LIST ---
-- playback music: https://www.pygame.org/docs/ref/music.html
 - help button
 - movents
 - main menu
 - (more complex background)
+- timer
+- move counter
+- (Different gamemodes)

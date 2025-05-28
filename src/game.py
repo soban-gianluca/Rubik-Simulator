@@ -1,6 +1,6 @@
 import pygame
 import sys
-import math
+from menu import Menu
 from renderer import Renderer
 
 class Game:
@@ -12,23 +12,31 @@ class Game:
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         
-        icon = pygame.image.load("utils/rubiksCube_Icon.ico")
-        pygame.display.set_icon(icon)
+        # Load icon
+        try:
+            icon = pygame.image.load("utils/rubiksCube_Icon.ico")
+            pygame.display.set_icon(icon)
+        except:
+            print("Could not load icon file")
 
         # Initialize renderer
         self.renderer = Renderer(self.width, self.height)
         
+        # Initialize menu (enabled by default)
+        self.menu = Menu(self.width, self.height)
+        self.menu.toggle()  # Start with menu active
+        
         # Game state
         self.running = True
-        self.auto_rotate = False  # Auto rotation by default
+        self.auto_rotate = False
         
         # Mouse rotation variables
         self.mouse_rotating = False
         self.prev_mouse_x = 0
         self.prev_mouse_y = 0
-        self.rotation_sensitivity = 0.5  # Sensitivity for horizontal rotation
-        self.vertical_sensitivity = 0.5  # Sensitivity for vertical rotation
-        self.debug_mode = False  # Set to False to disable debug prints
+        self.rotation_sensitivity = 0.5
+        self.vertical_sensitivity = 0.5
+        self.debug_mode = False
         
         # Print instructions
         print("Controls:")
@@ -36,7 +44,7 @@ class Game:
         print("  Left/Right arrows: Manual rotation")
         print("  Click and drag: Rotate cube with mouse")
         print("  D: Toggle debug mode")
-        print("  ESC: Quit")
+        print("  ESC: Toggle menu")
 
     def debug_print(self, message):
         if self.debug_mode:
@@ -47,18 +55,23 @@ class Game:
             if event.type == pygame.QUIT:
                 self.running = False
                 
+            # Handle ESC key to toggle menu
             elif event.type == pygame.KEYDOWN:
-                # Quit
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
-                elif event.key == pygame.K_SPACE:
+                    self.menu.toggle()
+                    self.debug_print(f"Menu: {'ON' if self.menu.is_active() else 'OFF'}")
+                elif not self.menu.is_active() and event.key == pygame.K_SPACE:
                     self.auto_rotate = not self.auto_rotate
                     self.debug_print(f"Auto-rotate: {'ON' if self.auto_rotate else 'OFF'}")
-                elif event.key == pygame.K_d:  # Toggle debug mode
+                elif not self.menu.is_active() and event.key == pygame.K_d:
                     self.debug_mode = not self.debug_mode
-        
-            # Handle mouse events for rotation
-            elif event.type == pygame.MOUSEBUTTONDOWN:
+            
+            # Pass event to menu first
+            elif self.menu.handle_event(event):
+                continue  # Event was handled by menu
+                
+            # Handle mouse events for rotation (only when not in menu)
+            elif not self.menu.is_active() and event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left mouse button
                     self.mouse_rotating = True
                     self.prev_mouse_x, self.prev_mouse_y = event.pos
@@ -71,7 +84,7 @@ class Game:
                     self.mouse_rotating = False
                     self.debug_print("Mouse rotation ended")
                 
-            elif event.type == pygame.MOUSEMOTION:
+            elif not self.menu.is_active() and event.type == pygame.MOUSEMOTION:
                 if self.mouse_rotating:
                     # Calculate the mouse movement delta
                     current_x, current_y = event.pos
@@ -95,25 +108,26 @@ class Game:
                     self.prev_mouse_y = current_y
     
         # Handle key presses for manual rotation (outside the event loop for smoother response)
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            self.renderer.rotate_camera(azimuth=1)
-            self.auto_rotate = False
-        if keys[pygame.K_RIGHT]:
-            self.renderer.rotate_camera(azimuth=-1)
-            self.auto_rotate = False
-        if keys[pygame.K_UP]:
-            self.renderer.rotate_camera(elevation=-1)
-            self.auto_rotate = False
-        if keys[pygame.K_DOWN]:
-            self.renderer.rotate_camera(elevation=1)
-            self.auto_rotate = False
+        if not self.menu.is_active():
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT]:
+                self.renderer.rotate_camera(azimuth=1)
+                self.auto_rotate = False
+            if keys[pygame.K_RIGHT]:
+                self.renderer.rotate_camera(azimuth=-1)
+                self.auto_rotate = False
+            if keys[pygame.K_UP]:
+                self.renderer.rotate_camera(elevation=-1)
+                self.auto_rotate = False
+            if keys[pygame.K_DOWN]:
+                self.renderer.rotate_camera(elevation=1)
+                self.auto_rotate = False
 
     def update(self):
-        # Auto-rotate if enabled
-        if self.auto_rotate:
+        # Auto-rotate if enabled and not in menu
+        if not self.menu.is_active() and self.auto_rotate:
             self.renderer.rotate_camera(azimuth=0.5)
-        
+    
     def render(self):
         # Render the cube
         pygame_image = self.renderer.render_frame()
@@ -122,6 +136,9 @@ class Game:
         # Add indicator for mouse rotation state
         if self.mouse_rotating:
             pygame.draw.circle(self.screen, (255, 0, 0), (20, 20), 10)  # Red dot when rotating
+        
+        # Draw menu if active
+        self.menu.draw(self.screen)
             
         pygame.display.flip()
         
@@ -137,7 +154,3 @@ class Game:
         self.renderer.close()
         pygame.quit()
         sys.exit()
-
-if __name__ == "__main__":
-    game = Game()
-    game.run()

@@ -127,9 +127,16 @@ class Game:
                 self.auto_rotate = False
 
     def update(self):
+        # Get settings from menu if available
+        if hasattr(self.menu, 'get_setting'):
+            rotation_speed = self.menu.get_setting('rotation_speed')
+            if rotation_speed is not None:
+                self.rotation_sensitivity = rotation_speed
+                self.vertical_sensitivity = rotation_speed
+    
         # Auto-rotate if enabled and not in menu
         if not self.menu.is_active() and self.auto_rotate:
-            self.renderer.rotate_camera(azimuth=0.5)
+            self.renderer.rotate_camera(azimuth=0.5 * self.rotation_sensitivity)
     
     def render(self):
         # Render the cube

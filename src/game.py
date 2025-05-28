@@ -20,7 +20,7 @@ class Game:
         
         # Game state
         self.running = True
-        self.auto_rotate = False  # Auto rotation by default
+        self.auto_rotate = True  # Auto rotation by default
         
         # Mouse rotation variables
         self.mouse_rotating = False

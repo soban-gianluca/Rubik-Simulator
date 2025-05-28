@@ -17,3 +17,10 @@
     main.py
         --> game.py
             --> rendered.py
+
+--- TO DO LIST ---
+- playback music: https://www.pygame.org/docs/ref/music.html
+- help button
+- movents
+- main menu
+- (more complex background)

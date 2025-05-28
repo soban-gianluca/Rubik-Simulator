@@ -159,6 +159,8 @@ class Game:
             self.update()
             self.render()
             self.clock.tick(60)  # 60 FPS
+            fps = self.clock.get_fps()
+            pygame.display.set_caption(f"Rubik's Cube Simulator - FPS: {fps:.2f}")
             
         # Clean up
         self.renderer.close()

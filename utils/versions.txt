@@ -24,6 +24,7 @@
 - help button
 - movents
 - main menu
+- settings (fps checkbox inverted)
 - (more complex background)
 - timer
 - move counter

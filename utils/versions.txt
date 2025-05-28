@@ -13,6 +13,7 @@
         Added debug keybind --> *B*
         Removed unecessary code
         Added playback Music --> Have to create the actual music
+        Added FPS counter
 
     --- Logic ---
     main.py

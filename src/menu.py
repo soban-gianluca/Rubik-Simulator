@@ -41,7 +41,7 @@ class Menu:
                 'label_rect': pygame.Rect(screen_width//2 - 110, screen_height//2 - 100, 200, 25)
             },
             'show_fps': {
-                'value': True,
+                'value': False,
                 'text': 'Show FPS',
                 'rect': pygame.Rect(screen_width//2 - 150, screen_height//2, 25, 25),
                 'label_rect': pygame.Rect(screen_width//2 - 110, screen_height//2, 200, 25)

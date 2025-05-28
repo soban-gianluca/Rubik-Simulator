@@ -30,7 +30,6 @@ class Game:
         
         # Game state
         self.running = True
-        self.auto_rotate = False
         self.auto_rotate = True  # Auto rotation by default
         
         # Mouse rotation variables
@@ -43,7 +42,7 @@ class Game:
         
         # Display settings
         self.is_fullscreen = False
-        self.show_fps = True
+        self.show_fps = False
 
         # Print instructions
         print("Controls:")
@@ -187,7 +186,7 @@ class Game:
             self.clock.tick(60)  # 60 FPS
             
             # Only update caption if show_fps is disabled (otherwise it's shown in-game)
-            if not self.show_fps:
+            if self.show_fps:
                 fps = self.clock.get_fps()
                 pygame.display.set_caption(f"Rubik's Cube Simulator - FPS: {fps:.1f}")
             else:

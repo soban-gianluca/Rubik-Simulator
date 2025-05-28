@@ -13,7 +13,7 @@
         Added debug keybind --> *B*
         Removed unecessary code
         Added playback Music --> Have to create the actual music
-        Added FPS counter
+        Added FPS counter with WORKING button setting
 
     --- Logic ---
     main.py
@@ -24,7 +24,7 @@
 - help button
 - movents
 - main menu
-- settings (fps checkbox inverted)
+- settings (fullscreen resolution)
 - (more complex background)
 - timer
 - move counter

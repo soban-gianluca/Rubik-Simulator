@@ -41,6 +41,10 @@ class Game:
         self.vertical_sensitivity = 0.5
         self.debug_mode = False
         
+        # Display settings
+        self.is_fullscreen = False
+        self.show_fps = True
+
         # Print instructions
         print("Controls:")
         print("  Space: Toggle auto-rotation")
@@ -53,6 +57,14 @@ class Game:
         if self.debug_mode:
             print(message)
 
+    def toggle_fullscreen(self):
+        """Toggle between fullscreen and windowed mode"""
+        if self.is_fullscreen:
+            self.screen = pygame.display.set_mode((self.width, self.height))
+        else:
+            self.screen = pygame.display.set_mode((self.width, self.height), pygame.FULLSCREEN)
+        self.is_fullscreen = not self.is_fullscreen
+        
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -68,6 +80,8 @@ class Game:
                     self.debug_print(f"Auto-rotate: {'ON' if self.auto_rotate else 'OFF'}")
                 elif not self.menu.is_active() and event.key == pygame.K_d:
                     self.debug_mode = not self.debug_mode
+                elif event.key == pygame.K_F11:  # Add F11 as alternate fullscreen toggle
+                    self.toggle_fullscreen()
             
             # Pass event to menu first
             elif self.menu.handle_event(event):
@@ -127,12 +141,18 @@ class Game:
                 self.auto_rotate = False
 
     def update(self):
-        # Get settings from menu if available
+        # Check and apply settings from menu
         if hasattr(self.menu, 'get_setting'):
-            rotation_speed = self.menu.get_setting('rotation_speed')
-            if rotation_speed is not None:
-                self.rotation_sensitivity = rotation_speed
-                self.vertical_sensitivity = rotation_speed
+            # Handle fullscreen setting
+            fullscreen_setting = self.menu.get_setting('fullscreen')
+            if fullscreen_setting is not None and fullscreen_setting != self.is_fullscreen:
+                self.toggle_fullscreen()
+                
+            # Handle show FPS setting - FIX: directly assign the value without inversion
+            show_fps_setting = self.menu.get_setting('show_fps')
+            if show_fps_setting is not None:
+                # The checkbox is "Show FPS" so True means we should show them
+                self.show_fps = show_fps_setting
     
         # Auto-rotate if enabled and not in menu
         if not self.menu.is_active() and self.auto_rotate:
@@ -147,6 +167,12 @@ class Game:
         if self.mouse_rotating:
             pygame.draw.circle(self.screen, (255, 0, 0), (20, 20), 10)  # Red dot when rotating
         
+        # Draw FPS counter if enabled
+        if self.show_fps:
+            fps = self.clock.get_fps()
+            fps_text = pygame.font.SysFont('Arial', 18).render(f"FPS: {fps:.1f}", True, (255, 255, 255))
+            self.screen.blit(fps_text, (10, 10))
+        
         # Draw menu if active
         self.menu.draw(self.screen)
             
@@ -159,8 +185,13 @@ class Game:
             self.update()
             self.render()
             self.clock.tick(60)  # 60 FPS
-            fps = self.clock.get_fps()
-            pygame.display.set_caption(f"Rubik's Cube Simulator - FPS: {fps:.2f}")
+            
+            # Only update caption if show_fps is disabled (otherwise it's shown in-game)
+            if not self.show_fps:
+                fps = self.clock.get_fps()
+                pygame.display.set_caption(f"Rubik's Cube Simulator - FPS: {fps:.1f}")
+            else:
+                pygame.display.set_caption("Rubik's Cube Simulator")
             
         # Clean up
         self.renderer.close()

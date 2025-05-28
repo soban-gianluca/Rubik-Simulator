@@ -12,6 +12,12 @@ class Game:
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         
+        # Load playback music
+        """ pygame.mixer.music.load("utils/rubiksCube_Playback.mp3")
+        pygame.mixer.music.set_volume(1)
+        pygame.mixer.music.play(-1) """
+        
+        # Load icon
         icon = pygame.image.load("utils/rubiksCube_Icon.ico")
         pygame.display.set_icon(icon)
 

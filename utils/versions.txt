@@ -11,6 +11,7 @@
         Added manual-rotation + keybind --> grab with *left mouse button* / *left/right arow keys*
         Added exit + keybind --> *Esc*
         Added debug keybind --> *B*
+        Removed unecessary code
 
     --- Logic ---
     main.py

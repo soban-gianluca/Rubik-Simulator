@@ -13,9 +13,9 @@ class Game:
         self.clock = pygame.time.Clock()
         
         # Load playback music
-        """ pygame.mixer.music.load("utils/rubiksCube_Playback.mp3")
-        pygame.mixer.music.set_volume(1)
-        pygame.mixer.music.play(-1) """
+        pygame.mixer.music.load("utils/rubiksCube_Playback.mp3")
+        pygame.mixer.music.set_volume(0.5)
+        pygame.mixer.music.play(-1)
         
         # Load icon
         icon = pygame.image.load("utils/rubiksCube_Icon.ico")

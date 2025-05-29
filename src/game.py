@@ -57,13 +57,69 @@ class Game:
             print(message)
 
     def toggle_fullscreen(self):
-        """Toggle between fullscreen and windowed mode"""
+        """Toggle between fullscreen and windowed mode with proper resolution handling"""
         if self.is_fullscreen:
+            # Switch back to windowed mode with original resolution
             self.screen = pygame.display.set_mode((self.width, self.height))
         else:
-            self.screen = pygame.display.set_mode((self.width, self.height), pygame.FULLSCREEN)
+            # Get the current display info to use native resolution
+            display_info = pygame.display.Info()
+            fullscreen_width = display_info.current_w
+            fullscreen_height = display_info.current_h
+            
+            # Switch to fullscreen with native resolution
+            self.screen = pygame.display.set_mode((fullscreen_width, fullscreen_height), pygame.FULLSCREEN)
+            
+            # Update renderer viewport if necessary
+            if hasattr(self.renderer, 'plotter'):
+                # Store original resolution for switching back
+                self.renderer.original_width = self.width
+                self.renderer.original_height = self.height
+                
+                # Update renderer's window size
+                self.renderer.width = fullscreen_width
+                self.renderer.height = fullscreen_height
+                self.renderer.plotter.window_size = [fullscreen_width, fullscreen_height]
+                self.renderer.plotter.render()
+                
+            self.debug_print(f"Switched to fullscreen: {fullscreen_width}x{fullscreen_height}")
+        
         self.is_fullscreen = not self.is_fullscreen
         
+        # Force a redraw
+        self.renderer.render_frame()
+    
+    def change_resolution(self, new_width, new_height):
+        """Change the game resolution"""
+        # Store old resolution
+        old_width, old_height = self.width, self.height
+        
+        # Update stored dimensions
+        self.width, self.height = new_width, new_height
+        
+        # Only change if not in fullscreen mode
+        if not self.is_fullscreen:
+            self.screen = pygame.display.set_mode((new_width, new_height))
+            
+            # Update renderer viewport
+            if hasattr(self.renderer, 'plotter'):
+                self.renderer.width = new_width
+                self.renderer.height = new_height
+                self.renderer.plotter.window_size = [new_width, new_height]
+                self.renderer.plotter.render()
+                
+            self.debug_print(f"Changed resolution from {old_width}x{old_height} to {new_width}x{new_height}")
+        else:
+            self.debug_print("Resolution change ignored - fullscreen mode active")
+            
+        # Force a redraw
+        self.renderer.render_frame()
+        
+        # Recreate menu with new dimensions
+        self.menu = Menu(self.width, self.height)
+        if self.menu.is_active():
+            self.menu.toggle()  # Restore menu state
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -153,6 +209,13 @@ class Game:
             if show_fps_setting is not None:
                 # The checkbox is "Show FPS" so True means we should show them
                 self.show_fps = show_fps_setting
+                
+            # Handle resolution changes
+            if hasattr(self.menu, 'resolution_changed') and self.menu.resolution_changed():
+                new_width, new_height = self.menu.get_current_resolution()
+                if (new_width, new_height) != (self.width, self.height):
+                    self.change_resolution(new_width, new_height)
+                self.menu.reset_resolution_changed()
     
         # Auto-rotate if enabled and not in menu
         if not self.menu.is_active() and self.auto_rotate:
@@ -166,6 +229,12 @@ class Game:
         # Add indicator for mouse rotation state
         if self.mouse_rotating:
             pygame.draw.circle(self.screen, (255, 0, 0), (20, 20), 10)  # Red dot when rotating
+        
+        # Show FPS counter if enabled
+        if self.show_fps:
+            fps = self.clock.get_fps()
+            fps_text = pygame.font.SysFont('Arial', 20).render(f"FPS: {fps:.1f}", True, (255, 255, 0))
+            self.screen.blit(fps_text, (10, 10))
         
         # Draw menu if active
         self.menu.draw(self.screen)
@@ -181,11 +250,11 @@ class Game:
             self.clock.tick(60)  # 60 FPS
             
             # Only update caption if show_fps is disabled (otherwise it's shown in-game)
-            if self.show_fps:
+            if not self.show_fps:
+                pygame.display.set_caption("Rubik's Cube Simulator")
+            else:
                 fps = self.clock.get_fps()
                 pygame.display.set_caption(f"Rubik's Cube Simulator - FPS: {fps:.1f}")
-            else:
-                pygame.display.set_caption("Rubik's Cube Simulator")
             
         # Clean up
         self.renderer.close()

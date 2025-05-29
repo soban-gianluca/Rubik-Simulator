@@ -7,6 +7,18 @@ class Menu:
         self.active = False
         self.settings_active = False
         
+        # Available resolutions
+        self.available_resolutions = [
+            (800, 600),
+            (1024, 768),
+            (1280, 720),
+            (1366, 768),
+            (1920, 1080)
+        ]
+        
+        # Current resolution index (default to 800x600)
+        self.current_resolution_index = 0
+        
         # Fonts
         self.font_large = pygame.font.SysFont('Arial', 48, bold=True)
         self.font_medium = pygame.font.SysFont('Arial', 32)
@@ -48,6 +60,20 @@ class Menu:
             },
         }
         
+        # Resolution selector buttons
+        self.resolution_label_rect = pygame.Rect(screen_width//2 - 150, screen_height//2 - 200, 200, 25)
+        self.resolution_prev_button = {
+            'rect': pygame.Rect(screen_width//2 - 150, screen_height//2 - 160, 50, 30),
+            'text': '<',
+            'color': (50, 150, 50)
+        }
+        self.resolution_next_button = {
+            'rect': pygame.Rect(screen_width//2 + 100, screen_height//2 - 160, 50, 30),
+            'text': '>',
+            'color': (50, 150, 50)
+        }
+        self.resolution_display_rect = pygame.Rect(screen_width//2 - 90, screen_height//2 - 160, 180, 30)
+        
         # Track which setting is being adjusted
         self.active_setting = None
         
@@ -77,6 +103,18 @@ class Menu:
     def is_active(self):
         """Check if menu is visible"""
         return self.active
+    
+    def get_current_resolution(self):
+        """Return the currently selected resolution"""
+        return self.available_resolutions[self.current_resolution_index]
+    
+    def resolution_changed(self):
+        """Check if resolution was changed"""
+        return self.resolution_changed_flag if hasattr(self, 'resolution_changed_flag') else False
+    
+    def reset_resolution_changed(self):
+        """Reset the resolution changed flag"""
+        self.resolution_changed_flag = False
         
     def handle_event(self, event):
         """Process menu input"""
@@ -99,6 +137,19 @@ class Menu:
                         if self.get_setting('debug_mode'):
                             print(f"Setting {key} changed to {option['value']}")
                         return True
+                
+                # Resolution selector buttons
+                if self.resolution_prev_button['rect'].collidepoint(event.pos):
+                    # Change to previous resolution
+                    self.current_resolution_index = (self.current_resolution_index - 1) % len(self.available_resolutions)
+                    self.resolution_changed_flag = True
+                    return True
+                
+                if self.resolution_next_button['rect'].collidepoint(event.pos):
+                    # Change to next resolution
+                    self.current_resolution_index = (self.current_resolution_index + 1) % len(self.available_resolutions)
+                    self.resolution_changed_flag = True
+                    return True
                 
                 # Help button
                 if hasattr(self, 'help_button') and self.help_button['rect'].collidepoint(event.pos):
@@ -169,6 +220,27 @@ class Menu:
         # Title
         title = self.font_large.render("Settings", True, (255, 255, 255))
         screen.blit(title, title.get_rect(center=(self.width//2, self.height//5)))
+        
+        # Resolution label
+        resolution_label = self.font_small.render("Resolution:", True, (255, 255, 255))
+        screen.blit(resolution_label, self.resolution_label_rect)
+        
+        # Resolution selector buttons
+        # Previous button
+        pygame.draw.rect(screen, self.resolution_prev_button['color'], self.resolution_prev_button['rect'], border_radius=5)
+        prev_text = self.font_medium.render(self.resolution_prev_button['text'], True, (255, 255, 255))
+        screen.blit(prev_text, prev_text.get_rect(center=self.resolution_prev_button['rect'].center))
+        
+        # Resolution display
+        current_res = self.available_resolutions[self.current_resolution_index]
+        res_text = self.font_small.render(f"{current_res[0]}x{current_res[1]}", True, (255, 255, 255))
+        pygame.draw.rect(screen, (40, 40, 40), self.resolution_display_rect, border_radius=5)
+        screen.blit(res_text, res_text.get_rect(center=self.resolution_display_rect.center))
+        
+        # Next button
+        pygame.draw.rect(screen, self.resolution_next_button['color'], self.resolution_next_button['rect'], border_radius=5)
+        next_text = self.font_medium.render(self.resolution_next_button['text'], True, (255, 255, 255))
+        screen.blit(next_text, next_text.get_rect(center=self.resolution_next_button['rect'].center))
         
         # Draw checkboxes
         for key, option in self.settings_options.items():

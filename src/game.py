@@ -115,10 +115,25 @@ class Game:
         # Force a redraw
         self.renderer.render_frame()
         
+        # Save current settings before recreating menu
+        menu_active = self.menu.is_active()
+        settings_active = self.menu.settings_active
+        current_resolution_index = self.menu.current_resolution_index
+        current_display_mode = self.menu.current_display_mode
+        settings_options = {key: option['value'] for key, option in self.menu.settings_options.items()}
+        
         # Recreate menu with new dimensions
         self.menu = Menu(self.width, self.height)
-        if self.menu.is_active():
-            self.menu.toggle()  # Restore menu state
+        
+        # Restore settings
+        self.menu.current_resolution_index = current_resolution_index
+        self.menu.current_display_mode = current_display_mode
+        for key, value in settings_options.items():
+            self.menu.settings_options[key]['value'] = value
+    
+        # Restore menu state
+        self.menu.active = menu_active
+        self.menu.settings_active = settings_active
 
     def handle_events(self):
         for event in pygame.event.get():

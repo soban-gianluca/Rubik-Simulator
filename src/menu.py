@@ -9,7 +9,6 @@ class Menu:
         
         # Available resolutions
         self.available_resolutions = [
-            (800, 600),
             (1024, 768),
             (1280, 720),
             (1366, 768),
@@ -40,6 +39,7 @@ class Menu:
         self.font_large = pygame.font.SysFont('Arial', 55, bold=True)
         self.font_medium = pygame.font.SysFont('Arial', 40)
         self.font_small = pygame.font.SysFont('Lexinton', 30)
+        self.font_section = pygame.font.SysFont('Arial', 36, bold=True)
         
         # Button configuration
         self.play_button = {
@@ -54,31 +54,39 @@ class Menu:
             'color': (50, 150, 50)
         }
         
-        # Calculate vertical center position for settings
-        settings_vertical_center = screen_height // 2
-        settings_section_height = 300  # Approximate height of all settings elements
-        settings_start_y = settings_vertical_center - (settings_section_height // 2)
+        # Calculate positions for settings
+        settings_start_y = screen_height // 6 + 70  # Position after the title
+        settings_spacing = 35  # Space between settings items
+        section_spacing = 60   # Space between sections
+        settings_width = 300   # Width of settings controls
+        
+        # Section titles
+        self.display_section = {
+            'text': 'Display Settings',
+            'rect': pygame.Rect(screen_width//2 - 150, settings_start_y, 300, 40)
+        }
+        
+        # Display settings positions - after section title
+        display_y = settings_start_y + 50
         
         # Resolution settings
-        self.resolution_label_rect = pygame.Rect(screen_width//2 - 150, settings_start_y, 200, 25)
+        self.resolution_label_rect = pygame.Rect(screen_width//2 - 150, display_y, 200, 25)
         
         # Dropdown menu for resolution
         self.dropdown_button = {
-            'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + 30, 300, 30),
+            'rect': pygame.Rect(screen_width//2 - 150, display_y + 30, settings_width, 30),
             'color': (50, 50, 50),
             'hover_color': (70, 70, 70),
             'arrow_color': (200, 200, 200)
         }
         
-        # Space between settings sections
-        settings_spacing = 70
-        
-        # Display mode settings (replace fullscreen checkbox)
-        self.display_mode_label_rect = pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing + 10, 200, 25)
+        # Display mode settings
+        display_mode_y = display_y + settings_spacing + 40
+        self.display_mode_label_rect = pygame.Rect(screen_width//2 - 150, display_mode_y, 200, 25)
 
         # Dropdown for display mode
         self.display_mode_button = {
-            'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing + 40, 300, 30),
+            'rect': pygame.Rect(screen_width//2 - 150, display_mode_y + 30, settings_width, 30),
             'color': (50, 50, 50),
             'hover_color': (70, 70, 70),
             'arrow_color': (200, 200, 200)
@@ -91,15 +99,46 @@ class Menu:
         # Dropdown state for display mode
         self.display_mode_dropdown_open = False
 
-        # Combine all settings into one dictionary for easier handling
+        # Show FPS option
+        fps_y = display_mode_y + settings_spacing + 40
         self.settings_options = {
             'show_fps': {
                 'value': False,
                 'text': 'Show FPS',
-                'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing*2 + 25, 25, 25),
-                'label_rect': pygame.Rect(screen_width//2 - 110, settings_start_y + settings_spacing*2 + 30, 200, 25)
+                'rect': pygame.Rect(screen_width//2 - 150, fps_y, 25, 25),
+                'label_rect': pygame.Rect(screen_width//2 - 110, fps_y + 5, 200, 25)
             }
-            # fullscreen option removed - now using dropdown
+        }
+        
+        # Audio section - starts after display section + spacing
+        audio_section_y = fps_y + section_spacing
+        self.audio_section = {
+            'text': 'Audio Settings',
+            'rect': pygame.Rect(screen_width//2 - 150, audio_section_y, 300, 40)
+        }
+        
+        # Volume slider
+        volume_y = audio_section_y + 50
+        self.volume_label_rect = pygame.Rect(screen_width//2 - 150, volume_y, 200, 25)
+        
+        # Default volume (50%)
+        self.volume = 50
+        
+        # Volume slider bar
+        self.volume_bar = {
+            'rect': pygame.Rect(screen_width//2 - 150, volume_y + 30, settings_width, 20),
+            'color': (50, 50, 50),
+            'fill_color': (50, 150, 50),
+            'border_color': (200, 200, 200)
+        }
+        
+        # Volume slider handle
+        handle_x = screen_width//2 - 150 + (settings_width * self.volume // 100) - 10
+        self.volume_handle = {
+            'rect': pygame.Rect(handle_x, volume_y + 25, 20, 30),
+            'color': (200, 200, 200),
+            'hover_color': (255, 255, 255),
+            'dragging': False
         }
         
         # Create dropdown option rectangles
@@ -108,8 +147,8 @@ class Menu:
             self.dropdown_options.append(
                 pygame.Rect(
                     screen_width//2 - 150, 
-                    settings_start_y + 30 + (i+1)*30, 
-                    300, 
+                    display_y + 30 + (i+1)*30, 
+                    settings_width, 
                     30
                 )
             )
@@ -120,8 +159,8 @@ class Menu:
             self.display_mode_options.append(
                 pygame.Rect(
                     screen_width//2 - 150, 
-                    settings_start_y + settings_spacing + 40 + (i+1)*30, 
-                    300, 
+                    display_mode_y + 30 + (i+1)*30, 
+                    settings_width, 
                     30
                 )
             )
@@ -273,6 +312,21 @@ class Menu:
                             print(f"Setting {key} changed to {option['value']}")
                         return True
                 
+                # Volume slider handle dragging
+                if self.volume_handle['rect'].collidepoint(event.pos):
+                    self.volume_handle['dragging'] = True
+                    return True
+                
+                # Volume bar click (jump to position)
+                if self.volume_bar['rect'].collidepoint(event.pos):
+                    # Calculate new volume position
+                    rel_x = event.pos[0] - self.volume_bar['rect'].x
+                    self.volume = max(0, min(100, int(rel_x / self.volume_bar['rect'].width * 100)))
+                    # Update handle position
+                    self._update_volume_handle()
+                    self.settings_changed = True
+                    return True
+                
                 # Help button
                 if hasattr(self, 'help_button') and self.help_button['rect'].collidepoint(event.pos):
                     print("Help button clicked - show controls and instructions")
@@ -289,8 +343,32 @@ class Menu:
                 if self.settings_button['rect'].collidepoint(event.pos):
                     self.settings_active = True
                     return True
+        
+        # Mouse button up - stop dragging volume handle
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.volume_handle['dragging']:
+                self.volume_handle['dragging'] = False
+                return True
+        
+        # Mouse motion - handle volume slider dragging
+        elif event.type == pygame.MOUSEMOTION:
+            if self.settings_active and self.volume_handle['dragging']:
+                # Calculate new volume based on horizontal mouse position
+                rel_x = event.pos[0] - self.volume_bar['rect'].x
+                self.volume = max(0, min(100, int(rel_x / self.volume_bar['rect'].width * 100)))
+                # Update handle position
+                self._update_volume_handle()
+                self.settings_changed = True
+                # Update actual volume
+                pygame.mixer.music.set_volume(self.volume / 100)
+                return True
             
         return False
+    
+    def _update_volume_handle(self):
+        """Update volume slider handle position based on current volume"""
+        handle_x = self.volume_bar['rect'].x + (self.volume_bar['rect'].width * self.volume // 100) - 10
+        self.volume_handle['rect'].x = handle_x
     
     def get_setting(self, name):
         """Get a setting value"""
@@ -299,6 +377,8 @@ class Menu:
         elif name == 'fullscreen':
             # Return True if Fullscreen is selected (index 1)
             return self.current_display_mode == 1
+        elif name == 'volume':
+            return self.volume
         return None
     
     def update_cursor(self, mouse_pos):
@@ -318,8 +398,9 @@ class Menu:
                 self.back_button['rect'],
                 self.confirm_button['rect'],
                 self.dropdown_button['rect'],
-                self.display_mode_button['rect'],  # Add this line
-                self.help_button['rect']
+                self.display_mode_button['rect'],
+                self.help_button['rect'],
+                self.volume_handle['rect']
             ]
             
             # Add checkboxes to hover elements
@@ -337,6 +418,10 @@ class Menu:
                 if element.collidepoint(mouse_pos):
                     new_cursor = self.cursor_pointer
                     break
+            
+            # Also consider the volume bar as a hover element
+            if self.volume_bar['rect'].collidepoint(mouse_pos):
+                new_cursor = self.cursor_pointer
         else:
             # Check if hovering over buttons in main menu
             if (self.play_button['rect'].collidepoint(mouse_pos) or 
@@ -397,6 +482,14 @@ class Menu:
         screen.blit(title, title.get_rect(center=(self.width//2, self.height//6)))
         
         mouse_pos = pygame.mouse.get_pos()
+        
+        # Display Settings Section Title
+        section_title = self.font_section.render(self.display_section['text'], True, (220, 220, 220))
+        screen.blit(section_title, self.display_section['rect'])
+        # Draw light underline for section
+        pygame.draw.line(screen, (150, 150, 150), 
+                         (self.display_section['rect'].left, self.display_section['rect'].bottom + 5),
+                         (self.display_section['rect'].right, self.display_section['rect'].bottom + 5), 2)
         
         # Resolution label
         resolution_label = self.font_small.render("Resolution:", True, (255, 255, 255))
@@ -464,6 +557,46 @@ class Menu:
             # Label
             label = self.font_small.render(option['text'], True, (255, 255, 255))
             screen.blit(label, option['label_rect'])
+        
+        # Audio Settings Section Title
+        section_title = self.font_section.render(self.audio_section['text'], True, (220, 220, 220))
+        screen.blit(section_title, self.audio_section['rect'])
+        # Draw light underline for section
+        pygame.draw.line(screen, (150, 150, 150), 
+                         (self.audio_section['rect'].left, self.audio_section['rect'].bottom + 5),
+                         (self.audio_section['rect'].right, self.audio_section['rect'].bottom + 5), 2)
+        
+        # Volume label
+        volume_label = self.font_small.render("Volume:", True, (255, 255, 255))
+        screen.blit(volume_label, self.volume_label_rect)
+        
+        # Volume percentage text
+        volume_text = self.font_small.render(f"{self.volume}%", True, (255, 255, 255))
+        volume_text_rect = volume_text.get_rect()
+        volume_text_rect.right = self.volume_bar['rect'].right
+        volume_text_rect.y = self.volume_label_rect.y
+        screen.blit(volume_text, volume_text_rect)
+        
+        # Draw volume bar background
+        pygame.draw.rect(screen, self.volume_bar['color'], self.volume_bar['rect'], border_radius=5)
+        
+        # Draw filled portion of volume bar
+        filled_width = int(self.volume_bar['rect'].width * self.volume / 100)
+        filled_rect = pygame.Rect(
+            self.volume_bar['rect'].x,
+            self.volume_bar['rect'].y,
+            filled_width,
+            self.volume_bar['rect'].height
+        )
+        pygame.draw.rect(screen, self.volume_bar['fill_color'], filled_rect, border_radius=5)
+        
+        # Draw volume bar border
+        pygame.draw.rect(screen, self.volume_bar['border_color'], self.volume_bar['rect'], 1, border_radius=5)
+        
+        # Draw volume handle with hover effect
+        handle_color = self.volume_handle['hover_color'] if self.volume_handle['rect'].collidepoint(mouse_pos) or self.volume_handle['dragging'] else self.volume_handle['color']
+        pygame.draw.rect(screen, handle_color, self.volume_handle['rect'], border_radius=4)
+        pygame.draw.rect(screen, (100, 100, 100), self.volume_handle['rect'], 1, border_radius=4)
 
         # Back (Cancel) button
         back_btn = self.back_button

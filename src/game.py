@@ -61,6 +61,11 @@ class Game:
         if self.is_fullscreen:
             # Switch back to windowed mode with original resolution
             self.screen = pygame.display.set_mode((self.width, self.height))
+            
+            # Update the renderer for windowed mode
+            if hasattr(self, 'renderer'):
+                self.renderer.close()
+                self.renderer = Renderer(self.width, self.height)
         else:
             # Get the current display info to use native resolution
             display_info = pygame.display.Info()
@@ -70,17 +75,10 @@ class Game:
             # Switch to fullscreen with native resolution
             self.screen = pygame.display.set_mode((fullscreen_width, fullscreen_height), pygame.FULLSCREEN)
             
-            # Update renderer viewport if necessary
-            if hasattr(self.renderer, 'plotter'):
-                # Store original resolution for switching back
-                self.renderer.original_width = self.width
-                self.renderer.original_height = self.height
-                
-                # Update renderer's window size
-                self.renderer.width = fullscreen_width
-                self.renderer.height = fullscreen_height
-                self.renderer.plotter.window_size = [fullscreen_width, fullscreen_height]
-                self.renderer.plotter.render()
+            # Update the renderer for fullscreen
+            if hasattr(self, 'renderer'):
+                self.renderer.close()
+                self.renderer = Renderer(fullscreen_width, fullscreen_height)
                 
             self.debug_print(f"Switched to fullscreen: {fullscreen_width}x{fullscreen_height}")
         
@@ -89,52 +87,59 @@ class Game:
         # Force a redraw
         self.renderer.render_frame()
     
-    def change_resolution(self, new_width, new_height):
-        """Change the game resolution"""
-        # Store old resolution
-        old_width, old_height = self.width, self.height
-        
-        # Update stored dimensions
-        self.width, self.height = new_width, new_height
-        
-        # Only change if not in fullscreen mode
-        if not self.is_fullscreen:
-            self.screen = pygame.display.set_mode((new_width, new_height))
-            
-            # Update renderer viewport
-            if hasattr(self.renderer, 'plotter'):
-                self.renderer.width = new_width
-                self.renderer.height = new_height
-                self.renderer.plotter.window_size = [new_width, new_height]
-                self.renderer.plotter.render()
-                
-            self.debug_print(f"Changed resolution from {old_width}x{old_height} to {new_width}x{new_height}")
-        else:
-            self.debug_print("Resolution change ignored - fullscreen mode active")
-            
-        # Force a redraw
-        self.renderer.render_frame()
-        
-        # Save current settings before recreating menu
-        menu_active = self.menu.is_active()
-        settings_active = self.menu.settings_active
-        current_resolution_index = self.menu.current_resolution_index
-        current_display_mode = self.menu.current_display_mode
-        settings_options = {key: option['value'] for key, option in self.menu.settings_options.items()}
-        
-        # Recreate menu with new dimensions
-        self.menu = Menu(self.width, self.height)
-        
-        # Restore settings
-        self.menu.current_resolution_index = current_resolution_index
-        self.menu.current_display_mode = current_display_mode
-        for key, value in settings_options.items():
-            self.menu.settings_options[key]['value'] = value
-    
-        # Restore menu state
-        self.menu.active = menu_active
-        self.menu.settings_active = settings_active
+    def change_resolution(self, width, height):
+        """Actually change the screen resolution"""
+        # Store current settings
+        current_volume = self.menu.volume if hasattr(self, 'menu') else 50
+        current_settings = {}
+        if hasattr(self, 'menu'):
+            for key in self.menu.settings_options.keys():
+                current_settings[key] = self.menu.get_setting(key)
+            current_display_mode = self.menu.current_display_mode
 
+        # Update dimensions
+        self.width = width
+        self.height = height
+
+        # Update display mode based on fullscreen setting
+        is_fullscreen = False
+        if hasattr(self, 'menu'):
+            is_fullscreen = self.menu.get_setting('fullscreen')
+
+        if is_fullscreen:
+            self.screen = pygame.display.set_mode((width, height), pygame.FULLSCREEN)
+            self.is_fullscreen = True
+        else:
+            self.screen = pygame.display.set_mode((width, height))
+            self.is_fullscreen = False
+
+        # Update the renderer with the new resolution
+        if hasattr(self, 'renderer'):
+            # Close the old renderer to release resources
+            self.renderer.close()
+            # Create a new renderer with updated dimensions
+            self.renderer = Renderer(width, height)
+
+        # Recreate menu with new dimensions and restore settings
+        if hasattr(self, 'menu'):
+            # Create new menu with correct dimensions
+            self.menu = Menu(width, height)
+    
+            # Restore settings
+            self.menu.volume = current_volume
+            self.menu._update_volume_handle()
+    
+            if 'current_display_mode' in locals():
+                self.menu.current_display_mode = current_display_mode
+    
+            for key, value in current_settings.items():
+                if key in self.menu.settings_options:
+                    self.menu.settings_options[key]['value'] = value
+
+        print(f"Resolution changed to {width}x{height}")
+
+        return True
+    
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -216,24 +221,34 @@ class Game:
                 self.auto_rotate = False
 
     def update(self):
-        # Check and apply settings from menu ONLY when resolution_changed flag is true
-        if hasattr(self.menu, 'resolution_changed') and self.menu.resolution_changed():
-            # Handle resolution changes
+        """Update game state"""
+        # Check and apply settings from menu when resolution changed flag is true
+        if hasattr(self, 'menu') and self.menu.resolution_changed():
+            # Get selected resolution
             new_width, new_height = self.menu.get_current_resolution()
-            if (new_width, new_height) != (self.width, self.height):
+            current_width, current_height = self.width, self.height
+            
+            # Check if resolution has actually changed
+            if (new_width, new_height) != (current_width, current_height):
+                print(f"Changing resolution from {current_width}x{current_height} to {new_width}x{new_height}")
                 self.change_resolution(new_width, new_height)
-                
-            # Handle fullscreen setting
-            fullscreen_setting = self.menu.get_setting('fullscreen')
-            if fullscreen_setting is not None and fullscreen_setting != self.is_fullscreen:
+            
+            # Apply fullscreen setting
+            fullscreen = self.menu.get_setting('fullscreen')
+            if fullscreen != self.is_fullscreen:
                 self.toggle_fullscreen()
-                
-            # Handle show FPS setting
-            show_fps_setting = self.menu.get_setting('show_fps')
-            if show_fps_setting is not None:
-                self.show_fps = show_fps_setting
-                
-            # Reset the flag after applying all changes
+            
+            # Apply other settings
+            show_fps = self.menu.get_setting('show_fps')
+            if show_fps is not None:
+                self.show_fps = show_fps
+            
+            # Apply volume setting
+            volume = self.menu.get_setting('volume')
+            if volume is not None and hasattr(pygame.mixer, 'music') and pygame.mixer.music.get_busy():
+                pygame.mixer.music.set_volume(volume / 100)
+            
+            # Reset the resolution changed flag
             self.menu.reset_resolution_changed()
     
         # Auto-rotate if enabled and not in menu

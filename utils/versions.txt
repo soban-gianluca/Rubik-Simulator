@@ -29,3 +29,5 @@
 - timer
 - move counter
 - (Different gamemodes)
+- Create two sections for the settings: "Display settings" where there's the 
+    resolution settings and the display mode; second section "Audio" with the volume bar

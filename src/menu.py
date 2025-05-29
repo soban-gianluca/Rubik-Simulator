@@ -23,9 +23,9 @@ class Menu:
         self.dropdown_open = False
         
         # Fonts
-        self.font_large = pygame.font.SysFont('Arial', 48, bold=True)
-        self.font_medium = pygame.font.SysFont('Arial', 32)
-        self.font_small = pygame.font.SysFont('Arial', 24)
+        self.font_large = pygame.font.SysFont('Arial', 55, bold=True)
+        self.font_medium = pygame.font.SysFont('Arial', 40)
+        self.font_small = pygame.font.SysFont('Lexinton', 30)
         
         # Button configuration
         self.play_button = {
@@ -59,20 +59,33 @@ class Menu:
         # Space between settings sections
         settings_spacing = 70
         
+        # Display mode settings (replace fullscreen checkbox)
+        self.display_mode_label_rect = pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing + 10, 200, 25)
+
+        # Dropdown for display mode
+        self.display_mode_button = {
+            'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing + 40, 300, 30),
+            'color': (50, 50, 50),
+            'hover_color': (70, 70, 70),
+            'arrow_color': (200, 200, 200)
+        }
+
+        # Available display modes
+        self.display_modes = ["Windowed", "Fullscreen"]
+        self.current_display_mode = 0  # Default to windowed
+
+        # Dropdown state for display mode
+        self.display_mode_dropdown_open = False
+
         # Combine all settings into one dictionary for easier handling
         self.settings_options = {
             'show_fps': {
                 'value': False,
                 'text': 'Show FPS',
-                'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing + 10, 25, 25),
-                'label_rect': pygame.Rect(screen_width//2 - 110, settings_start_y + settings_spacing + 10, 200, 25)
-            },
-            'fullscreen': {
-                'value': False,
-                'text': 'Fullscreen',
-                'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing*2, 25, 25),
-                'label_rect': pygame.Rect(screen_width//2 - 110, settings_start_y + settings_spacing*2, 200, 25)
+                'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing*2 + 25, 25, 25),
+                'label_rect': pygame.Rect(screen_width//2 - 110, settings_start_y + settings_spacing*2 + 30, 200, 25)
             }
+            # fullscreen option removed - now using dropdown
         }
         
         # Create dropdown option rectangles
@@ -82,6 +95,18 @@ class Menu:
                 pygame.Rect(
                     screen_width//2 - 150, 
                     settings_start_y + 30 + (i+1)*30, 
+                    300, 
+                    30
+                )
+            )
+        
+        # Create display mode dropdown option rectangles
+        self.display_mode_options = []
+        for i in range(len(self.display_modes)):
+            self.display_mode_options.append(
+                pygame.Rect(
+                    screen_width//2 - 150, 
+                    settings_start_y + settings_spacing + 40 + (i+1)*30, 
                     300, 
                     30
                 )
@@ -199,6 +224,31 @@ class Menu:
                     self.dropdown_open = not self.dropdown_open
                     return True
                 
+                # Handle display mode dropdown
+                if self.display_mode_dropdown_open:
+                    for i, rect in enumerate(self.display_mode_options):
+                        if rect.collidepoint(event.pos):
+                            # Selected a display mode
+                            old_mode = self.current_display_mode
+                            self.current_display_mode = i
+                            self.display_mode_dropdown_open = False
+                            if old_mode != self.current_display_mode:
+                                self.settings_changed = True
+                            return True
+                    
+                    # Close dropdown if clicked outside
+                    if not self.display_mode_button['rect'].collidepoint(event.pos):
+                        self.display_mode_dropdown_open = False
+                        return True
+                
+                # Toggle display mode dropdown
+                if self.display_mode_button['rect'].collidepoint(event.pos):
+                    self.display_mode_dropdown_open = not self.display_mode_dropdown_open
+                    # Close resolution dropdown if open
+                    if self.dropdown_open:
+                        self.dropdown_open = False
+                    return True
+                
                 # Check checkbox interactions
                 for key, option in self.settings_options.items():
                     if option['rect'].collidepoint(event.pos):
@@ -232,6 +282,9 @@ class Menu:
         """Get a setting value"""
         if name in self.settings_options:
             return self.settings_options[name]['value']
+        elif name == 'fullscreen':
+            # Return True if Fullscreen is selected (index 1)
+            return self.current_display_mode == 1
         return None
     
     def update_cursor(self, mouse_pos):
@@ -251,6 +304,7 @@ class Menu:
                 self.back_button['rect'],
                 self.confirm_button['rect'],
                 self.dropdown_button['rect'],
+                self.display_mode_button['rect'],  # Add this line
                 self.help_button['rect']
             ]
             
@@ -261,6 +315,8 @@ class Menu:
             # Add dropdown options if open
             if self.dropdown_open:
                 hover_elements.extend(self.dropdown_options)
+            if self.display_mode_dropdown_open:
+                hover_elements.extend(self.display_mode_options)
                 
             # Check if mouse is over any interactive element
             for element in hover_elements:
@@ -326,12 +382,13 @@ class Menu:
         title = self.font_large.render("Settings", True, (255, 255, 255))
         screen.blit(title, title.get_rect(center=(self.width//2, self.height//6)))
         
+        mouse_pos = pygame.mouse.get_pos()
+        
         # Resolution label
         resolution_label = self.font_small.render("Resolution:", True, (255, 255, 255))
         screen.blit(resolution_label, self.resolution_label_rect)
         
         # Draw dropdown button
-        mouse_pos = pygame.mouse.get_pos()
         button_color = self.dropdown_button['hover_color'] if self.dropdown_button['rect'].collidepoint(mouse_pos) else self.dropdown_button['color']
         pygame.draw.rect(screen, button_color, self.dropdown_button['rect'], border_radius=5)
         pygame.draw.rect(screen, (200, 200, 200), self.dropdown_button['rect'], 1, border_radius=5)
@@ -351,21 +408,30 @@ class Menu:
         ]
         pygame.draw.polygon(screen, self.dropdown_button['arrow_color'], arrow_points)
         
-        # Draw dropdown options if open
-        if self.dropdown_open:
-            for i, rect in enumerate(self.dropdown_options):
-                # Check if mouse is hovering over this option
-                is_hovering = rect.collidepoint(mouse_pos)
-                option_color = (70, 70, 70) if is_hovering else (40, 40, 40)
-                
-                pygame.draw.rect(screen, option_color, rect)
-                pygame.draw.rect(screen, (100, 100, 100), rect, 1)
-                
-                # Resolution text
-                res = self.available_resolutions[i]
-                option_text = self.font_small.render(f"{res[0]}x{res[1]}", True, (255, 255, 255))
-                screen.blit(option_text, (rect.x + 10, rect.y + 5))
-    
+        # Display mode label
+        display_mode_label = self.font_small.render("Display Mode:", True, (255, 255, 255))
+        screen.blit(display_mode_label, self.display_mode_label_rect)
+        
+        # Draw display mode dropdown button
+        button_color = self.display_mode_button['hover_color'] if self.display_mode_button['rect'].collidepoint(mouse_pos) else self.display_mode_button['color']
+        pygame.draw.rect(screen, button_color, self.display_mode_button['rect'], border_radius=5)
+        pygame.draw.rect(screen, (200, 200, 200), self.display_mode_button['rect'], 1, border_radius=5)
+        
+        # Display current mode text on dropdown button
+        current_mode = self.display_modes[self.current_display_mode]
+        mode_text = self.font_small.render(current_mode, True, (255, 255, 255))
+        screen.blit(mode_text, (self.display_mode_button['rect'].x + 10, self.display_mode_button['rect'].y + 5))
+        
+        # Draw dropdown arrow
+        arrow_x = self.display_mode_button['rect'].right - 25
+        arrow_y = self.display_mode_button['rect'].centery
+        arrow_points = [
+            (arrow_x - 8, arrow_y - 4),
+            (arrow_x, arrow_y + 4),
+            (arrow_x + 8, arrow_y - 4)
+        ]
+        pygame.draw.polygon(screen, self.display_mode_button['arrow_color'], arrow_points)
+
         # Draw checkboxes
         for key, option in self.settings_options.items():
             # Checkbox outline
@@ -384,7 +450,7 @@ class Menu:
             # Label
             label = self.font_small.render(option['text'], True, (255, 255, 255))
             screen.blit(label, option['label_rect'])
-    
+
         # Back (Cancel) button
         back_btn = self.back_button
         pygame.draw.rect(screen, back_btn['color'], back_btn['rect'], border_radius=10)
@@ -410,3 +476,43 @@ class Menu:
             pygame.draw.rect(screen, self.help_button['color'], self.help_button['rect'], border_radius=5)
             text = self.font_small.render(self.help_button['text'], True, (255, 255, 255))
             screen.blit(text, text.get_rect(center=self.help_button['rect'].center))
+        
+        # Draw dropdown options if open - DRAW THESE LAST to ensure they appear on top
+        if self.dropdown_open:
+            # Create a semi-transparent overlay to make dropdown stand out
+            dropdown_overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            dropdown_overlay.fill((0, 0, 0, 100))
+            screen.blit(dropdown_overlay, (0, 0))
+            
+            for i, rect in enumerate(self.dropdown_options):
+                # Check if mouse is hovering over this option
+                is_hovering = rect.collidepoint(mouse_pos)
+                option_color = (70, 70, 70) if is_hovering else (40, 40, 40)
+                
+                pygame.draw.rect(screen, option_color, rect)
+                pygame.draw.rect(screen, (100, 100, 100), rect, 1)
+                
+                # Resolution text
+                res = self.available_resolutions[i]
+                option_text = self.font_small.render(f"{res[0]}x{res[1]}", True, (255, 255, 255))
+                screen.blit(option_text, (rect.x + 10, rect.y + 5))
+        
+        # Draw display mode dropdown options if open - DRAW THESE LAST too
+        if self.display_mode_dropdown_open:
+            # Create a semi-transparent overlay to make dropdown stand out
+            dropdown_overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            dropdown_overlay.fill((0, 0, 0, 100))
+            screen.blit(dropdown_overlay, (0, 0))
+            
+            for i, rect in enumerate(self.display_mode_options):
+                # Check if mouse is hovering over this option
+                is_hovering = rect.collidepoint(mouse_pos)
+                option_color = (70, 70, 70) if is_hovering else (40, 40, 40)
+                
+                pygame.draw.rect(screen, option_color, rect)
+                pygame.draw.rect(screen, (100, 100, 100), rect, 1)
+                
+                # Mode text
+                mode = self.display_modes[i]
+                option_text = self.font_small.render(mode, True, (255, 255, 255))
+                screen.blit(option_text, (rect.x + 10, rect.y + 5))

@@ -7,7 +7,7 @@ class Game:
     def __init__(self):
         # Initialize pygame
         pygame.init()
-        self.width, self.height = 800, 600
+        self.width, self.height = 1024, 768     # Default resolution    (precedente: 800, 600)    
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()

@@ -96,7 +96,8 @@ class Menu:
                     if option['rect'].collidepoint(event.pos):
                         # Toggle the checkbox value
                         option['value'] = not option['value']
-                        print(f"Setting {key} changed to {option['value']}")
+                        if self.get_setting('debug_mode'):
+                            print(f"Setting {key} changed to {option['value']}")
                         return True
                 
                 # Help button

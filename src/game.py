@@ -96,7 +96,7 @@ class Game:
                     self.debug_print(f"Mouse rotation started at {event.pos}")
                     
             elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:  # Left mouse button
+                if event.button == 1 and not self.menu.is_active():  # Left mouse button
                     self.mouse_rotating = False
                     self.debug_print("Mouse rotation ended")
                 

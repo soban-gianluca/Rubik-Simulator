@@ -79,6 +79,7 @@ class Game:
                     self.debug_print(f"Auto-rotate: {'ON' if self.auto_rotate else 'OFF'}")
                 elif not self.menu.is_active() and event.key == pygame.K_d:
                     self.debug_mode = not self.debug_mode
+                    self.debug_print(f"Debug mode: {'ON' if self.debug_mode else 'OFF'}")
                 elif event.key == pygame.K_F11:  # Add F11 as alternate fullscreen toggle
                     self.toggle_fullscreen()
             

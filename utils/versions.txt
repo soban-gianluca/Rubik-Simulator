@@ -24,7 +24,7 @@
 - help button
 - movents
 - main menu
-- settings (fullscreen resolution)
+- settings (FIX FULLSCREEN RESOLUTION)
 - (more complex background)
 - timer
 - move counter

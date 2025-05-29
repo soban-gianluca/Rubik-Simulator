@@ -216,25 +216,25 @@ class Game:
                 self.auto_rotate = False
 
     def update(self):
-        # Check and apply settings from menu
-        if hasattr(self.menu, 'get_setting'):
+        # Check and apply settings from menu ONLY when resolution_changed flag is true
+        if hasattr(self.menu, 'resolution_changed') and self.menu.resolution_changed():
+            # Handle resolution changes
+            new_width, new_height = self.menu.get_current_resolution()
+            if (new_width, new_height) != (self.width, self.height):
+                self.change_resolution(new_width, new_height)
+                
             # Handle fullscreen setting
             fullscreen_setting = self.menu.get_setting('fullscreen')
             if fullscreen_setting is not None and fullscreen_setting != self.is_fullscreen:
                 self.toggle_fullscreen()
                 
-            # Handle show FPS setting - FIX: directly assign the value without inversion
+            # Handle show FPS setting
             show_fps_setting = self.menu.get_setting('show_fps')
             if show_fps_setting is not None:
-                # The checkbox is "Show FPS" so True means we should show them
                 self.show_fps = show_fps_setting
                 
-            # Handle resolution changes
-            if hasattr(self.menu, 'resolution_changed') and self.menu.resolution_changed():
-                new_width, new_height = self.menu.get_current_resolution()
-                if (new_width, new_height) != (self.width, self.height):
-                    self.change_resolution(new_width, new_height)
-                self.menu.reset_resolution_changed()
+            # Reset the flag after applying all changes
+            self.menu.reset_resolution_changed()
     
         # Auto-rotate if enabled and not in menu
         if not self.menu.is_active() and self.auto_rotate:

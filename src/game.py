@@ -136,7 +136,8 @@ class Game:
                 if key in self.menu.settings_options:
                     self.menu.settings_options[key]['value'] = value
 
-        print(f"Resolution changed to {width}x{height}")
+        # Only print if debug mode is active
+        self.debug_print(f"Resolution changed to {width}x{height}")
 
         return True
     
@@ -230,7 +231,7 @@ class Game:
             
             # Check if resolution has actually changed
             if (new_width, new_height) != (current_width, current_height):
-                print(f"Changing resolution from {current_width}x{current_height} to {new_width}x{new_height}")
+                self.debug_print(f"Changing resolution from {current_width}x{current_height} to {new_width}x{new_height}")
                 self.change_resolution(new_width, new_height)
             
             # Apply fullscreen setting
@@ -250,7 +251,7 @@ class Game:
             
             # Reset the resolution changed flag
             self.menu.reset_resolution_changed()
-    
+
         # Auto-rotate if enabled and not in menu
         if not self.menu.is_active() and self.auto_rotate:
             self.renderer.rotate_camera(azimuth=0.5 * self.rotation_sensitivity)

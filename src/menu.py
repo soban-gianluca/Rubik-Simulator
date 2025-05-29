@@ -478,12 +478,7 @@ class Menu:
             screen.blit(text, text.get_rect(center=self.help_button['rect'].center))
         
         # Draw dropdown options if open - DRAW THESE LAST to ensure they appear on top
-        if self.dropdown_open:
-            # Create a semi-transparent overlay to make dropdown stand out
-            dropdown_overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            dropdown_overlay.fill((0, 0, 0, 100))
-            screen.blit(dropdown_overlay, (0, 0))
-            
+        if self.dropdown_open:            
             for i, rect in enumerate(self.dropdown_options):
                 # Check if mouse is hovering over this option
                 is_hovering = rect.collidepoint(mouse_pos)
@@ -498,12 +493,7 @@ class Menu:
                 screen.blit(option_text, (rect.x + 10, rect.y + 5))
         
         # Draw display mode dropdown options if open - DRAW THESE LAST too
-        if self.display_mode_dropdown_open:
-            # Create a semi-transparent overlay to make dropdown stand out
-            dropdown_overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            dropdown_overlay.fill((0, 0, 0, 100))
-            screen.blit(dropdown_overlay, (0, 0))
-            
+        if self.display_mode_dropdown_open:           
             for i, rect in enumerate(self.display_mode_options):
                 # Check if mouse is hovering over this option
                 is_hovering = rect.collidepoint(mouse_pos)

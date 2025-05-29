@@ -19,6 +19,9 @@ class Menu:
         # Current resolution index (default to 800x600)
         self.current_resolution_index = 0
         
+        # Dropdown state
+        self.dropdown_open = False
+        
         # Fonts
         self.font_large = pygame.font.SysFont('Arial', 48, bold=True)
         self.font_medium = pygame.font.SysFont('Arial', 32)
@@ -39,43 +42,60 @@ class Menu:
         
         # Settings window elements
         self.back_button = {
-            'rect': pygame.Rect(screen_width//2 - 100, screen_height - 100, 200, 50),
-            'text': 'Back',
+            'rect': pygame.Rect(screen_width//2 - 220, screen_height - 100, 200, 50),
+            'text': 'Cancel',
             'color': (150, 50, 50)
         }
         
-        # Settings options - now with checkboxes instead of sliders
+        # Confirm button
+        self.confirm_button = {
+            'rect': pygame.Rect(screen_width//2 + 20, screen_height - 100, 200, 50),
+            'text': 'Confirm',
+            'color': (50, 150, 50)
+        }
+        
+        # Combine all settings into one dictionary for easier handling
         self.settings_options = {
             'fullscreen': {
                 'value': False,
                 'text': 'Fullscreen',
-                'rect': pygame.Rect(screen_width//2 - 150, screen_height//2 - 100, 25, 25),
-                'label_rect': pygame.Rect(screen_width//2 - 110, screen_height//2 - 100, 200, 25)
+                'rect': pygame.Rect(screen_width//2 - 150, screen_height//2 - 60, 25, 25),
+                'label_rect': pygame.Rect(screen_width//2 - 110, screen_height//2 - 60, 200, 25)
             },
             'show_fps': {
                 'value': False,
                 'text': 'Show FPS',
-                'rect': pygame.Rect(screen_width//2 - 150, screen_height//2, 25, 25),
-                'label_rect': pygame.Rect(screen_width//2 - 110, screen_height//2, 200, 25)
-            },
+                'rect': pygame.Rect(screen_width//2 - 150, screen_height//2 - 200, 25, 25),
+                'label_rect': pygame.Rect(screen_width//2 - 110, screen_height//2 - 200, 200, 25)
+            }
         }
         
-        # Resolution selector buttons
-        self.resolution_label_rect = pygame.Rect(screen_width//2 - 150, screen_height//2 - 200, 200, 25)
-        self.resolution_prev_button = {
-            'rect': pygame.Rect(screen_width//2 - 150, screen_height//2 - 160, 50, 30),
-            'text': '<',
-            'color': (50, 150, 50)
-        }
-        self.resolution_next_button = {
-            'rect': pygame.Rect(screen_width//2 + 100, screen_height//2 - 160, 50, 30),
-            'text': '>',
-            'color': (50, 150, 50)
-        }
-        self.resolution_display_rect = pygame.Rect(screen_width//2 - 90, screen_height//2 - 160, 180, 30)
+        # Resolution settings
+        self.resolution_label_rect = pygame.Rect(screen_width//2 - 150, screen_height//2 - 260, 200, 25)
         
-        # Track which setting is being adjusted
-        self.active_setting = None
+        # Dropdown menu for resolution
+        self.dropdown_button = {
+            'rect': pygame.Rect(screen_width//2 - 150, screen_height//2 - 230, 300, 30),
+            'color': (50, 50, 50),
+            'hover_color': (70, 70, 70),
+            'arrow_color': (200, 200, 200)
+        }
+        
+        # Create dropdown option rectangles
+        self.dropdown_options = []
+        for i in range(len(self.available_resolutions)):
+            self.dropdown_options.append(
+                pygame.Rect(
+                    screen_width//2 - 150, 
+                    screen_height//2 - 230 + (i+1)*30, 
+                    300, 
+                    30
+                )
+            )
+        
+        # Resolution change flag
+        self.resolution_changed_flag = False
+        self.settings_changed = False
         
         # Help button with icon
         try:
@@ -92,12 +112,18 @@ class Menu:
                 'text': 'Help',
                 'color': (100, 100, 150)
             }
+        
+        # Track cursor state
+        self.cursor_default = pygame.SYSTEM_CURSOR_ARROW
+        self.cursor_pointer = pygame.SYSTEM_CURSOR_HAND
+        self.current_cursor = self.cursor_default
     
     def toggle(self):
         """Toggle menu visibility"""
         self.active = not self.active
         if not self.active:
             self.settings_active = False
+            self.dropdown_open = False
         return self.active
     
     def is_active(self):
@@ -110,7 +136,7 @@ class Menu:
     
     def resolution_changed(self):
         """Check if resolution was changed"""
-        return self.resolution_changed_flag if hasattr(self, 'resolution_changed_flag') else False
+        return self.resolution_changed_flag
     
     def reset_resolution_changed(self):
         """Reset the resolution changed flag"""
@@ -122,11 +148,44 @@ class Menu:
             return False
             
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Close dropdown if clicking outside
+            if self.dropdown_open:
+                inside_dropdown = False
+                for i, rect in enumerate(self.dropdown_options):
+                    if rect.collidepoint(event.pos):
+                        # Selected a resolution from dropdown
+                        self.current_resolution_index = i
+                        self.dropdown_open = False
+                        self.settings_changed = True
+                        return True
+                
+                if not self.dropdown_button['rect'].collidepoint(event.pos):
+                    # Clicked outside dropdown, close it
+                    self.dropdown_open = False
+                    return True
+            
             # In settings view
             if self.settings_active:
-                # Back button
+                # Back button (Cancel)
                 if self.back_button['rect'].collidepoint(event.pos):
                     self.settings_active = False
+                    self.dropdown_open = False
+                    # Reset any changes
+                    self.settings_changed = False
+                    return True
+                
+                # Confirm button
+                if self.confirm_button['rect'].collidepoint(event.pos):
+                    self.settings_active = False
+                    self.dropdown_open = False
+                    if self.settings_changed:
+                        self.resolution_changed_flag = True
+                        self.settings_changed = False
+                    return True
+                
+                # Resolution dropdown toggle
+                if self.dropdown_button['rect'].collidepoint(event.pos):
+                    self.dropdown_open = not self.dropdown_open
                     return True
                 
                 # Check checkbox interactions
@@ -134,22 +193,10 @@ class Menu:
                     if option['rect'].collidepoint(event.pos):
                         # Toggle the checkbox value
                         option['value'] = not option['value']
+                        self.settings_changed = True
                         if self.get_setting('debug_mode'):
                             print(f"Setting {key} changed to {option['value']}")
                         return True
-                
-                # Resolution selector buttons
-                if self.resolution_prev_button['rect'].collidepoint(event.pos):
-                    # Change to previous resolution
-                    self.current_resolution_index = (self.current_resolution_index - 1) % len(self.available_resolutions)
-                    self.resolution_changed_flag = True
-                    return True
-                
-                if self.resolution_next_button['rect'].collidepoint(event.pos):
-                    # Change to next resolution
-                    self.current_resolution_index = (self.current_resolution_index + 1) % len(self.available_resolutions)
-                    self.resolution_changed_flag = True
-                    return True
                 
                 # Help button
                 if hasattr(self, 'help_button') and self.help_button['rect'].collidepoint(event.pos):
@@ -176,10 +223,57 @@ class Menu:
             return self.settings_options[name]['value']
         return None
     
+    def update_cursor(self, mouse_pos):
+        """Update cursor based on what it's hovering over"""
+        if not self.active:
+            if self.current_cursor != self.cursor_default:
+                pygame.mouse.set_cursor(self.cursor_default)
+                self.current_cursor = self.cursor_default
+            return
+        
+        # Default to arrow cursor
+        new_cursor = self.cursor_default
+        
+        if self.settings_active:
+            # Check if hovering over buttons in settings
+            hover_elements = [
+                self.back_button['rect'],
+                self.confirm_button['rect'],
+                self.dropdown_button['rect'],
+                self.help_button['rect']
+            ]
+            
+            # Add checkboxes to hover elements
+            for option in self.settings_options.values():
+                hover_elements.append(option['rect'])
+            
+            # Add dropdown options if open
+            if self.dropdown_open:
+                hover_elements.extend(self.dropdown_options)
+                
+            # Check if mouse is over any interactive element
+            for element in hover_elements:
+                if element.collidepoint(mouse_pos):
+                    new_cursor = self.cursor_pointer
+                    break
+        else:
+            # Check if hovering over buttons in main menu
+            if (self.play_button['rect'].collidepoint(mouse_pos) or 
+                self.settings_button['rect'].collidepoint(mouse_pos)):
+                new_cursor = self.cursor_pointer
+        
+        # Update cursor if needed
+        if new_cursor != self.current_cursor:
+            pygame.mouse.set_cursor(new_cursor)
+            self.current_cursor = new_cursor
+    
     def draw(self, screen):
         """Render the menu"""
         if not self.active:
             return
+        
+        # Update cursor on each draw
+        self.update_cursor(pygame.mouse.get_pos())
             
         # Background overlay
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
@@ -225,22 +319,41 @@ class Menu:
         resolution_label = self.font_small.render("Resolution:", True, (255, 255, 255))
         screen.blit(resolution_label, self.resolution_label_rect)
         
-        # Resolution selector buttons
-        # Previous button
-        pygame.draw.rect(screen, self.resolution_prev_button['color'], self.resolution_prev_button['rect'], border_radius=5)
-        prev_text = self.font_medium.render(self.resolution_prev_button['text'], True, (255, 255, 255))
-        screen.blit(prev_text, prev_text.get_rect(center=self.resolution_prev_button['rect'].center))
+        # Draw dropdown button
+        mouse_pos = pygame.mouse.get_pos()
+        button_color = self.dropdown_button['hover_color'] if self.dropdown_button['rect'].collidepoint(mouse_pos) else self.dropdown_button['color']
+        pygame.draw.rect(screen, button_color, self.dropdown_button['rect'], border_radius=5)
+        pygame.draw.rect(screen, (200, 200, 200), self.dropdown_button['rect'], 1, border_radius=5)
         
-        # Resolution display
+        # Display current resolution text on dropdown button
         current_res = self.available_resolutions[self.current_resolution_index]
         res_text = self.font_small.render(f"{current_res[0]}x{current_res[1]}", True, (255, 255, 255))
-        pygame.draw.rect(screen, (40, 40, 40), self.resolution_display_rect, border_radius=5)
-        screen.blit(res_text, res_text.get_rect(center=self.resolution_display_rect.center))
+        screen.blit(res_text, (self.dropdown_button['rect'].x + 10, self.dropdown_button['rect'].y + 5))
         
-        # Next button
-        pygame.draw.rect(screen, self.resolution_next_button['color'], self.resolution_next_button['rect'], border_radius=5)
-        next_text = self.font_medium.render(self.resolution_next_button['text'], True, (255, 255, 255))
-        screen.blit(next_text, next_text.get_rect(center=self.resolution_next_button['rect'].center))
+        # Draw dropdown arrow
+        arrow_x = self.dropdown_button['rect'].right - 25
+        arrow_y = self.dropdown_button['rect'].centery
+        arrow_points = [
+            (arrow_x - 8, arrow_y - 4),
+            (arrow_x, arrow_y + 4),
+            (arrow_x + 8, arrow_y - 4)
+        ]
+        pygame.draw.polygon(screen, self.dropdown_button['arrow_color'], arrow_points)
+        
+        # Draw dropdown options if open
+        if self.dropdown_open:
+            for i, rect in enumerate(self.dropdown_options):
+                # Check if mouse is hovering over this option
+                is_hovering = rect.collidepoint(mouse_pos)
+                option_color = (70, 70, 70) if is_hovering else (40, 40, 40)
+                
+                pygame.draw.rect(screen, option_color, rect)
+                pygame.draw.rect(screen, (100, 100, 100), rect, 1)
+                
+                # Resolution text
+                res = self.available_resolutions[i]
+                option_text = self.font_small.render(f"{res[0]}x{res[1]}", True, (255, 255, 255))
+                screen.blit(option_text, (rect.x + 10, rect.y + 5))
         
         # Draw checkboxes
         for key, option in self.settings_options.items():
@@ -261,7 +374,7 @@ class Menu:
             label = self.font_small.render(option['text'], True, (255, 255, 255))
             screen.blit(label, option['label_rect'])
         
-        # Back button
+        # Back (Cancel) button
         back_btn = self.back_button
         pygame.draw.rect(screen, back_btn['color'], back_btn['rect'], border_radius=10)
         pygame.draw.rect(screen, (255, 255, 255), back_btn['rect'], 2, border_radius=10)
@@ -269,6 +382,15 @@ class Menu:
         # Back button text
         text = self.font_medium.render(back_btn['text'], True, (255, 255, 255))
         screen.blit(text, text.get_rect(center=back_btn['rect'].center))
+        
+        # Confirm button
+        confirm_btn = self.confirm_button
+        pygame.draw.rect(screen, confirm_btn['color'], confirm_btn['rect'], border_radius=10)
+        pygame.draw.rect(screen, (255, 255, 255), confirm_btn['rect'], 2, border_radius=10)
+        
+        # Confirm button text
+        text = self.font_medium.render(confirm_btn['text'], True, (255, 255, 255))
+        screen.blit(text, text.get_rect(center=confirm_btn['rect'].center))
         
         # Help button
         if hasattr(self, 'help_icon'):

@@ -128,7 +128,11 @@ class Game:
             # Handle ESC key to toggle menu
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    menu_was_active = self.menu.is_active()
                     self.menu.toggle()
+                    # Reset cursor to default if exiting menu
+                    if menu_was_active:
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
                     self.debug_print(f"Menu: {'ON' if self.menu.is_active() else 'OFF'}")
                 elif not self.menu.is_active() and event.key == pygame.K_SPACE:
                     self.auto_rotate = not self.auto_rotate
@@ -236,7 +240,9 @@ class Game:
             fps_text = pygame.font.SysFont('Arial', 20).render(f"FPS: {fps:.1f}", True, (255, 255, 0))
             self.screen.blit(fps_text, (10, 10))
         
-        # Draw menu if active
+        # Draw menu if active and update cursor
+        if self.menu.is_active():
+            self.menu.update_cursor(pygame.mouse.get_pos())
         self.menu.draw(self.screen)
             
         pygame.display.flip()

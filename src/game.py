@@ -166,12 +166,6 @@ class Game:
         if self.mouse_rotating:
             pygame.draw.circle(self.screen, (255, 0, 0), (20, 20), 10)  # Red dot when rotating
         
-        # Draw FPS counter if enabled
-        if self.show_fps:
-            fps = self.clock.get_fps()
-            fps_text = pygame.font.SysFont('Arial', 18).render(f"FPS: {fps:.1f}", True, (255, 255, 255))
-            self.screen.blit(fps_text, (10, 10))
-        
         # Draw menu if active
         self.menu.draw(self.screen)
             

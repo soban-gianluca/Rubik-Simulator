@@ -16,8 +16,22 @@ class Menu:
             (1920, 1080)
         ]
         
-        # Current resolution index (default to 800x600)
+        # Find the current resolution index based on actual screen size
         self.current_resolution_index = 0
+        current_res = (screen_width, screen_height)
+        if current_res in self.available_resolutions:
+            self.current_resolution_index = self.available_resolutions.index(current_res)
+        else:
+            # If current resolution isn't in the list, find the closest match
+            closest_match = 0
+            min_diff = float('inf')
+            for i, res in enumerate(self.available_resolutions):
+                # Calculate difference (prioritize matching aspect ratio)
+                diff = abs(res[0] - screen_width) + abs(res[1] - screen_height)
+                if diff < min_diff:
+                    min_diff = diff
+                    closest_match = i
+            self.current_resolution_index = closest_match
         
         # Dropdown state
         self.dropdown_open = False
@@ -506,3 +520,30 @@ class Menu:
                 mode = self.display_modes[i]
                 option_text = self.font_small.render(mode, True, (255, 255, 255))
                 screen.blit(option_text, (rect.x + 10, rect.y + 5))
+    
+    def change_resolution(self, width, height):
+        # Update the actual screen
+        self.width = width
+        self.height = height
+    
+        if self.is_fullscreen:
+            self.screen = pygame.display.set_mode((width, height), pygame.FULLSCREEN)
+        else:
+            self.screen = pygame.display.set_mode((width, height))
+            
+        # Update menu dimensions
+        self.menu = Menu(width, height)
+        
+        # Make sure menu's current resolution index is correct
+        current_res = (width, height)
+        if current_res in self.menu.available_resolutions:
+            self.menu.current_resolution_index = self.menu.available_resolutions.index(current_res)
+    
+    def toggle_fullscreen(self):
+        self.is_fullscreen = not self.is_fullscreen
+        current_res = (self.width, self.height)
+        
+        if self.is_fullscreen:
+            self.screen = pygame.display.set_mode(current_res, pygame.FULLSCREEN)
+        else:
+            self.screen = pygame.display.set_mode(current_res)

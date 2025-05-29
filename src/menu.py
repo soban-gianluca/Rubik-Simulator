@@ -40,45 +40,39 @@ class Menu:
             'color': (50, 150, 50)
         }
         
-        # Settings window elements
-        self.back_button = {
-            'rect': pygame.Rect(screen_width//2 - 220, screen_height - 100, 200, 50),
-            'text': 'Cancel',
-            'color': (150, 50, 50)
-        }
-        
-        # Confirm button
-        self.confirm_button = {
-            'rect': pygame.Rect(screen_width//2 + 20, screen_height - 100, 200, 50),
-            'text': 'Confirm',
-            'color': (50, 150, 50)
-        }
-        
-        # Combine all settings into one dictionary for easier handling
-        self.settings_options = {
-            'fullscreen': {
-                'value': False,
-                'text': 'Fullscreen',
-                'rect': pygame.Rect(screen_width//2 - 150, screen_height//2 - 60, 25, 25),
-                'label_rect': pygame.Rect(screen_width//2 - 110, screen_height//2 - 60, 200, 25)
-            },
-            'show_fps': {
-                'value': False,
-                'text': 'Show FPS',
-                'rect': pygame.Rect(screen_width//2 - 150, screen_height//2 - 200, 25, 25),
-                'label_rect': pygame.Rect(screen_width//2 - 110, screen_height//2 - 200, 200, 25)
-            }
-        }
+        # Calculate vertical center position for settings
+        settings_vertical_center = screen_height // 2
+        settings_section_height = 300  # Approximate height of all settings elements
+        settings_start_y = settings_vertical_center - (settings_section_height // 2)
         
         # Resolution settings
-        self.resolution_label_rect = pygame.Rect(screen_width//2 - 150, screen_height//2 - 260, 200, 25)
+        self.resolution_label_rect = pygame.Rect(screen_width//2 - 150, settings_start_y, 200, 25)
         
         # Dropdown menu for resolution
         self.dropdown_button = {
-            'rect': pygame.Rect(screen_width//2 - 150, screen_height//2 - 230, 300, 30),
+            'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + 30, 300, 30),
             'color': (50, 50, 50),
             'hover_color': (70, 70, 70),
             'arrow_color': (200, 200, 200)
+        }
+        
+        # Space between settings sections
+        settings_spacing = 70
+        
+        # Combine all settings into one dictionary for easier handling
+        self.settings_options = {
+            'show_fps': {
+                'value': False,
+                'text': 'Show FPS',
+                'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing + 10, 25, 25),
+                'label_rect': pygame.Rect(screen_width//2 - 110, settings_start_y + settings_spacing + 10, 200, 25)
+            },
+            'fullscreen': {
+                'value': False,
+                'text': 'Fullscreen',
+                'rect': pygame.Rect(screen_width//2 - 150, settings_start_y + settings_spacing*2, 25, 25),
+                'label_rect': pygame.Rect(screen_width//2 - 110, settings_start_y + settings_spacing*2, 200, 25)
+            }
         }
         
         # Create dropdown option rectangles
@@ -87,11 +81,28 @@ class Menu:
             self.dropdown_options.append(
                 pygame.Rect(
                     screen_width//2 - 150, 
-                    screen_height//2 - 230 + (i+1)*30, 
+                    settings_start_y + 30 + (i+1)*30, 
                     300, 
                     30
                 )
             )
+        
+        # Control buttons at the bottom of the screen
+        buttons_y = screen_height - 100
+        
+        # Back button (Cancel)
+        self.back_button = {
+            'rect': pygame.Rect(screen_width//2 - 220, buttons_y, 200, 50),
+            'text': 'Cancel',
+            'color': (150, 50, 50)
+        }
+        
+        # Confirm button
+        self.confirm_button = {
+            'rect': pygame.Rect(screen_width//2 + 20, buttons_y, 200, 50),
+            'text': 'Confirm',
+            'color': (50, 150, 50)
+        }
         
         # Resolution change flag
         self.resolution_changed_flag = False
@@ -313,7 +324,7 @@ class Menu:
         """Draw the settings menu"""
         # Title
         title = self.font_large.render("Settings", True, (255, 255, 255))
-        screen.blit(title, title.get_rect(center=(self.width//2, self.height//5)))
+        screen.blit(title, title.get_rect(center=(self.width//2, self.height//6)))
         
         # Resolution label
         resolution_label = self.font_small.render("Resolution:", True, (255, 255, 255))
@@ -354,7 +365,7 @@ class Menu:
                 res = self.available_resolutions[i]
                 option_text = self.font_small.render(f"{res[0]}x{res[1]}", True, (255, 255, 255))
                 screen.blit(option_text, (rect.x + 10, rect.y + 5))
-        
+    
         # Draw checkboxes
         for key, option in self.settings_options.items():
             # Checkbox outline
@@ -373,7 +384,7 @@ class Menu:
             # Label
             label = self.font_small.render(option['text'], True, (255, 255, 255))
             screen.blit(label, option['label_rect'])
-        
+    
         # Back (Cancel) button
         back_btn = self.back_button
         pygame.draw.rect(screen, back_btn['color'], back_btn['rect'], border_radius=10)

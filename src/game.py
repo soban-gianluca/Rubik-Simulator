@@ -235,10 +235,10 @@ class Game:
             pygame.draw.circle(self.screen, (255, 0, 0), (20, 20), 10)  # Red dot when rotating
         
         # Show FPS counter if enabled
-        if self.show_fps:
+        """ if self.show_fps:
             fps = self.clock.get_fps()
             fps_text = pygame.font.SysFont('Arial', 20).render(f"FPS: {fps:.1f}", True, (255, 255, 0))
-            self.screen.blit(fps_text, (10, 10))
+            self.screen.blit(fps_text, (10, 10)) """
         
         # Draw menu if active and update cursor
         if self.menu.is_active():

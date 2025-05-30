@@ -91,22 +91,15 @@ class Game:
         """Actually change the screen resolution"""
         # Store current settings
         current_volume = self.menu.volume if hasattr(self, 'menu') else 50
-        current_settings = {}
-        if hasattr(self, 'menu'):
-            for key in self.menu.settings_options.keys():
-                current_settings[key] = self.menu.get_setting(key)
-            current_display_mode = self.menu.current_display_mode
+        current_show_fps = self.menu.show_fps if hasattr(self, 'menu') else False
+        current_fullscreen = self.menu.fullscreen if hasattr(self, 'menu') else False
 
         # Update dimensions
         self.width = width
         self.height = height
 
         # Update display mode based on fullscreen setting
-        is_fullscreen = False
-        if hasattr(self, 'menu'):
-            is_fullscreen = self.menu.get_setting('fullscreen')
-
-        if is_fullscreen:
+        if current_fullscreen:
             self.screen = pygame.display.set_mode((width, height), pygame.FULLSCREEN)
             self.is_fullscreen = True
         else:
@@ -120,21 +113,13 @@ class Game:
             # Create a new renderer with updated dimensions
             self.renderer = Renderer(width, height)
 
-        # Recreate menu with new dimensions and restore settings
+        # Update menu dimensions
         if hasattr(self, 'menu'):
-            # Create new menu with correct dimensions
-            self.menu = Menu(width, height)
-    
+            self.menu.update_dimensions(width, height)
             # Restore settings
             self.menu.volume = current_volume
-            self.menu._update_volume_handle()
-    
-            if 'current_display_mode' in locals():
-                self.menu.current_display_mode = current_display_mode
-    
-            for key, value in current_settings.items():
-                if key in self.menu.settings_options:
-                    self.menu.settings_options[key]['value'] = value
+            self.menu.show_fps = current_show_fps
+            self.menu.fullscreen = current_fullscreen
 
         # Only print if debug mode is active
         self.debug_print(f"Resolution changed to {width}x{height}")

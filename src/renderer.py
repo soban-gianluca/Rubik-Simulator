@@ -3,7 +3,7 @@ import pygame
 import numpy as np
 
 class Renderer:
-    def __init__(self, width=800, height=600, cube_path="utils/Rubik's Cube.obj"):
+    def __init__(self, width=1024, height=768, cube_path="utils/Rubik's Cube.obj"):
         # Initialize properties
         self.width = width
         self.height = height

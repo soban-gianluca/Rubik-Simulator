@@ -7,7 +7,13 @@ class Game:
     def __init__(self):
         # Initialize pygame
         pygame.init()
-        self.width, self.height = 1024, 768     # Default resolution    (precedente: 800, 600)    
+        self.width, self.height = 1024, 768     # Default resolution
+        
+        # Display settings
+        self.is_fullscreen = False
+        self.show_fps = False
+        
+        # Set initial display mode
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
@@ -40,10 +46,6 @@ class Game:
         self.vertical_sensitivity = 0.5
         self.debug_mode = False
         
-        # Display settings
-        self.is_fullscreen = False
-        self.show_fps = False
-
         # Print instructions
         print("Controls:")
         print("  Space: Toggle auto-rotation")

@@ -196,10 +196,27 @@ class Menu:
     
     def _apply_settings(self):
         """Apply all settings changes"""
-        if self.settings_changed:
-            self.resolution_changed_flag = True
+        try:
+            if self.settings_changed:
+                # Set the resolution changed flag to trigger resolution update in game.py
+                self.resolution_changed_flag = True
+                
+                # Get the resolution that will be applied
+                new_width, new_height = self.get_current_resolution()
+                print(f"Applying settings - Resolution: {new_width}x{new_height}, Fullscreen: {self.fullscreen}")
+                
+                # Reset settings changed flag
+                self.settings_changed = False
+            
+            # Return to main menu
+            self.current_menu = self.main_menu
+        except Exception as e:
+            print(f"Error applying settings: {str(e)}")
+            # Reset settings flags to prevent repeated crashes
             self.settings_changed = False
-        self.current_menu = self.main_menu
+            self.resolution_changed_flag = False
+            # Still return to main menu even if there's an error
+            self.current_menu = self.main_menu
     
     def toggle(self):
         """Toggle menu visibility"""
@@ -236,11 +253,11 @@ class Menu:
     
     def handle_event(self, event):
         """Process menu input"""
-        if not self.active:
+        if not self.active or event is None:
             return False
         
         # Handle menu navigation
-        if self.current_menu.is_enabled():
+        if self.current_menu and self.current_menu.is_enabled():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     if self.current_menu == self.main_menu:
@@ -271,12 +288,27 @@ class Menu:
         screen.blit(overlay, (0, 0))
         
         # Draw the current menu
-        self.current_menu.draw(screen)
+        if self.current_menu:
+            self.current_menu.draw(screen)
     
     def update_dimensions(self, width, height):
         """Update menu dimensions when resolution changes"""
         self.width = width
         self.height = height
         
-        # Recreate menus with new dimensions
-        self.__init__(width, height)
+        # Update menu dimensions instead of recreating the whole menu
+        if self.main_menu:
+            self.main_menu.resize(width, height)
+        
+        if self.settings_menu:
+            self.settings_menu.resize(width, height)
+            
+        if self.help_menu:
+            self.help_menu.resize(width, height)
+        
+        # Update the theme if needed
+        self.theme.background_color = (0, 0, 0, 180)
+        
+        # If current_menu is not set, reset to main menu
+        if not hasattr(self, 'current_menu') or self.current_menu is None:
+            self.current_menu = self.main_menu

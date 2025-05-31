@@ -44,7 +44,7 @@ class LoadingAnimation:
         for i in range(10):
             # Update loading progress
             self.loading_progress = (i + 1) / 10
-            time.sleep(0.2)  # Simulate loading time
+            time.sleep(0.5)  # Simulate loading time
             
         # Import other needed modules
         print("Initializing game components...")

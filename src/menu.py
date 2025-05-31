@@ -94,7 +94,7 @@ class Menu:
         
         # Settings menu buttons
         self.settings_menu.add.button('Apply Changes', self._apply_settings)
-        self.settings_menu.add.button('Back', pygame_menu.events.BACK)
+        self.settings_menu.add.button('Back', self._back_to_main)
         
         # Help menu
         self.help_menu = pygame_menu.Menu(
@@ -125,7 +125,7 @@ class Menu:
             else:
                 self.help_menu.add.vertical_margin(10)
         
-        self.help_menu.add.button('Back', pygame_menu.events.BACK)
+        self.help_menu.add.button('Back', self._back_to_main)
         
         # Add help button to main menu
         self.main_menu.add.button('Help', self._open_help)
@@ -219,6 +219,10 @@ class Menu:
             # Still return to main menu even if there's an error
             self.current_menu = self.main_menu
     
+    def _back_to_main(self):
+        """Go back to main menu"""
+        self.current_menu = self.main_menu
+    
     def toggle(self):
         """Toggle menu visibility"""
         self.active = not self.active
@@ -267,12 +271,17 @@ class Menu:
                     else:
                         self.current_menu = self.main_menu
                         return True
-            
-            # Let pygame-menu handle the event
-            self.current_menu.update([event])
-            return True
         
-        return False
+        # Let pygame-menu handle the event
+        updated = self.current_menu.update([event])
+        
+        # Check if we need to go back to main menu (after pygame-menu processes the event)
+        if self.current_menu != self.main_menu:
+            if updated == pygame_menu.events.BACK:
+                self.current_menu = self.main_menu
+                return True
+        
+        return True
     
     def update_cursor(self, mouse_pos):
         """Update cursor (pygame-menu handles this automatically)"""

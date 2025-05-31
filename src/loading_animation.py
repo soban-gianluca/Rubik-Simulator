@@ -72,12 +72,8 @@ class LoadingAnimation:
         pulse = (math.sin(elapsed * 2) + 1) / 4 + 0.75  # Range 0.75-1.25
         self.scale_factor = pulse
             
-        # Fade in/out logic
         if elapsed < 0.5:
             self.alpha = int(255 * (elapsed / 0.5))  # Fade in during first 0.5 seconds
-        elif can_exit and self.alpha > 0:
-            # Add fade out when exiting
-            self.alpha = max(0, self.alpha - 10)  # Gradually fade out
         else:
             self.alpha = 255  # Fully visible
             
@@ -87,9 +83,6 @@ class LoadingAnimation:
                 return False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return False
-                
-        # Only exit when both loading is complete AND we've fully faded out
-        return not (can_exit and self.alpha <= 0)
     
     def render(self):
         # Clear screen with black
@@ -185,6 +178,11 @@ class LoadingAnimation:
         while self.update():
             self.render()
         
+        
+        
+        
+        
+        #DELETE FROM HERE
         # Ensure loading is complete before returning
         if not self.loading_complete:
             self.loading_progress = 0.99  # Show almost complete
@@ -193,6 +191,11 @@ class LoadingAnimation:
                 loading_text = self.font_medium.render("Finishing loading...", True, (200, 200, 200))
                 loading_text.set_alpha(self.alpha)
                 self.render()
+                
+        #DELETE TO HERE
+        
+        
+        
         
         # Add a short pause to ensure clean transition
         pygame.time.delay(100)

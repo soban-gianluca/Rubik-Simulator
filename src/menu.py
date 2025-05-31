@@ -68,11 +68,11 @@ class Menu:
             onchange=self._on_resolution_change
         )
         
-        # Display mode selector
-        self.settings_menu.add.selector(
-            'Display Mode: ',
-            [('Windowed', False), ('Fullscreen', True)],
-            default=0,
+        # Replace the display mode selector with a dropdown
+        self.settings_menu.add.dropselect(
+            title='Display Mode: ',
+            items=[('Windowed', False), ('Fullscreen', True)],
+            default=int(self.fullscreen),  # 0 for Windowed, 1 for Fullscreen
             onchange=self._on_fullscreen_change
         )
         
@@ -162,22 +162,16 @@ class Menu:
         print(f"Set resolution index to: {self.current_resolution_index}")
         self.settings_changed = True
     
-    def _on_fullscreen_change(self, *args, **kwargs):
-        """Handle fullscreen toggle"""
-        # pygame-menu passes: (selected_value, selected_index)
-        if len(args) >= 2:
-            selected_value, selected_index = args[0], args[1]
-            # Get the actual boolean value from our options
-            fullscreen_options = [('Windowed', False), ('Fullscreen', True)]
-            if selected_index < len(fullscreen_options):
-                self.fullscreen = fullscreen_options[selected_index][1]
-        elif len(args) >= 1:
-            # Fallback
-            selected_value = args[0]
-            if isinstance(selected_value, tuple):
-                self.fullscreen = selected_value[1]
-            else:
-                self.fullscreen = bool(selected_value)
+    def _on_fullscreen_change(self, selected_tuple, index):
+        """Handle fullscreen toggle from dropdown"""
+        # Extract the boolean value from the selected tuple
+        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
+            self.fullscreen = selected_tuple[1]  # Get the boolean value (True/False)
+        else:
+            # Fallback to using the index (0=False, 1=True)
+            self.fullscreen = bool(index)
+        
+        print(f"Display mode changed to: {'Fullscreen' if self.fullscreen else 'Windowed'}")
         self.settings_changed = True
     
     def _on_fps_toggle(self, *args, **kwargs):

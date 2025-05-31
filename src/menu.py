@@ -59,11 +59,11 @@ class Menu:
             theme=self.theme
         )
         
-        # Resolution selector
+        # Resolution dropdown
         resolution_options = [f"{w}x{h}" for w, h in self.available_resolutions]
-        self.settings_menu.add.selector(
-            'Resolution: ',
-            resolution_options,
+        self.settings_menu.add.dropselect(
+            title='Resolution: ',
+            items=[(res, i) for i, res in enumerate(resolution_options)],
             default=self.current_resolution_index,
             onchange=self._on_resolution_change
         )
@@ -145,20 +145,21 @@ class Menu:
         """Open help submenu"""
         self.current_menu = self.help_menu
     
-    def _on_resolution_change(self, *args, **kwargs):
-        """Handle resolution change"""
-        # pygame-menu passes: (selected_value, selected_index)
-        if len(args) >= 2:
-            selected_value, selected_index = args[0], args[1]
-            self.current_resolution_index = selected_index
-        elif len(args) >= 1:
-            # Fallback - try to find the index
-            selected_value = args[0]
-            resolution_text = str(selected_value)
-            for i, (w, h) in enumerate(self.available_resolutions):
-                if f"{w}x{h}" == resolution_text:
-                    self.current_resolution_index = i
-                    break
+    def _on_resolution_change(self, selected_tuple, index):
+        """Handle resolution change from dropdown"""
+        # The dropselect widget passes: (selected_tuple, index)
+        # where selected_tuple is (display_text, value)
+        
+        print(f"Resolution change - selected: {selected_tuple}, index: {index}")
+        
+        # Extract the index from the tuple (res, i)
+        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
+            self.current_resolution_index = selected_tuple[1]  # Get the index value we stored in the tuple
+        else:
+            # Fallback to using the provided index
+            self.current_resolution_index = index
+        
+        print(f"Set resolution index to: {self.current_resolution_index}")
         self.settings_changed = True
     
     def _on_fullscreen_change(self, *args, **kwargs):
@@ -230,7 +231,7 @@ class Menu:
         return self.active
     
     def get_current_resolution(self):
-        """Return the currently selected resolution"""
+        """Return the currently selected resolution as (width, height)"""
         return self.available_resolutions[self.current_resolution_index]
     
     def resolution_changed(self):

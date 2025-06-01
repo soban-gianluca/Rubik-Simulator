@@ -21,10 +21,11 @@
             --> rendered.py
 
 --- TO DO LIST ---
+- GPU RENDERING
 - help button
 - movents
 - (more complex background)
 - timer
 - move counter
 - (Different gamemodes)
-- Optimize resolution change
+- Optimize resolution change (probably slow because of the CPU render)

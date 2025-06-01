@@ -212,19 +212,53 @@ class Game:
         """Update game state"""
         # Check and apply settings from menu when resolution changed flag is true
         if hasattr(self, 'menu') and self.menu.resolution_changed():
-            # Get selected resolution
+            # Get selected resolution and fullscreen setting
             new_width, new_height = self.menu.get_current_resolution()
             current_width, current_height = self.width, self.height
-            
-            # Check if resolution has actually changed
-            if (new_width, new_height) != (current_width, current_height):
-                self.debug_print(f"Changing resolution from {current_width}x{current_height} to {new_width}x{new_height}")
-                self.change_resolution(new_width, new_height)
-            
-            # Apply fullscreen setting
             fullscreen = self.menu.get_setting('fullscreen')
-            if fullscreen != self.is_fullscreen:
-                self.toggle_fullscreen()
+            
+            # First, handle fullscreen exit if needed
+            if self.is_fullscreen and not fullscreen:
+                # Exit fullscreen first, staying at current resolution temporarily
+                self.screen = pygame.display.set_mode((current_width, current_height))
+                self.is_fullscreen = False
+                # If we have a renderer, update it
+                if hasattr(self, 'renderer'):
+                    self.renderer.close()
+                    self.renderer = Renderer(current_width, current_height)
+                self.debug_print("Exited fullscreen mode")
+            
+            # Then handle resolution change if needed
+            if (new_width, new_height) != (self.width, self.height):
+                self.debug_print(f"Changing resolution from {self.width}x{self.height} to {new_width}x{new_height}")
+                # Update dimensions
+                self.width = new_width
+                self.height = new_height
+                
+                # Apply new resolution with appropriate display mode
+                if fullscreen and not self.is_fullscreen:
+                    self.screen = pygame.display.set_mode((new_width, new_height), pygame.FULLSCREEN)
+                    self.is_fullscreen = True
+                    self.debug_print("Entered fullscreen mode")
+                else:
+                    self.screen = pygame.display.set_mode((new_width, new_height))
+                
+                # Update menu dimensions to match new resolution
+                self.menu.update_dimensions(new_width, new_height)
+                
+                # Update the renderer with the new resolution
+                if hasattr(self, 'renderer'):
+                    self.renderer.close()
+                    self.renderer = Renderer(new_width, new_height)
+            # If resolution didn't change but we need to enter fullscreen
+            elif fullscreen and not self.is_fullscreen:
+                self.screen = pygame.display.set_mode((self.width, self.height), pygame.FULLSCREEN)
+                self.is_fullscreen = True
+                # Update the renderer for fullscreen
+                if hasattr(self, 'renderer'):
+                    self.renderer.close()
+                    self.renderer = Renderer(self.width, self.height)
+                self.debug_print("Entered fullscreen mode")
             
             # Apply other settings
             show_fps = self.menu.get_setting('show_fps')

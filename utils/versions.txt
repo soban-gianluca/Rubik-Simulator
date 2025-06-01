@@ -23,8 +23,6 @@
 --- TO DO LIST ---
 - help button
 - movents
-- main menu
-- settings (FIX FULLSCREEN RESOLUTION)
 - (more complex background)
 - timer
 - move counter

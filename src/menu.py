@@ -150,7 +150,8 @@ class Menu:
         # The dropselect widget passes: (selected_tuple, index)
         # where selected_tuple is (display_text, value)
         
-        print(f"Resolution change - selected: {selected_tuple}, index: {index}")
+        if hasattr(self, 'debug_mode') and self.debug_mode:
+            print(f"Resolution change - selected: {selected_tuple}, index: {index}")
         
         # Extract the index from the tuple (res, i)
         if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
@@ -159,7 +160,9 @@ class Menu:
             # Fallback to using the provided index
             self.current_resolution_index = index
         
-        print(f"Set resolution index to: {self.current_resolution_index}")
+        if hasattr(self, 'debug_mode') and self.debug_mode:
+            print(f"Set resolution index to: {self.current_resolution_index}")
+        
         self.settings_changed = True
     
     def _on_fullscreen_change(self, selected_tuple, index):
@@ -171,7 +174,8 @@ class Menu:
             # Fallback to using the index (0=False, 1=True)
             self.fullscreen = bool(index)
         
-        print(f"Display mode changed to: {'Fullscreen' if self.fullscreen else 'Windowed'}")
+        if hasattr(self, 'debug_mode') and self.debug_mode:
+            print(f"Display mode changed to: {'Fullscreen' if self.fullscreen else 'Windowed'}")
         self.settings_changed = True
     
     def _on_fps_toggle(self, *args, **kwargs):
@@ -198,7 +202,8 @@ class Menu:
                 
                 # Get the resolution that will be applied
                 new_width, new_height = self.get_current_resolution()
-                print(f"Applying settings - Resolution: {new_width}x{new_height}, Fullscreen: {self.fullscreen}")
+                if hasattr(self, 'debug_mode') and self.debug_mode:
+                    print(f"Applying settings - Resolution: {new_width}x{new_height}, Fullscreen: {self.fullscreen}")
                 
                 # Reset settings changed flag
                 self.settings_changed = False

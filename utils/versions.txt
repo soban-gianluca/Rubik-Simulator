@@ -23,9 +23,9 @@
 --- TO DO LIST ---
 - GPU RENDERING
 - help button
-- movents
+- movements
 - (more complex background)
 - timer
-- move counter
+- moves counter
 - (Different gamemodes)
 - Optimize resolution change (probably slow because of the CPU render)

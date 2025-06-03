@@ -1,5 +1,8 @@
 import pygame
 import sys
+from pygame.locals import *
+from OpenGL.GL import *
+from OpenGL.GLU import *
 from menu import Menu
 from renderer import Renderer
 
@@ -7,125 +10,111 @@ class Game:
     def __init__(self):
         # Initialize pygame
         pygame.init()
-        self.width, self.height = 1024, 768     # Default resolution
+        self.width, self.height = 1024, 768
         
         # Display settings
         self.is_fullscreen = False
         self.show_fps = False
         
-        # Set initial display mode
-        self.screen = pygame.display.set_mode((self.width, self.height))
+        # Set initial display mode with OpenGL
+        self.screen = pygame.display.set_mode((self.width, self.height), DOUBLEBUF | OPENGL)
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         
-        # Load playback music
-        pygame.mixer.music.load("utils/rubiksCube_Playback.mp3")
-        pygame.mixer.music.set_volume(0.5)
-        pygame.mixer.music.play(-1)
+        # Load resources
+        try:
+            pygame.mixer.music.load("utils/rubiksCube_Playback.mp3")
+            pygame.mixer.music.set_volume(0.5)
+            pygame.mixer.music.play(-1)
+        except:
+            print("Background music not found")
         
-        # Load icon
-        icon = pygame.image.load("utils/rubiksCube_Icon.ico")
-        pygame.display.set_icon(icon)
+        try:
+            icon = pygame.image.load("utils/rubiksCube_Icon.ico")
+            pygame.display.set_icon(icon)
+        except:
+            print("Icon not found")
 
         # Initialize renderer
         self.renderer = Renderer(self.width, self.height)
         
-        # Initialize menu (enabled by default)
+        # Initialize menu
         self.menu = Menu(self.width, self.height)
         self.menu.toggle()  # Start with menu active
         
         # Game state
         self.running = True
-        self.auto_rotate = True  # Auto rotation by default
+        self.auto_rotate = True
         
-        # Mouse rotation variables
+        # Control variables
         self.mouse_rotating = False
         self.prev_mouse_x = 0
         self.prev_mouse_y = 0
         self.rotation_sensitivity = 0.5
         self.vertical_sensitivity = 0.5
         self.debug_mode = False
+        self.auto_rotation_speed = 0.2  # Reduced from 1.0 to 0.3 for slower rotation
         
-        # Print instructions
         print("Controls:")
         print("  Space: Toggle auto-rotation")
-        print("  Left/Right arrows: Manual rotation")
-        print("  Click and drag: Rotate cube with mouse")
+        print("  Arrow keys/WASD: Manual rotation")
+        print("  Mouse drag: Rotate cube")
         print("  D: Toggle debug mode")
         print("  ESC: Toggle menu")
+        print("  R: Reset rotation")
 
     def debug_print(self, message):
         if self.debug_mode:
             print(message)
 
+    # ...existing code... (keeping all the existing methods the same)
     def toggle_fullscreen(self):
         """Toggle between fullscreen and windowed mode with proper resolution handling"""
         if self.is_fullscreen:
-            # Switch back to windowed mode with original resolution
-            self.screen = pygame.display.set_mode((self.width, self.height))
-            
-            # Update the renderer for windowed mode
-            if hasattr(self, 'renderer'):
-                self.renderer.close()
-                self.renderer = Renderer(self.width, self.height)
+            self.screen = pygame.display.set_mode((self.width, self.height), DOUBLEBUF | OPENGL)
+            self.renderer.setup_opengl()
+            self.renderer.create_display_list()
         else:
-            # Get the current display info to use native resolution
             display_info = pygame.display.Info()
             fullscreen_width = display_info.current_w
             fullscreen_height = display_info.current_h
             
-            # Switch to fullscreen with native resolution
-            self.screen = pygame.display.set_mode((fullscreen_width, fullscreen_height), pygame.FULLSCREEN)
-            
-            # Update the renderer for fullscreen
-            if hasattr(self, 'renderer'):
-                self.renderer.close()
-                self.renderer = Renderer(fullscreen_width, fullscreen_height)
-                
+            self.screen = pygame.display.set_mode((fullscreen_width, fullscreen_height), DOUBLEBUF | OPENGL | FULLSCREEN)
+            self.renderer.setup_opengl()
+            self.renderer.create_display_list()
             self.debug_print(f"Switched to fullscreen: {fullscreen_width}x{fullscreen_height}")
         
         self.is_fullscreen = not self.is_fullscreen
-        
-        # Force a redraw
-        self.renderer.render_frame()
     
     def change_resolution(self, width, height):
-        """Actually change the screen resolution"""
-        # Store current settings
+        """Change screen resolution"""
         current_volume = self.menu.volume if hasattr(self, 'menu') else 50
         current_show_fps = self.menu.show_fps if hasattr(self, 'menu') else False
         current_fullscreen = self.menu.fullscreen if hasattr(self, 'menu') else False
 
-        # Update dimensions
         self.width = width
         self.height = height
 
-        # Update display mode based on fullscreen setting
         if current_fullscreen:
-            self.screen = pygame.display.set_mode((width, height), pygame.FULLSCREEN)
+            self.screen = pygame.display.set_mode((width, height), DOUBLEBUF | OPENGL | FULLSCREEN)
             self.is_fullscreen = True
         else:
-            self.screen = pygame.display.set_mode((width, height))
+            self.screen = pygame.display.set_mode((width, height), DOUBLEBUF | OPENGL)
             self.is_fullscreen = False
 
-        # Update the renderer with the new resolution
         if hasattr(self, 'renderer'):
-            # Close the old renderer to release resources
-            self.renderer.close()
-            # Create a new renderer with updated dimensions
-            self.renderer = Renderer(width, height)
+            self.renderer.width = width
+            self.renderer.height = height
+            self.renderer.setup_opengl()
+            self.renderer.create_display_list()
 
-        # Update menu dimensions
         if hasattr(self, 'menu'):
             self.menu.update_dimensions(width, height)
-            # Restore settings
             self.menu.volume = current_volume
             self.menu.show_fps = current_show_fps
             self.menu.fullscreen = current_fullscreen
 
-        # Only print if debug mode is active
         self.debug_print(f"Resolution changed to {width}x{height}")
-
         return True
     
     def handle_events(self):
@@ -133,12 +122,10 @@ class Game:
             if event.type == pygame.QUIT:
                 self.running = False
                 
-            # Handle ESC key to toggle menu
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     menu_was_active = self.menu.is_active()
                     self.menu.toggle()
-                    # Reset cursor to default if exiting menu
                     if menu_was_active:
                         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
                     self.debug_print(f"Menu: {'ON' if self.menu.is_active() else 'OFF'}")
@@ -148,173 +135,146 @@ class Game:
                 elif not self.menu.is_active() and event.key == pygame.K_d:
                     self.debug_mode = not self.debug_mode
                     self.debug_print(f"Debug mode: {'ON' if self.debug_mode else 'OFF'}")
-                elif event.key == pygame.K_F11:  # Add F11 as alternate fullscreen toggle
+                elif not self.menu.is_active() and event.key == pygame.K_r:
+                    self.renderer.rotation_x = 0
+                    self.renderer.rotation_y = 0
+                    self.debug_print("Rotation reset")
+                elif event.key == pygame.K_F11:
                     self.toggle_fullscreen()
             
-            # Pass event to menu first
             elif self.menu.handle_event(event):
-                continue  # Event was handled by menu
+                continue
                 
-            # Handle mouse events for rotation (only when not in menu)
             elif not self.menu.is_active() and event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left mouse button
+                if event.button == 1:
                     self.mouse_rotating = True
                     self.prev_mouse_x, self.prev_mouse_y = event.pos
-                    # Disable auto-rotation when manually rotating
                     self.auto_rotate = False
                     self.debug_print(f"Mouse rotation started at {event.pos}")
                     
             elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1 and not self.menu.is_active():  # Left mouse button
+                if event.button == 1 and not self.menu.is_active():
                     self.mouse_rotating = False
                     self.debug_print("Mouse rotation ended")
                 
             elif not self.menu.is_active() and event.type == pygame.MOUSEMOTION:
                 if self.mouse_rotating:
-                    # Calculate the mouse movement delta
                     current_x, current_y = event.pos
                     dx = current_x - self.prev_mouse_x
                     dy = current_y - self.prev_mouse_y
                     
-                    # Apply horizontal and vertical rotations
-                    horizontal_rotation = -dx * self.rotation_sensitivity
+                    horizontal_rotation = dx * self.rotation_sensitivity
                     vertical_rotation = dy * self.vertical_sensitivity
                     
-                    # Update the camera
                     self.renderer.rotate_camera(
                         azimuth=horizontal_rotation, 
                         elevation=vertical_rotation
                     )
                     
-                    self.debug_print(f"Rotating: dx={dx}, dy={dy}, h={horizontal_rotation}, v={vertical_rotation}")
+                    self.debug_print(f"Rotating: dx={dx}, dy={dy}")
                     
-                    # Update previous position
                     self.prev_mouse_x = current_x
                     self.prev_mouse_y = current_y
     
-        # Handle key presses for manual rotation (outside the event loop for smoother response)
+        # Keyboard controls for rotation
         if not self.menu.is_active():
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT]:
-                self.renderer.rotate_camera(azimuth=1)
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                self.renderer.rotate_camera(azimuth=-2)
                 self.auto_rotate = False
-            if keys[pygame.K_RIGHT]:
-                self.renderer.rotate_camera(azimuth=-1)
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                self.renderer.rotate_camera(azimuth=2)
                 self.auto_rotate = False
-            if keys[pygame.K_UP]:
-                self.renderer.rotate_camera(elevation=-1)
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                self.renderer.rotate_camera(elevation=-2)
                 self.auto_rotate = False
-            if keys[pygame.K_DOWN]:
-                self.renderer.rotate_camera(elevation=1)
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                self.renderer.rotate_camera(elevation=2)
                 self.auto_rotate = False
 
     def update(self):
-        """Update game state"""
-        # Check and apply settings from menu when resolution changed flag is true
+        """Update game state"""        
         if hasattr(self, 'menu') and self.menu.resolution_changed():
-            # Get selected resolution and fullscreen setting
             new_width, new_height = self.menu.get_current_resolution()
-            current_width, current_height = self.width, self.height
             fullscreen = self.menu.get_setting('fullscreen')
             
-            # First, handle fullscreen exit if needed
-            if self.is_fullscreen and not fullscreen:
-                # Exit fullscreen first, staying at current resolution temporarily
-                self.screen = pygame.display.set_mode((current_width, current_height))
-                self.is_fullscreen = False
-                # If we have a renderer, update it
-                if hasattr(self, 'renderer'):
-                    self.renderer.close()
-                    self.renderer = Renderer(current_width, current_height)
-                self.debug_print("Exited fullscreen mode")
+            if (new_width, new_height) != (self.width, self.height) or fullscreen != self.is_fullscreen:
+                self.change_resolution(new_width, new_height)
             
-            # Then handle resolution change if needed
-            if (new_width, new_height) != (self.width, self.height):
-                self.debug_print(f"Changing resolution from {self.width}x{self.height} to {new_width}x{new_height}")
-                # Update dimensions
-                self.width = new_width
-                self.height = new_height
-                
-                # Apply new resolution with appropriate display mode
-                if fullscreen and not self.is_fullscreen:
-                    self.screen = pygame.display.set_mode((new_width, new_height), pygame.FULLSCREEN)
-                    self.is_fullscreen = True
-                    self.debug_print("Entered fullscreen mode")
-                else:
-                    self.screen = pygame.display.set_mode((new_width, new_height))
-                
-                # Update menu dimensions to match new resolution
-                self.menu.update_dimensions(new_width, new_height)
-                
-                # Update the renderer with the new resolution
-                if hasattr(self, 'renderer'):
-                    self.renderer.close()
-                    self.renderer = Renderer(new_width, new_height)
-            # If resolution didn't change but we need to enter fullscreen
-            elif fullscreen and not self.is_fullscreen:
-                self.screen = pygame.display.set_mode((self.width, self.height), pygame.FULLSCREEN)
-                self.is_fullscreen = True
-                # Update the renderer for fullscreen
-                if hasattr(self, 'renderer'):
-                    self.renderer.close()
-                    self.renderer = Renderer(self.width, self.height)
-                self.debug_print("Entered fullscreen mode")
-            
-            # Apply other settings
             show_fps = self.menu.get_setting('show_fps')
             if show_fps is not None:
                 self.show_fps = show_fps
             
-            # Apply volume setting
             volume = self.menu.get_setting('volume')
-            if volume is not None and hasattr(pygame.mixer, 'music') and pygame.mixer.music.get_busy():
+            if volume is not None and pygame.mixer.music.get_busy():
                 pygame.mixer.music.set_volume(volume / 100)
             
-            # Reset the resolution changed flag
             self.menu.reset_resolution_changed()
 
-        # Auto-rotate if enabled and not in menu
         if not self.menu.is_active() and self.auto_rotate:
-            self.renderer.rotate_camera(azimuth=0.5 * self.rotation_sensitivity)
+            self.renderer.rotate_camera(azimuth=self.auto_rotation_speed)
     
     def render(self):
-        # Render the cube
-        pygame_image = self.renderer.render_frame()
-        self.screen.blit(pygame_image, (0, 0))
+        # Render 3D cube
+        self.renderer.render_frame()
         
-        # Add indicator for mouse rotation state
-        if self.mouse_rotating:
-            pygame.draw.circle(self.screen, (255, 0, 0), (20, 20), 10)  # Red dot when rotating
-        
-        # Show FPS counter if in fullscreen
-        if self.show_fps and self.is_fullscreen:
-            fps = self.clock.get_fps()
-            fps_text = pygame.font.SysFont('Arial', 20, 'bolder').render(f"FPS: {fps:.1f}", True, (0, 161, 27))
-            self.screen.blit(fps_text, (10, 10))
-        
-        # Draw menu if active and update cursor
+        # Render 2D menu overlay if active
         if self.menu.is_active():
-            self.menu.update_cursor(pygame.mouse.get_pos())
-        self.menu.draw(self.screen)
+            # Switch to 2D orthographic projection for menu
+            glMatrixMode(GL_PROJECTION)
+            glPushMatrix()
+            glLoadIdentity()
+            glOrtho(0, self.width, self.height, 0, -1, 1)
+            
+            glMatrixMode(GL_MODELVIEW)
+            glPushMatrix()
+            glLoadIdentity()
+            
+            # Disable depth testing for 2D rendering
+            glDisable(GL_DEPTH_TEST)
+            glDisable(GL_LIGHTING)
+            
+            # Enable blending for transparency
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            
+            # Create menu surface and render to it
+            menu_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            self.menu.draw(menu_surface)
+            
+            # Convert pygame surface to OpenGL texture
+            texture_data = pygame.image.tostring(menu_surface, 'RGBA', True)
+            
+            glRasterPos2f(0, 0)
+            glPixelZoom(1, -1)  # Flip vertically
+            glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+            
+            # Restore 3D state
+            glDisable(GL_BLEND)
+            glEnable(GL_DEPTH_TEST)
+            glEnable(GL_LIGHTING)
+            
+            glPopMatrix()
+            glMatrixMode(GL_PROJECTION)
+            glPopMatrix()
+            glMatrixMode(GL_MODELVIEW)
+        
+        # Update window caption
+        if self.show_fps:
+            fps = self.clock.get_fps()
+            pygame.display.set_caption(f"Rubik's Cube Simulator - FPS: {fps:.1f}")
+        else:
+            pygame.display.set_caption("Rubik's Cube Simulator")
             
         pygame.display.flip()
         
     def run(self):
-        # Main game loop
         while self.running:
             self.handle_events()
             self.update()
             self.render()
-            self.clock.tick()  # FPS limit
+            self.clock.tick()
             
-            # Only update caption if show_fps is disabled (otherwise it's shown in-game)
-            if not self.show_fps:
-                pygame.display.set_caption("Rubik's Cube Simulator")
-            else:
-                fps = self.clock.get_fps()
-                pygame.display.set_caption(f"Rubik's Cube Simulator - FPS: {fps:.1f}")
-            
-        # Clean up
         self.renderer.close()
         pygame.quit()
         sys.exit()

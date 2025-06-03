@@ -1,104 +1,186 @@
-import pyvista as pv
 import pygame
+from pygame.locals import *
 import numpy as np
+from OpenGL.GL import *
+from OpenGL.GLU import *
 
 class Renderer:
-    def __init__(self, width=1024, height=768, cube_path="utils/Rubik's Cube.obj"):
+    def __init__(self, width=1024, height=768, cube_path="utils/Rubik's_cube2.obj"):
         # Initialize properties
         self.width = width
         self.height = height
+        self.cube_path = cube_path
         
-        # Initialize mesh and plotter
-        self.mesh = pv.read(cube_path)
+        # OpenGL cube data
+        self.obj_vertices = []
+        self.obj_faces = []
+        self.display_list = None
         
-        # Create plotter with proper initialization
-        self.plotter = pv.Plotter(off_screen=True, window_size=(width, height))
-        self.plotter.add_mesh(self.mesh, show_edges=True)  # Add mesh first
+        # Rubik's cube face colors
+        self.cube_colors = {
+            'white': (1.0, 1.0, 1.0),
+            'yellow': (1.0, 1.0, 0.0),
+            'red': (1.0, 0.0, 0.0),
+            'orange': (1.0, 0.5, 0.0),
+            'blue': (0.0, 0.0, 1.0),
+            'green': (0.0, 1.0, 0.0),
+            'black': (0.1, 0.1, 0.1)  # For edges/grid lines
+        }
         
-        # Define colors for each face (RGB format)
-        self.face_colors = [
-            [1.0, 1.0, 1.0],  # White (Up)
-            [1.0, 1.0, 0.0],  # Yellow (Down)
-            [0.0, 0.0, 1.0],  # Blue (Front)
-            [0.0, 1.0, 0.0],  # Green (Back)
-            [1.0, 0.0, 0.0],  # Red (Right)
-            [1.0, 0.5, 0.0],  # Orange (Left)
-        ]
+        # Load the cube model
+        self.load_obj(cube_path)
         
-        # Apply colors and setup display
-        self.color_cube()
-        self.plotter.set_background('white')
+        # Initialize OpenGL settings
+        self.setup_opengl()
         
-        # Store camera elevation for vertical rotation
-        self.elevation = 0
+        # Create optimized display list
+        self.create_display_list()
         
-        # Ensure the render window is initialized before use
-        self.plotter.show(auto_close=False)
+        # Store camera rotation for manual control
+        self.rotation_x = 0
+        self.rotation_y = 0
         
-    def color_cube(self):
-        """Apply colors to different parts of the cube mesh"""
-        # Get mesh bounds and points
-        bounds = self.mesh.bounds
-        points = self.mesh.points
+    def load_obj(self, filename):
+        """Load vertices, faces, and normals from OBJ file"""
+        vertices = []
+        faces = []
+        normals = []
         
-        # Create RGB color array
-        scalars = np.zeros((self.mesh.n_points, 3))
+        with open(filename, 'r') as file:
+            for line in file:
+                if line.startswith('v '):
+                    # Parse vertex coordinates
+                    coords = line.strip().split()[1:]
+                    vertices.append([float(coord) for coord in coords])
+                elif line.startswith('vn '):
+                    # Parse normals
+                    coords = line.strip().split()[1:]
+                    normals.append([float(coord) for coord in coords])
+                elif line.startswith('f '):
+                    # Parse face indices (convert from 1-based to 0-based)
+                    face_data = line.strip().split()[1:]
+                    face = []
+                    for vertex_data in face_data:
+                        # Handle cases like "1/1/1" or "1//1" or just "1"
+                        vertex_index = int(vertex_data.split('/')[0]) - 1
+                        face.append(vertex_index)
+                    faces.append(face)
         
-        # Tolerance for face detection
-        tol = 2
+        self.obj_vertices = vertices
+        self.obj_faces = faces
         
-        # Apply colors based on position
-        for i, (x, y, z) in enumerate(points):
-            if abs(z - bounds[5]) < tol:      # Top face (White)
-                scalars[i] = self.face_colors[0]
-            elif abs(z - bounds[4]) < tol:    # Bottom face (Yellow)
-                scalars[i] = self.face_colors[1]
-            elif abs(y - bounds[3]) < tol:    # Front face (Blue)
-                scalars[i] = self.face_colors[2]
-            elif abs(y - bounds[2]) < tol:    # Back face (Green)
-                scalars[i] = self.face_colors[3]
-            elif abs(x - bounds[1]) < tol:    # Right face (Red)
-                scalars[i] = self.face_colors[4]
-            elif abs(x - bounds[0]) < tol:    # Left face (Orange)
-                scalars[i] = self.face_colors[5]
-            else:                             # Interior (black)
-                scalars[i] = [0.2, 0.2, 0.2]
+    def setup_opengl(self):
+        """Initialize OpenGL settings"""
+        gluPerspective(45, (self.width/self.height), 0.1, 50.0)
+        glEnable(GL_DEPTH_TEST)
+        glEnable(GL_LIGHTING)
+        glEnable(GL_LIGHT0)
         
-        # Clear existing actors before adding the new mesh
-        self.plotter.clear_actors()
-        self.plotter.add_mesh(self.mesh, scalars=scalars, rgb=True)
+        # Set up lighting
+        glLightfv(GL_LIGHT0, GL_POSITION, [2, 2, 2, 1])
+        glLightfv(GL_LIGHT0, GL_AMBIENT, [0.3, 0.3, 0.3, 1])
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.8, 0.8, 0.8, 1])
+        glEnable(GL_COLOR_MATERIAL)
+        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
+
+        glTranslatef(0.0, 0.0, -5)
+        
+    def get_face_color(self, face_vertices):
+        """Determine face color based on face normal/position"""
+        # Calculate face center
+        center = [0, 0, 0]
+        for vertex_idx in face_vertices:
+            vertex = self.obj_vertices[vertex_idx]
+            center[0] += vertex[0]
+            center[1] += vertex[1]
+            center[2] += vertex[2]
+        
+        center = [coord / len(face_vertices) for coord in center]
+        
+        # Determine color based on which face of the cube this is
+        # These thresholds may need adjustment based on your OBJ file scale
+        threshold = 0.84
+        
+        if center[1] > threshold:  # Top face
+            return self.cube_colors['white']
+        elif center[1] < -threshold:  # Bottom face
+            return self.cube_colors['yellow']
+        elif center[0] > threshold:  # Right face
+            return self.cube_colors['red']
+        elif center[0] < -threshold:  # Left face
+            return self.cube_colors['orange']
+        elif center[2] > threshold:  # Front face
+            return self.cube_colors['blue']
+        elif center[2] < -threshold:  # Back face
+            return self.cube_colors['green']
+        else:
+            return self.cube_colors['black']  # Internal faces/edges
+
+    def create_display_list(self):
+        """Create optimized display list for the cube"""
+        self.display_list = glGenLists(1)
+        
+        glNewList(self.display_list, GL_COMPILE)
+        
+        # Enable smooth shading
+        glShadeModel(GL_SMOOTH)
+        
+        for face in self.obj_faces:
+            color = self.get_face_color(face)
+            glColor3fv(color)
+            
+            if len(face) == 3:  # Triangle
+                glBegin(GL_TRIANGLES)
+            elif len(face) == 4:  # Quad
+                glBegin(GL_QUADS)
+            else:  # Polygon
+                glBegin(GL_POLYGON)
+            
+            for vertex_index in face:
+                glVertex3fv(self.obj_vertices[vertex_index])
+            
+            glEnd()
+        
+        glEndList()
         
     def rotate_camera(self, azimuth=0, elevation=0):
         """Rotate camera around the cube
         
         Args:
-            azimuth: Horizontal rotation angle (around z-axis)
+            azimuth: Horizontal rotation angle (around y-axis)
             elevation: Vertical rotation angle (around x-axis)
         """
-        # Apply horizontal rotation
-        self.plotter.camera.azimuth += azimuth
+        self.rotation_y += azimuth
+        self.rotation_x += elevation
         
-        # Apply vertical rotation with limits to prevent flipping
-        self.elevation += elevation
-        self.elevation = max(-80, min(80, self.elevation))  # Limit elevation to ±80 degrees
-        self.plotter.camera.elevation = self.elevation
+        # Keep rotations within reasonable bounds
+        self.rotation_x = max(-90, min(90, self.rotation_x))
         
-        # Ensure changes take effect
-        self.plotter.render()
+    def render_cube(self):
+        """Render the optimized cube using display list"""
+        if self.display_list:
+            glCallList(self.display_list)
         
     def render_frame(self):
-        """Render a frame and return as pygame surface"""
-        # Make sure rendering is up to date
-        self.plotter.render()
+        """Render a frame and return the surface (for compatibility with existing code)"""
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
-        # Capture screenshot
-        image = self.plotter.screenshot(return_img=True)
-        img_height, img_width, _ = image.shape
-        return pygame.image.frombuffer(image.tobytes(), 
-                                      (img_width, img_height), 
-                                      "RGB")
-    
+        glPushMatrix()
+        
+        # Apply rotations
+        glRotatef(self.rotation_x, 1, 0, 0)
+        glRotatef(self.rotation_y, 0, 1, 0)
+        
+        # Render the cube
+        self.render_cube()
+        
+        glPopMatrix()
+        
+        # For compatibility, return None since OpenGL renders directly to screen
+        return None
+        
     def close(self):
-        # Clean up resources
-        if hasattr(self, 'plotter') and self.plotter is not None:
-            self.plotter.close()
+        """Clean up resources"""
+        if self.display_list:
+            glDeleteLists(self.display_list, 1)
+            self.display_list = None

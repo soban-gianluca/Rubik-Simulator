@@ -1,9 +1,10 @@
 import pygame
 import sys
 import os
+from pygame.locals import *
+from OpenGL.GL import *
 from loading_animation import LoadingAnimation
 from game import Game
-import threading
 
 def main():
     print("Initializing the game...")
@@ -13,16 +14,24 @@ def main():
     # Set up default resolution
     width, height = 1024, 768
 
-    # Create the loading animation instance with required screen dimensions
+    # Create and run the loading animation first (blocking)
     loading_animation = LoadingAnimation(screen_width=width, screen_height=height)
     
-    # Run the loading animation in a separate thread
-    t1 = threading.Thread(target=loading_animation.run)
-    t1.start()
-    
-    # Create and run the game in the main thread
-    game = Game()
-    game.run()
+    # Run the loading animation synchronously
+    if loading_animation.run():
+        print("Loading complete, starting game...")
+        
+        # Close the loading screen
+        pygame.quit()
+        
+        # Reinitialize pygame for the main game
+        pygame.init()
+        
+        # Create and run the game
+        game = Game()
+        game.run()
+    else:
+        print("Loading cancelled or failed")
     
     # Clean up
     pygame.quit()

@@ -35,7 +35,7 @@ def load_obj(filename):
     return vertices, faces
 
 # Load the Rubik's cube model
-obj_vertices, obj_faces = load_obj("C:/Users/salma/Desktop/school/test cubo/utils/Rubik's_cube.obj")
+obj_vertices, obj_faces = load_obj("utils\Rubik's_Cube2.obj")
 
 # Rubik's cube face colors
 cube_colors = {

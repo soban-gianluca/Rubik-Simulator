@@ -305,7 +305,7 @@ class Game:
             self.handle_events()
             self.update()
             self.render()
-            self.clock.tick(60)  # 60 FPS
+            self.clock.tick()  # FPS limit
             
             # Only update caption if show_fps is disabled (otherwise it's shown in-game)
             if not self.show_fps:

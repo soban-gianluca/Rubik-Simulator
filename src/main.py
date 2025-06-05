@@ -1,7 +1,6 @@
 import pygame
 import sys
 from pygame.locals import *
-
 from loading_animation import LoadingAnimation
 from game import Game
 

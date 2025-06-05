@@ -1,8 +1,7 @@
 import pygame
 import sys
-import os
 from pygame.locals import *
-from OpenGL.GL import *
+
 from loading_animation import LoadingAnimation
 from game import Game
 

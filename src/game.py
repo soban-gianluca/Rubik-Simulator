@@ -245,8 +245,8 @@ class Game:
             # Convert pygame surface to OpenGL texture
             texture_data = pygame.image.tostring(menu_surface, 'RGBA', True)
             
-            glRasterPos2f(0, 0)
-            glPixelZoom(1, -1)  # Flip vertically
+            glRasterPos2f(0, self.height)
+            glPixelZoom(1, 1)  # Flip vertically
             glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
             
             # Restore 3D state

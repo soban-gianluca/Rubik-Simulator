@@ -34,7 +34,7 @@ class Game:
         # Initialize music
         try:
             pygame.mixer.init()
-            pygame.mixer.music.set_volume(0.5)
+            pygame.mixer.music.set_volume(0)
             pygame.mixer.music.load(self.playlist[self.current_song])
             pygame.mixer.music.play()
             

@@ -22,12 +22,28 @@ class Game:
         self.clock = pygame.time.Clock()
         
         # Load resources
+        # Initialize music
+        self.playlist = [
+            "utils/soundtrack/rubiksCube_Playback.mp3",
+            "utils/soundtrack/rubiksCube_Playback2.mp3",
+            "utils/soundtrack/rubiksCube_Playback3.mp3"
+        ]
+        self.current_song = 2
+        self.fade_time = 2000
+        
+        # Initialize music
         try:
-            pygame.mixer.music.load("utils/rubiksCube_Playback.mp3")
+            pygame.mixer.init()
             pygame.mixer.music.set_volume(0.5)
-            pygame.mixer.music.play(-1)
-        except:
-            print("Background music not found")
+            pygame.mixer.music.load(self.playlist[self.current_song])
+            pygame.mixer.music.play()
+            
+            # Set up music end event
+            MUSIC_END_EVENT = pygame.USEREVENT + 1
+            pygame.mixer.music.set_endevent(MUSIC_END_EVENT)
+            self.MUSIC_END_EVENT = MUSIC_END_EVENT
+        except Exception as e:
+            print(f"Background music error: {e}")
         
         try:
             icon = pygame.image.load("utils/rubiksCube_Icon.ico")
@@ -121,6 +137,18 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+                
+            elif event.type == self.MUSIC_END_EVENT:
+                # Move to the next song (looping back to the first)
+                self.current_song = (self.current_song + 1) % len(self.playlist)
+                self.debug_print(f"Playing next song: {self.playlist[self.current_song]}")
+                
+                # Load and play the next song
+                try:
+                    pygame.mixer.music.load(self.playlist[self.current_song])
+                    pygame.mixer.music.play()
+                except Exception as e:
+                    self.debug_print(f"Music error: {e}")
                 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:

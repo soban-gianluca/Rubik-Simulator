@@ -24,11 +24,11 @@ class Game:
         # Load resources
         # Initialize music
         self.playlist = [
-            "utils/soundtrack/rubiksCube_Playback.mp3",
-            "utils/soundtrack/rubiksCube_Playback2.mp3",
-            "utils/soundtrack/rubiksCube_Playback3.mp3"
+            "utils/soundtrack/lounge_layers.mp3",
+            "utils/soundtrack/midnight_simmetry.mp3",
+            "utils/soundtrack/the_fifth_color.mp3"
         ]
-        self.current_song = 2
+        self.current_song = 1
         self.fade_time = 2000
         
         # Initialize music

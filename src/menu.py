@@ -1,12 +1,17 @@
 import pygame
 import pygame_menu
 from pygame_menu import themes
+from settings_manager import SettingsManager
 
 class Menu:
-    def __init__(self, screen_width, screen_height):
+    def __init__(self, screen_width, screen_height, game_instance=None):
         self.width = screen_width
         self.height = screen_height
         self.screen = pygame.display.get_surface()
+        self.game = game_instance  # Store reference to game instance
+        
+        # Initialize settings manager directly
+        self.settings_manager = SettingsManager()
         
         # Menu state
         self.active = False
@@ -21,15 +26,15 @@ class Menu:
             (1920, 1080)
         ]
         
-        # Current settings
+        # Load settings from file
         self.current_resolution_index = 0
         current_res = (screen_width, screen_height)
         if current_res in self.available_resolutions:
             self.current_resolution_index = self.available_resolutions.index(current_res)
         
-        self.volume = 50
-        self.show_fps = False
-        self.fullscreen = False
+        self.volume = self.settings_manager.settings.get("volume", 50)
+        self.show_fps = self.settings_manager.settings.get("show_fps", False)
+        self.fullscreen = self.settings_manager.settings.get("fullscreen", False)
         
         # Create custom theme
         self.theme = themes.THEME_DARK.copy()
@@ -205,6 +210,17 @@ class Menu:
                 if hasattr(self, 'debug_mode') and self.debug_mode:
                     print(f"Applying settings - Resolution: {new_width}x{new_height}, Fullscreen: {self.fullscreen}")
                 
+                # Update settings object directly
+                self.settings_manager.settings["resolution"]["width"] = new_width
+                self.settings_manager.settings["resolution"]["height"] = new_height
+                self.settings_manager.settings["resolution"]["index"] = self.current_resolution_index
+                self.settings_manager.settings["fullscreen"] = self.fullscreen
+                self.settings_manager.settings["show_fps"] = self.show_fps
+                self.settings_manager.settings["volume"] = self.volume
+                
+                # Save settings
+                self.settings_manager.save_settings()
+                
                 # Reset settings changed flag
                 self.settings_changed = False
             
@@ -321,3 +337,7 @@ class Menu:
         # If current_menu is not set, reset to main menu
         if not hasattr(self, 'current_menu') or self.current_menu is None:
             self.current_menu = self.main_menu
+    
+    def set_game_instance(self, game):
+        """Set the game instance reference"""
+        self.game = game

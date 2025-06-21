@@ -5,19 +5,29 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from menu import Menu
 from renderer import Renderer
+from settings_manager import SettingsManager
 
 class Game:
     def __init__(self):
         # Initialize pygame
         pygame.init()
-        self.width, self.height = 1024, 768
+        
+        # Load settings
+        self.settings = SettingsManager()
+        self.width = self.settings.settings["resolution"]["width"]
+        self.height = self.settings.settings["resolution"]["height"]
+        self.is_fullscreen = self.settings.settings["fullscreen"]
+        self.show_fps = self.settings.settings["show_fps"]
         
         # Display settings
         self.is_fullscreen = False
         self.show_fps = False
         
         # Set initial display mode with OpenGL
-        self.screen = pygame.display.set_mode((self.width, self.height), DOUBLEBUF | OPENGL)
+        display_flags = DOUBLEBUF | OPENGL
+        if self.is_fullscreen:
+            display_flags |= FULLSCREEN
+        self.screen = pygame.display.set_mode((self.width, self.height), display_flags)
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         
@@ -34,7 +44,7 @@ class Game:
         # Initialize music
         try:
             pygame.mixer.init()
-            pygame.mixer.music.set_volume(0)
+            pygame.mixer.music.set_volume(0.5)
             pygame.mixer.music.load(self.playlist[self.current_song])
             pygame.mixer.music.play()
             
@@ -56,6 +66,7 @@ class Game:
         
         # Initialize menu
         self.menu = Menu(self.width, self.height)
+        self.menu.set_game_instance(self)  # Set the game instance reference
         self.menu.toggle()  # Start with menu active
         
         # Game state
@@ -303,6 +314,14 @@ class Game:
             self.render()
             self.clock.tick()
             
+        # Before exiting, save settings
+        self.settings.settings["resolution"]["width"] = self.width
+        self.settings.settings["resolution"]["height"] = self.height
+        self.settings.settings["fullscreen"] = self.is_fullscreen
+        self.settings.settings["show_fps"] = self.show_fps
+        self.settings.settings["volume"] = int(pygame.mixer.music.get_volume() * 100)
+        self.settings.save_settings()
+        
         self.renderer.close()
         pygame.quit()
         sys.exit()

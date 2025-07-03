@@ -1,8 +1,6 @@
-28/05/2025 - v1.0
 
     --- Changes --- 
         Created workspace
-        Edits: main.py, game.py, rendered.py
         Added model
         Made UI
         Added model into UI
@@ -12,20 +10,15 @@
         Added exit + keybind --> *Esc*
         Added debug keybind --> *B*
         Removed unecessary code
-        Added playback Music --> Have to create the actual music
+        Added soundtrack Music
         Added FPS counter with WORKING button setting
+        Setting working with JSON
 
-    --- Logic ---
-    main.py
-        --> game.py
-            --> rendered.py
 
 --- TO DO LIST ---
-- GPU RENDERING
-- help button
 - movements
 - (more complex background)
 - timer
 - moves counter
 - (Different gamemodes)
-- Optimize resolution change (probably slow because of the CPU render)
+- FIX resolution change (gives errors)

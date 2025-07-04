@@ -6,7 +6,7 @@
   },
   "fullscreen": false,
   "show_fps": false,
-  "volume": 50,
+  "volume": 0,
   "auto_rotate": true,
   "auto_rotate_speed": 0.2
 }

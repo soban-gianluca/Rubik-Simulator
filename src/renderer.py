@@ -71,7 +71,17 @@ class Renderer:
         
     def setup_opengl(self):
         """Initialize OpenGL settings"""
+        # Reset matrices
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        # Set up perspective projection
         gluPerspective(45, (self.width/self.height), 0.1, 50.0)
+        # Set the viewport to match window size
+        glViewport(0, 0, self.width, self.height)
+        
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_LIGHTING)
         
@@ -178,6 +188,18 @@ class Renderer:
         
     def render_frame(self):
         """Render a frame and return the surface (for compatibility with existing code)"""
+        # Check if viewport matches the current dimensions
+        viewport = glGetIntegerv(GL_VIEWPORT)
+        if viewport[2] != self.width or viewport[3] != self.height:
+            # Viewport doesn't match our dimensions, reset it
+            glViewport(0, 0, self.width, self.height)
+            
+            # Also reset projection matrix
+            glMatrixMode(GL_PROJECTION)
+            glLoadIdentity()
+            gluPerspective(45, (self.width/self.height), 0.1, 50.0)
+            glMatrixMode(GL_MODELVIEW)
+        
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
         glPushMatrix()

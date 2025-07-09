@@ -45,20 +45,20 @@ class Menu:
         
         # Create main menu
         self.main_menu = pygame_menu.Menu(
-            'Rubik\'s Cube Simulator',
+            "Rubik's Cube Simulator",
             self.width,
             self.height,
             theme=self.theme
         )
         
         # Add main menu buttons
-        self.main_menu.add.button('Play', self._start_game)
-        self.main_menu.add.button('Settings', self._open_settings)
-        self.main_menu.add.button('Quit', pygame_menu.events.EXIT)
+        self.main_menu.add.button("Play", self._start_game)
+        self.main_menu.add.button("Settings", self._open_settings)
+        self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
         
         # Create settings menu
         self.settings_menu = pygame_menu.Menu(
-            'Settings',
+            "Settings",
             self.width,
             self.height,
             theme=self.theme
@@ -67,7 +67,7 @@ class Menu:
         # Resolution dropdown
         resolution_options = [f"{w}x{h}" for w, h in self.available_resolutions]
         self.settings_menu.add.dropselect(
-            title='Resolution: ',
+            title="Resolution: ",
             items=[(res, i) for i, res in enumerate(resolution_options)],
             default=self.current_resolution_index,
             onchange=self._on_resolution_change
@@ -75,22 +75,22 @@ class Menu:
         
         # Replace the display mode selector with a dropdown
         self.settings_menu.add.dropselect(
-            title='Display Mode: ',
-            items=[('Windowed', False), ('Fullscreen', True)],
-            default=int(self.fullscreen),  # 0 for Windowed, 1 for Fullscreen
+            title="Display Mode: ",
+            items=[("Windowed", False), ("Fullscreen", True)],
+            default=int(self.fullscreen),
             onchange=self._on_fullscreen_change
         )
         
         # Show FPS toggle
         self.settings_menu.add.toggle_switch(
-            'Show FPS: ',
+            "Show FPS: ",
             default=self.show_fps,
             onchange=self._on_fps_toggle
         )
         
         # Volume slider
         self.settings_menu.add.range_slider(
-            'Volume: ',
+            "Volume: ",
             default=self.volume,
             range_values=(0, 100),
             increment=5,
@@ -98,12 +98,12 @@ class Menu:
         )
         
         # Settings menu buttons
-        self.settings_menu.add.button('Apply Changes', self._apply_settings)
-        self.settings_menu.add.button('Back', self._back_to_main)
+        self.settings_menu.add.button("Apply Changes", self._apply_settings)
+        self.settings_menu.add.button("Back", self._back_to_main)
         
         # Help menu
         self.help_menu = pygame_menu.Menu(
-            'Controls',
+            "Controls",
             self.width,
             self.height,
             theme=self.theme
@@ -125,15 +125,12 @@ class Menu:
         ]
         
         for line in help_text:
-            if line:
-                self.help_menu.add.label(line, font_size=24)
-            else:
-                self.help_menu.add.vertical_margin(10)
+            self.help_menu.add.label(line)
         
-        self.help_menu.add.button('Back', self._back_to_main)
+        self.help_menu.add.button("Back", self._back_to_main)
         
         # Add help button to main menu
-        self.main_menu.add.button('Help', self._open_help)
+        self.main_menu.add.button("Help", self._open_help)
         
         # Set current menu
         self.current_menu = self.main_menu
@@ -155,18 +152,17 @@ class Menu:
         # The dropselect widget passes: (selected_tuple, index)
         # where selected_tuple is (display_text, value)
         
-        if hasattr(self, 'debug_mode') and self.debug_mode:
-            print(f"Resolution change - selected: {selected_tuple}, index: {index}")
+        if hasattr(self, "debug_mode") and self.debug_mode:
+            print(f"Resolution change: {selected_tuple}, {index}")
         
         # Extract the index from the tuple (res, i)
         if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
-            self.current_resolution_index = selected_tuple[1]  # Get the index value we stored in the tuple
+            self.current_resolution_index = selected_tuple[1]  # Use the value part of the tuple
         else:
-            # Fallback to using the provided index
             self.current_resolution_index = index
         
-        if hasattr(self, 'debug_mode') and self.debug_mode:
-            print(f"Set resolution index to: {self.current_resolution_index}")
+        if hasattr(self, "debug_mode") and self.debug_mode:
+            print(f"New resolution index: {self.current_resolution_index}")
         
         self.settings_changed = True
     
@@ -174,28 +170,25 @@ class Menu:
         """Handle fullscreen toggle from dropdown"""
         # Extract the boolean value from the selected tuple
         if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
-            self.fullscreen = selected_tuple[1]  # Get the boolean value (True/False)
+            self.fullscreen = selected_tuple[1]  # Extract boolean value
         else:
-            # Fallback to using the index (0=False, 1=True)
-            self.fullscreen = bool(index)
+            self.fullscreen = bool(index)  # Convert index to boolean
         
-        if hasattr(self, 'debug_mode') and self.debug_mode:
-            print(f"Display mode changed to: {'Fullscreen' if self.fullscreen else 'Windowed'}")
         self.settings_changed = True
     
-    def _on_fps_toggle(self, *args, **kwargs):
+    def _on_fps_toggle(self, value):
         """Handle FPS toggle"""
-        if len(args) >= 1:
-            self.show_fps = bool(args[0])
+        self.show_fps = value
         self.settings_changed = True
     
-    def _on_volume_change(self, *args, **kwargs):
-        """Handle volume change"""
-        if len(args) >= 1:
-            self.volume = int(args[0])
-            # Apply volume change immediately
-            if pygame.mixer.music.get_busy():
-                pygame.mixer.music.set_volume(self.volume / 100)
+    def _on_volume_change(self, value):
+        """Handle volume slider change"""
+        self.volume = value
+        
+        # Apply volume immediately if we can
+        if pygame.mixer.get_init() and self.game:
+            pygame.mixer.music.set_volume(self.volume / 100)
+            
         self.settings_changed = True
     
     def _apply_settings(self):
@@ -207,51 +200,37 @@ class Menu:
                 
                 # Get the resolution that will be applied
                 new_width, new_height = self.get_current_resolution()
-                if hasattr(self, 'debug_mode') and self.debug_mode:
+                if hasattr(self, "debug_mode") and self.debug_mode:
                     print(f"Applying settings - Resolution: {new_width}x{new_height}, Fullscreen: {self.fullscreen}")
                 
                 # Update settings object directly
                 self.settings_manager.settings["resolution"]["width"] = new_width
                 self.settings_manager.settings["resolution"]["height"] = new_height
-                self.settings_manager.settings["resolution"]["index"] = self.current_resolution_index
                 self.settings_manager.settings["fullscreen"] = self.fullscreen
                 self.settings_manager.settings["show_fps"] = self.show_fps
                 self.settings_manager.settings["volume"] = self.volume
-                
-                # Save settings
                 self.settings_manager.save_settings()
                 
-                # Reset settings changed flag
                 self.settings_changed = False
-            
-            # Return to main menu
-            self.current_menu = self.main_menu
         except Exception as e:
-            print(f"Error applying settings: {str(e)}")
-            # Reset settings flags to prevent repeated crashes
-            self.settings_changed = False
-            self.resolution_changed_flag = False
-            # Still return to main menu even if there's an error
-            self.current_menu = self.main_menu
+            print(f"Error applying settings: {e}")
     
     def _back_to_main(self):
-        """Go back to main menu"""
+        """Return to the main menu"""
         self.current_menu = self.main_menu
     
     def toggle(self):
-        """Toggle menu visibility"""
+        """Toggle the menu visibility"""
         self.active = not self.active
-        if self.active:
-            self.current_menu = self.main_menu
-        return self.active
     
     def is_active(self):
-        """Check if menu is visible"""
+        """Check if menu is active"""
         return self.active
     
     def get_current_resolution(self):
-        """Return the currently selected resolution as (width, height)"""
-        return self.available_resolutions[self.current_resolution_index]
+        """Get the currently selected resolution"""
+        index = min(self.current_resolution_index, len(self.available_resolutions) - 1)
+        return self.available_resolutions[index]
     
     def resolution_changed(self):
         """Check if resolution was changed"""
@@ -263,18 +242,23 @@ class Menu:
     
     def get_setting(self, name):
         """Get a setting value"""
-        if name == 'show_fps':
+        if name == "show_fps":
             return self.show_fps
-        elif name == 'fullscreen':
+        elif name == "fullscreen":
             return self.fullscreen
-        elif name == 'volume':
+        elif name == "volume":
             return self.volume
         return None
     
     def handle_event(self, event):
-        """Process menu input"""
-        if not self.active or event is None:
+        """Handle events specific to the menu.
+        Returns True if the event was handled by the menu."""
+        if not self.active or not self.current_menu:
             return False
+            
+        # Update mouse cursor for menu
+        if event.type == pygame.MOUSEMOTION:
+            self.update_cursor(event.pos)
         
         # Handle menu navigation
         if self.current_menu and self.current_menu.is_enabled():
@@ -291,24 +275,37 @@ class Menu:
         updated = self.current_menu.update([event])
         
         # Check if we need to go back to main menu (after pygame-menu processes the event)
-        if self.current_menu != self.main_menu:
-            if updated == pygame_menu.events.BACK:
-                self.current_menu = self.main_menu
-                return True
-        
-        return True
+        return updated or self.active
     
     def update_cursor(self, mouse_pos):
-        """Update cursor (pygame-menu handles this automatically)"""
-        pass
-    
-    def draw(self, screen):
-        """Render the menu"""
+        """Update cursor based on menu interaction"""
         if not self.active:
             return
         
-        # Draw semi-transparent background
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        if self.current_menu:
+            # If mouse is over a widget, use pointer cursor
+            if self.current_menu.get_selected_widget():
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+            else:
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+    
+    def draw(self, screen):
+        """Draw the menu on the screen"""
+        if not self.active:
+            return
+        
+        # Get the actual screen dimensions
+        actual_width, actual_height = screen.get_size()
+        
+        # Check if our stored dimensions match the actual screen
+        if abs(self.width - actual_width) > 5 or abs(self.height - actual_height) > 5:
+            print(f"Menu dimension mismatch: stored {self.width}x{self.height}, actual {actual_width}x{actual_height}")
+            self.width, self.height = actual_width, actual_height
+            # Force recreate menus with correct dimensions
+            self._create_menus()
+        
+        # Draw semi-transparent background for the full screen
+        overlay = pygame.Surface((actual_width, actual_height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
         
@@ -321,23 +318,187 @@ class Menu:
         self.width = width
         self.height = height
         
-        # Update menu dimensions instead of recreating the whole menu
-        if self.main_menu:
-            self.main_menu.resize(width, height)
-        
-        if self.settings_menu:
-            self.settings_menu.resize(width, height)
+        # Get the actual screen size
+        try:
+            screen = pygame.display.get_surface()
+            if screen is None:
+                # No screen available yet, use provided dimensions
+                screen_width, screen_height = width, height
+            else:
+                screen_width, screen_height = screen.get_size()
+                
+            # In some cases during resolution changes, the reported screen size might be wrong
+            # If the screen dimensions don't match what we expect, use the provided dimensions
+            if abs(screen_width - width) > 10 or abs(screen_height - height) > 10:
+                print(f"Screen size mismatch: expected {width}x{height}, got {screen_width}x{screen_height}")
+                screen_width, screen_height = width, height
+                
+        except Exception as e:
+            print(f"Error getting screen size: {e}")
+            screen_width, screen_height = width, height
             
-        if self.help_menu:
-            self.help_menu.resize(width, height)
-        
+        try:
+            # Use safe resize dimensions that are guaranteed to be within screen bounds
+            safe_width = min(width, screen_width)
+            safe_height = min(height, screen_height)
+            
+            # Update menu dimensions or recreate if needed
+            if hasattr(self, "main_menu") and self.main_menu:
+                try:
+                    self.main_menu.resize(safe_width, safe_height)
+                except Exception as e:
+                    print(f"Main menu resize error: {e}")
+            
+            if hasattr(self, "settings_menu") and self.settings_menu:
+                try:
+                    self.settings_menu.resize(safe_width, safe_height)
+                except Exception as e:
+                    print(f"Settings menu resize error: {e}")
+                
+            if hasattr(self, "help_menu") and self.help_menu:
+                try:
+                    self.help_menu.resize(safe_width, safe_height)
+                except Exception as e:
+                    print(f"Help menu resize error: {e}")
+                    
+        except Exception as e:
+            print(f"Menu resize error: {e}. Recreating menus with new dimensions.")
+            # If resize fails, recreate all menus
+            self._create_menus()
+            
         # Update the theme if needed
-        self.theme.background_color = (0, 0, 0, 180)
+        if hasattr(self, "theme"):
+            self.theme.background_color = (0, 0, 0, 180)
         
         # If current_menu is not set, reset to main menu
-        if not hasattr(self, 'current_menu') or self.current_menu is None:
-            self.current_menu = self.main_menu
+        if not hasattr(self, "current_menu") or self.current_menu is None:
+            if hasattr(self, "main_menu"):
+                self.current_menu = self.main_menu
+                
+        # Reset the resolution changed flag to avoid continuous resizing
+        self.resolution_changed_flag = False
     
     def set_game_instance(self, game):
         """Set the game instance reference"""
         self.game = game
+    
+    def _create_menus(self):
+        """Create or recreate menus with current dimensions"""
+        # Store current settings before recreating
+        current_resolution_index = self.current_resolution_index
+        current_volume = self.volume
+        current_show_fps = self.show_fps
+        current_fullscreen = self.fullscreen
+        
+        # Get actual screen dimensions
+        screen = pygame.display.get_surface()
+        if screen:
+            actual_width, actual_height = screen.get_size()
+            # Update our stored dimensions to match actual screen
+            self.width = actual_width
+            self.height = actual_height
+            print(f"Recreating menus with dimensions: {actual_width}x{actual_height}")
+        else:
+            print(f"No screen surface available, using stored dimensions: {self.width}x{self.height}")
+        
+        # Create custom theme
+        self.theme = themes.THEME_DARK.copy()
+        self.theme.title_font_size = 50
+        self.theme.widget_font_size = 30
+        self.theme.widget_margin = (0, 10)
+        self.theme.background_color = (0, 0, 0, 180)
+        
+        # Create main menu
+        self.main_menu = pygame_menu.Menu(
+            "Rubik's Cube Simulator",
+            self.width,
+            self.height,
+            theme=self.theme
+        )
+        
+        # Add main menu buttons
+        self.main_menu.add.button("Play", self._start_game)
+        self.main_menu.add.button("Settings", self._open_settings)
+        self.main_menu.add.button("Help", self._open_help)
+        self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
+        
+        # Create settings menu
+        self.settings_menu = pygame_menu.Menu(
+            "Settings",
+            self.width,
+            self.height,
+            theme=self.theme
+        )
+        
+        # Resolution dropdown
+        resolution_options = [f"{w}x{h}" for w, h in self.available_resolutions]
+        self.settings_menu.add.dropselect(
+            title="Resolution: ",
+            items=[(res, i) for i, res in enumerate(resolution_options)],
+            default=current_resolution_index,
+            onchange=self._on_resolution_change
+        )
+        
+        # Replace the display mode selector with a dropdown
+        self.settings_menu.add.dropselect(
+            title="Display Mode: ",
+            items=[("Windowed", False), ("Fullscreen", True)],
+            default=int(current_fullscreen),
+            onchange=self._on_fullscreen_change
+        )
+        
+        # Show FPS toggle
+        self.settings_menu.add.toggle_switch(
+            "Show FPS: ",
+            default=current_show_fps,
+            onchange=self._on_fps_toggle
+        )
+        
+        # Volume slider
+        self.settings_menu.add.range_slider(
+            "Volume: ",
+            default=current_volume,
+            range_values=(0, 100),
+            increment=5,
+            onchange=self._on_volume_change
+        )
+        
+        # Settings menu buttons
+        self.settings_menu.add.button("Apply Changes", self._apply_settings)
+        self.settings_menu.add.button("Back", self._back_to_main)
+        
+        # Help menu
+        self.help_menu = pygame_menu.Menu(
+            "Controls",
+            self.width,
+            self.height,
+            theme=self.theme
+        )
+        
+        # Add help text
+        help_text = [
+            "Controls:",
+            "",
+            "Space: Toggle auto-rotation",
+            "Left/Right arrows: Manual rotation",
+            "Up/Down arrows: Vertical rotation",
+            "Click and drag: Rotate with mouse",
+            "D: Toggle debug mode",
+            "ESC: Toggle menu",
+            "F11: Toggle fullscreen",
+            "",
+            "Mouse rotation disables auto-rotation"
+        ]
+        
+        for line in help_text:
+            self.help_menu.add.label(line)
+        
+        self.help_menu.add.button("Back", self._back_to_main)
+        
+        # Set current menu (preserve the current menu state)
+        if self.current_menu == self.settings_menu:
+            self.current_menu = self.settings_menu
+        elif self.current_menu == self.help_menu:
+            self.current_menu = self.help_menu
+        else:
+            self.current_menu = self.main_menu

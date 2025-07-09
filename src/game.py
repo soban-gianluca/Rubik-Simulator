@@ -117,31 +117,59 @@ class Game:
     
     def change_resolution(self, width, height):
         """Change screen resolution"""
+        # Store current settings
         current_volume = self.menu.volume if hasattr(self, 'menu') else 50
         current_show_fps = self.menu.show_fps if hasattr(self, 'menu') else False
         current_fullscreen = self.menu.fullscreen if hasattr(self, 'menu') else False
 
+        # Update our dimensions
         self.width = width
         self.height = height
 
-        if current_fullscreen:
-            self.screen = pygame.display.set_mode((width, height), DOUBLEBUF | OPENGL | FULLSCREEN)
-            self.is_fullscreen = True
-        else:
-            self.screen = pygame.display.set_mode((width, height), DOUBLEBUF | OPENGL)
-            self.is_fullscreen = False
-
-        if hasattr(self, 'renderer'):
-            self.renderer.width = width
-            self.renderer.height = height
-            self.renderer.setup_opengl()
-            self.renderer.create_display_list()
-
-        if hasattr(self, 'menu'):
-            self.menu.update_dimensions(width, height)
-            self.menu.volume = current_volume
-            self.menu.show_fps = current_show_fps
-            self.menu.fullscreen = current_fullscreen
+        try:
+            # Set the new display mode
+            display_flags = DOUBLEBUF | OPENGL
+            if current_fullscreen:
+                display_flags |= FULLSCREEN
+                self.is_fullscreen = True
+            else:
+                self.is_fullscreen = False
+            
+            # Update the screen with new dimensions
+            self.screen = pygame.display.set_mode((width, height), display_flags)
+            
+            # Update the renderer with new dimensions
+            if hasattr(self, 'renderer'):
+                self.renderer.width = width
+                self.renderer.height = height
+                self.renderer.setup_opengl()  # This resets the OpenGL viewport and projection
+                self.renderer.create_display_list()
+            
+            # Make sure display is fully updated before updating menus
+            pygame.display.flip()
+            pygame.time.wait(200)  # Give more time for display to stabilize
+            
+            # Update the menu with new dimensions - catch any exceptions
+            if hasattr(self, 'menu'):
+                try:
+                    self.menu.update_dimensions(width, height)
+                    self.menu.volume = current_volume
+                    self.menu.show_fps = current_show_fps
+                    self.menu.fullscreen = current_fullscreen
+                    self.menu.reset_resolution_changed()  # Reset flag to avoid loop
+                except Exception as e:
+                    print(f"Menu resize error: {e}")
+                    
+            # Save settings
+            self.settings.settings["resolution"]["width"] = width
+            self.settings.settings["resolution"]["height"] = height
+            self.settings.settings["fullscreen"] = self.is_fullscreen
+            self.settings.save_settings()
+            
+        except Exception as e:
+            print(f"Resolution change error: {e}")
+            # Fallback to known good resolution if failed
+            self._fallback_resolution()
 
         self.debug_print(f"Resolution changed to {width}x{height}")
         return True
@@ -236,24 +264,30 @@ class Game:
     def update(self):
         """Update game state"""        
         if hasattr(self, 'menu') and self.menu.resolution_changed():
-            new_width, new_height = self.menu.get_current_resolution()
-            fullscreen = self.menu.get_setting('fullscreen')
-            
-            if (new_width, new_height) != (self.width, self.height) or fullscreen != self.is_fullscreen:
-                self.change_resolution(new_width, new_height)
-            
-            show_fps = self.menu.get_setting('show_fps')
-            if show_fps is not None:
-                self.show_fps = show_fps
-            
-            volume = self.menu.get_setting('volume')
-            if volume is not None and pygame.mixer.music.get_busy():
-                pygame.mixer.music.set_volume(volume / 100)
-            
-            self.menu.reset_resolution_changed()
+            try:
+                new_width, new_height = self.menu.get_current_resolution()
+                fullscreen = self.menu.get_setting('fullscreen')
+                
+                if (new_width, new_height) != (self.width, self.height) or fullscreen != self.is_fullscreen:
+                    self.change_resolution(new_width, new_height)
+                
+                show_fps = self.menu.get_setting('show_fps')
+                if show_fps is not None:
+                    self.show_fps = show_fps
+                
+                volume = self.menu.get_setting('volume')
+                if volume is not None and pygame.mixer.music.get_busy():
+                    pygame.mixer.music.set_volume(volume / 100)
+                
+                # Reset the flag after successfully applying settings
+                self.menu.reset_resolution_changed()
+            except Exception as e:
+                self.debug_print(f"Error during resolution change: {e}")
+                # Reset the flag even on error to prevent continuous attempts
+                self.menu.reset_resolution_changed()
 
         if not self.menu.is_active() and self.auto_rotate:
-            self.renderer.rotate_camera(azimuth=self.auto_rotation_speed)
+            self.renderer.rotate_camera(azimuth=self.auto_rotation_speed, elevation=0)
     
     def render(self):
         # Render 3D cube
@@ -327,3 +361,30 @@ class Game:
         self.renderer.close()
         pygame.quit()
         sys.exit()
+
+    def _fallback_resolution(self):
+        """Fallback to a safe resolution if change fails"""
+        try:
+            # Try a standard resolution that should work
+            fallback_width, fallback_height = 1024, 768
+            self.width = fallback_width
+            self.height = fallback_height
+            
+            # Reset to windowed mode for safety
+            self.is_fullscreen = False
+            
+            # Set the display mode with safe settings
+            self.screen = pygame.display.set_mode((fallback_width, fallback_height), DOUBLEBUF | OPENGL)
+            
+            # Update the renderer
+            if hasattr(self, 'renderer'):
+                self.renderer.width = fallback_width
+                self.renderer.height = fallback_height
+                self.renderer.setup_opengl()
+                self.renderer.create_display_list()
+                
+            print(f"Restored to fallback resolution: {fallback_width}x{fallback_height}")
+        except Exception as e:
+            print(f"Critical error in fallback resolution: {e}")
+            # Nothing more we can do at this point
+            self.running = False

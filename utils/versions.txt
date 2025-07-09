@@ -16,9 +16,22 @@
 
 
 --- TO DO LIST ---
-- movements
-- (more complex background)
-- timer
-- moves counter
+- FIX resolution change (menu resolution problems)
+- MOVEMENTS
+- Possible alternative solution for loading animation
+
+- Timer 
+- Moves counter 
+- Division moves/sec 
+ --> to show when the cube is solved
+
 - (Different gamemodes)
-- FIX resolution change (gives errors)
+    - Speedrun
+    - race against time
+    - limited moves
+
+- possible soundtrack expansion
+
+- undo/replay mossa --> forward (+-1 move)
+
+- color schemes (cube, sky, sand, camo, rain, others...)

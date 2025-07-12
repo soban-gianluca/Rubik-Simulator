@@ -294,20 +294,18 @@ class Menu:
         if not self.active:
             return
         
-        # Get the actual screen dimensions
-        actual_width, actual_height = screen.get_size()
-        
-        # Check if our stored dimensions match the actual screen
-        if abs(self.width - actual_width) > 5 or abs(self.height - actual_height) > 5:
-            print(f"Menu dimension mismatch: stored {self.width}x{self.height}, actual {actual_width}x{actual_height}")
-            self.width, self.height = actual_width, actual_height
-            # Force recreate menus with correct dimensions
-            self._create_menus()
-        
         # Draw semi-transparent background for the full screen
-        overlay = pygame.Surface((actual_width, actual_height), pygame.SRCALPHA)
+        overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
+        
+        # Only check and recreate if there's a significant mismatch
+        actual_width, actual_height = screen.get_size()
+        if abs(self.width - actual_width) > 10 or abs(self.height - actual_height) > 10:
+            print(f"Menu dimension mismatch: stored {self.width}x{self.height}, actual {actual_width}x{actual_height}")
+            self.width = actual_width
+            self.height = actual_height
+            self._create_menus()
         
         # Draw the current menu
         if self.current_menu:
@@ -315,67 +313,21 @@ class Menu:
     
     def update_dimensions(self, width, height):
         """Update menu dimensions when resolution changes"""
+        # Check if dimensions have actually changed
+        if abs(self.width - width) < 5 and abs(self.height - height) < 5:
+            print(f"Menu dimensions already match: {width}x{height}, skipping update")
+            return
+        
+        print(f"Updating menu dimensions to: {width}x{height}")
+        
+        # Update dimensions
         self.width = width
         self.height = height
         
-        # Get the actual screen size
-        try:
-            screen = pygame.display.get_surface()
-            if screen is None:
-                # No screen available yet, use provided dimensions
-                screen_width, screen_height = width, height
-            else:
-                screen_width, screen_height = screen.get_size()
-                
-            # In some cases during resolution changes, the reported screen size might be wrong
-            # If the screen dimensions don't match what we expect, use the provided dimensions
-            if abs(screen_width - width) > 10 or abs(screen_height - height) > 10:
-                print(f"Screen size mismatch: expected {width}x{height}, got {screen_width}x{screen_height}")
-                screen_width, screen_height = width, height
-                
-        except Exception as e:
-            print(f"Error getting screen size: {e}")
-            screen_width, screen_height = width, height
-            
-        try:
-            # Use safe resize dimensions that are guaranteed to be within screen bounds
-            safe_width = min(width, screen_width)
-            safe_height = min(height, screen_height)
-            
-            # Update menu dimensions or recreate if needed
-            if hasattr(self, "main_menu") and self.main_menu:
-                try:
-                    self.main_menu.resize(safe_width, safe_height)
-                except Exception as e:
-                    print(f"Main menu resize error: {e}")
-            
-            if hasattr(self, "settings_menu") and self.settings_menu:
-                try:
-                    self.settings_menu.resize(safe_width, safe_height)
-                except Exception as e:
-                    print(f"Settings menu resize error: {e}")
-                
-            if hasattr(self, "help_menu") and self.help_menu:
-                try:
-                    self.help_menu.resize(safe_width, safe_height)
-                except Exception as e:
-                    print(f"Help menu resize error: {e}")
-                    
-        except Exception as e:
-            print(f"Menu resize error: {e}. Recreating menus with new dimensions.")
-            # If resize fails, recreate all menus
-            self._create_menus()
-            
-        # Update the theme if needed
-        if hasattr(self, "theme"):
-            self.theme.background_color = (0, 0, 0, 180)
+        # Force recreate menus with new dimensions
+        self._create_menus()
         
-        # If current_menu is not set, reset to main menu
-        if not hasattr(self, "current_menu") or self.current_menu is None:
-            if hasattr(self, "main_menu"):
-                self.current_menu = self.main_menu
-                
-        # Reset the resolution changed flag to avoid continuous resizing
+        # Reset the resolution changed flag
         self.resolution_changed_flag = False
     
     def set_game_instance(self, game):
@@ -395,20 +347,21 @@ class Menu:
         if screen:
             actual_width, actual_height = screen.get_size()
             # Update our stored dimensions to match actual screen
-            self.width = actual_width
-            self.height = actual_height
-            print(f"Recreating menus with dimensions: {actual_width}x{actual_height}")
+            if abs(self.width - actual_width) > 5 or abs(self.height - actual_height) > 5:
+                print(f"Updating menu dimensions from {self.width}x{self.height} to {actual_width}x{actual_height}")
+                self.width = actual_width
+                self.height = actual_height
         else:
             print(f"No screen surface available, using stored dimensions: {self.width}x{self.height}")
         
         # Create custom theme
-        self.theme = themes.THEME_DARK.copy()
+        self.theme = pygame_menu.themes.THEME_DARK.copy()
         self.theme.title_font_size = 50
         self.theme.widget_font_size = 30
         self.theme.widget_margin = (0, 10)
         self.theme.background_color = (0, 0, 0, 180)
         
-        # Create main menu
+        # Create main menu with ACTUAL dimensions
         self.main_menu = pygame_menu.Menu(
             "Rubik's Cube Simulator",
             self.width,
@@ -422,7 +375,7 @@ class Menu:
         self.main_menu.add.button("Help", self._open_help)
         self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
         
-        # Create settings menu
+        # Create settings menu with ACTUAL dimensions
         self.settings_menu = pygame_menu.Menu(
             "Settings",
             self.width,
@@ -439,7 +392,7 @@ class Menu:
             onchange=self._on_resolution_change
         )
         
-        # Replace the display mode selector with a dropdown
+        # Display mode dropdown
         self.settings_menu.add.dropselect(
             title="Display Mode: ",
             items=[("Windowed", False), ("Fullscreen", True)],
@@ -467,7 +420,7 @@ class Menu:
         self.settings_menu.add.button("Apply Changes", self._apply_settings)
         self.settings_menu.add.button("Back", self._back_to_main)
         
-        # Help menu
+        # Help menu with ACTUAL dimensions
         self.help_menu = pygame_menu.Menu(
             "Controls",
             self.width,
@@ -496,9 +449,12 @@ class Menu:
         self.help_menu.add.button("Back", self._back_to_main)
         
         # Set current menu (preserve the current menu state)
-        if self.current_menu == self.settings_menu:
-            self.current_menu = self.settings_menu
-        elif self.current_menu == self.help_menu:
-            self.current_menu = self.help_menu
+        if hasattr(self, 'current_menu'):
+            if self.current_menu == self.settings_menu:
+                self.current_menu = self.settings_menu
+            elif self.current_menu == self.help_menu:
+                self.current_menu = self.help_menu
+            else:
+                self.current_menu = self.main_menu
         else:
             self.current_menu = self.main_menu

@@ -117,62 +117,75 @@ class Game:
     
     def change_resolution(self, width, height):
         """Change screen resolution"""
-        # Store current settings
-        current_volume = self.menu.volume if hasattr(self, 'menu') else 50
-        current_show_fps = self.menu.show_fps if hasattr(self, 'menu') else False
-        current_fullscreen = self.menu.fullscreen if hasattr(self, 'menu') else False
-
-        # Update our dimensions
-        self.width = width
-        self.height = height
-
+        self.debug_print(f"Changing resolution to {width}x{height}")
+        
         try:
-            # Set the new display mode
+            # Store current fullscreen state
+            fullscreen = self.menu.fullscreen if hasattr(self, 'menu') else self.is_fullscreen
+            
+            # First completely recreate the pygame display without OpenGL
+            pygame.display.quit()
+            pygame.display.init()
+            
+            # Set display flags
             display_flags = DOUBLEBUF | OPENGL
-            if current_fullscreen:
+            if fullscreen:
                 display_flags |= FULLSCREEN
                 self.is_fullscreen = True
             else:
                 self.is_fullscreen = False
             
-            # Update the screen with new dimensions
+            # Update internal dimensions
+            self.width = width
+            self.height = height
+            
+            # Set the new display mode with a fresh pygame instance
             self.screen = pygame.display.set_mode((width, height), display_flags)
+            pygame.display.set_caption("Rubik's Cube Simulator")
             
-            # Update the renderer with new dimensions
-            if hasattr(self, 'renderer'):
-                self.renderer.width = width
-                self.renderer.height = height
-                self.renderer.setup_opengl()  # This resets the OpenGL viewport and projection
-                self.renderer.create_display_list()
+            # Verify the actual dimensions
+            actual_width, actual_height = pygame.display.get_surface().get_size()
+            self.debug_print(f"Actual screen size: {actual_width}x{actual_height}")
             
-            # Make sure display is fully updated before updating menus
-            pygame.display.flip()
-            pygame.time.wait(200)  # Give more time for display to stabilize
-            
-            # Update the menu with new dimensions - catch any exceptions
+            # If actual size differs significantly from requested size, we have a problem
+            if abs(actual_width - width) > 5 or abs(actual_height - height) > 5:
+                self.debug_print(f"WARNING: Requested {width}x{height} but got {actual_width}x{actual_height}")
+                # Update our internal dimensions to match reality
+                self.width = actual_width
+                self.height = actual_height
+    
+            # Now recreate the OpenGL context with correct dimensions
+            self.renderer = Renderer(self.width, self.height)
+    
+            # Update menu with the actual dimensions
             if hasattr(self, 'menu'):
-                try:
-                    self.menu.update_dimensions(width, height)
-                    self.menu.volume = current_volume
-                    self.menu.show_fps = current_show_fps
-                    self.menu.fullscreen = current_fullscreen
-                    self.menu.reset_resolution_changed()  # Reset flag to avoid loop
-                except Exception as e:
-                    print(f"Menu resize error: {e}")
-                    
+                # Directly update menu dimensions
+                self.menu.width = self.width
+                self.menu.height = self.height
+                self.menu.debug_mode = self.debug_mode  # Pass debug mode to menu
+                # Force recreation of menus
+                self.menu._create_menus()
+    
+            # Try to restore icon if it was lost during display reset
+            try:
+                icon = pygame.image.load("utils/rubiksCube_Icon.ico")
+                pygame.display.set_icon(icon)
+            except Exception as e:
+                self.debug_print(f"Could not reload icon: {e}")
+    
             # Save settings
-            self.settings.settings["resolution"]["width"] = width
-            self.settings.settings["resolution"]["height"] = height
+            self.settings.settings["resolution"]["width"] = self.width
+            self.settings.settings["resolution"]["height"] = self.height
             self.settings.settings["fullscreen"] = self.is_fullscreen
             self.settings.save_settings()
-            
+    
+            self.debug_print(f"Resolution change complete: {self.width}x{self.height}")
+            return True
+    
         except Exception as e:
-            print(f"Resolution change error: {e}")
-            # Fallback to known good resolution if failed
+            print(f"Resolution change error: {e}")  # Always show errors
             self._fallback_resolution()
-
-        self.debug_print(f"Resolution changed to {width}x{height}")
-        return True
+            return False
     
     def handle_events(self):
         for event in pygame.event.get():
@@ -365,6 +378,12 @@ class Game:
     def _fallback_resolution(self):
         """Fallback to a safe resolution if change fails"""
         try:
+            print("Attempting fallback to safe resolution")
+            
+            # First completely recreate the pygame display
+            pygame.display.quit()
+            pygame.display.init()
+            
             # Try a standard resolution that should work
             fallback_width, fallback_height = 1024, 768
             self.width = fallback_width
@@ -376,14 +395,16 @@ class Game:
             # Set the display mode with safe settings
             self.screen = pygame.display.set_mode((fallback_width, fallback_height), DOUBLEBUF | OPENGL)
             
-            # Update the renderer
-            if hasattr(self, 'renderer'):
-                self.renderer.width = fallback_width
-                self.renderer.height = fallback_height
-                self.renderer.setup_opengl()
-                self.renderer.create_display_list()
-                
-            print(f"Restored to fallback resolution: {fallback_width}x{fallback_height}")
+            # Recreate the renderer from scratch
+            self.renderer = Renderer(fallback_width, fallback_height)
+            
+            # Update menu dimensions if it exists
+            if hasattr(self, 'menu'):
+                self.menu.width = fallback_width
+                self.menu.height = fallback_height
+                self.menu._create_menus()
+            
+            print(f"Successfully restored to fallback resolution: {fallback_width}x{fallback_height}")
         except Exception as e:
             print(f"Critical error in fallback resolution: {e}")
             # Nothing more we can do at this point

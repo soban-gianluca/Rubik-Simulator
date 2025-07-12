@@ -19,10 +19,6 @@ class Game:
         self.is_fullscreen = self.settings.settings["fullscreen"]
         self.show_fps = self.settings.settings["show_fps"]
         
-        # Display settings
-        self.is_fullscreen = False
-        self.show_fps = False
-        
         # Set initial display mode with OpenGL
         display_flags = DOUBLEBUF | OPENGL
         if self.is_fullscreen:
@@ -31,7 +27,6 @@ class Game:
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         
-        # Load resources
         # Initialize music
         self.playlist = [
             "utils/soundtrack/lounge_layers.mp3",
@@ -39,24 +34,18 @@ class Game:
             "utils/soundtrack/the_fifth_color.mp3"
         ]
         self.current_song = 1
-        self.fade_time = 2000
+        self.MUSIC_END_EVENT = pygame.USEREVENT + 1
         
-        # Initialize music
         try:
             pygame.mixer.init()
-            # Apply volume from settings immediately when initializing
             volume_level = self.settings.settings["volume"] / 100
             pygame.mixer.music.set_volume(volume_level)
             pygame.mixer.music.load(self.playlist[self.current_song])
             pygame.mixer.music.play()
-            
-            # Set up music end event
-            MUSIC_END_EVENT = pygame.USEREVENT + 1
-            pygame.mixer.music.set_endevent(MUSIC_END_EVENT)
-            self.MUSIC_END_EVENT = MUSIC_END_EVENT
+            pygame.mixer.music.set_endevent(self.MUSIC_END_EVENT)
         except Exception as e:
             print(f"Background music error: {e}")
-        
+    
         try:
             icon = pygame.image.load("utils/rubiksCube_Icon.ico")
             pygame.display.set_icon(icon)
@@ -68,7 +57,7 @@ class Game:
         
         # Initialize menu
         self.menu = Menu(self.width, self.height)
-        self.menu.set_game_instance(self)  # Set the game instance reference
+        self.menu.set_game_instance(self)
         self.menu.toggle()  # Start with menu active
         
         # Game state
@@ -147,10 +136,8 @@ class Game:
             actual_width, actual_height = pygame.display.get_surface().get_size()
             self.debug_print(f"Actual screen size: {actual_width}x{actual_height}")
             
-            # If actual size differs significantly from requested size, we have a problem
+            # If actual size differs significantly from requested size, update dimensions
             if abs(actual_width - width) > 5 or abs(actual_height - height) > 5:
-                self.debug_print(f"WARNING: Requested {width}x{height} but got {actual_width}x{actual_height}")
-                # Update our internal dimensions to match reality
                 self.width = actual_width
                 self.height = actual_height
     
@@ -159,19 +146,18 @@ class Game:
     
             # Update menu with the actual dimensions
             if hasattr(self, 'menu'):
-                # Directly update menu dimensions
                 self.menu.width = self.width
                 self.menu.height = self.height
-                self.menu.debug_mode = self.debug_mode  # Pass debug mode to menu
-                # Force recreation of menus
+                if hasattr(self, 'debug_mode'):
+                    self.menu.debug_mode = self.debug_mode
                 self.menu._create_menus()
     
-            # Try to restore icon if it was lost during display reset
+            # Try to restore icon
             try:
                 icon = pygame.image.load("utils/rubiksCube_Icon.ico")
                 pygame.display.set_icon(icon)
-            except Exception as e:
-                self.debug_print(f"Could not reload icon: {e}")
+            except Exception:
+                pass
     
             # Save settings
             self.settings.settings["resolution"]["width"] = self.width
@@ -183,7 +169,7 @@ class Game:
             return True
     
         except Exception as e:
-            print(f"Resolution change error: {e}")  # Always show errors
+            print(f"Resolution change error: {e}")
             self._fallback_resolution()
             return False
     

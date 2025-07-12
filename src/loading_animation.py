@@ -36,21 +36,12 @@ class LoadingAnimation:
         # Import here to avoid circular imports
         from game import Game
         
-        # Start preloading game assets
-        print("Preloading game resources...")
-        
-        # Simulate resource loading (replace with actual loading)
-        # Example: Load textures, sounds, initialize game objects
+        # Simulate resource loading
         for i in range(10):
-            # Update loading progress
             self.loading_progress = (i + 1) / 10
-            time.sleep(0.5)  # Simulate loading time
-            
-        # Import other needed modules
-        print("Initializing game components...")
-        time.sleep(0.5)  # Additional initialization time
+            time.sleep(0.5)
         
-        print("Resource loading complete")
+        time.sleep(0.5)
         self.loading_complete = True
         
     def update(self):

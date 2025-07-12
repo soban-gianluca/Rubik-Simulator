@@ -302,7 +302,9 @@ class Menu:
         # Only check and recreate if there's a significant mismatch
         actual_width, actual_height = screen.get_size()
         if abs(self.width - actual_width) > 10 or abs(self.height - actual_height) > 10:
-            print(f"Menu dimension mismatch: stored {self.width}x{self.height}, actual {actual_width}x{actual_height}")
+            # Only print in debug mode
+            if hasattr(self, 'debug_mode') and self.debug_mode:
+                print(f"Menu dimension mismatch: stored {self.width}x{self.height}, actual {actual_width}x{actual_height}")
             self.width = actual_width
             self.height = actual_height
             self._create_menus()
@@ -310,15 +312,17 @@ class Menu:
         # Draw the current menu
         if self.current_menu:
             self.current_menu.draw(screen)
-    
+
     def update_dimensions(self, width, height):
         """Update menu dimensions when resolution changes"""
         # Check if dimensions have actually changed
         if abs(self.width - width) < 5 and abs(self.height - height) < 5:
-            print(f"Menu dimensions already match: {width}x{height}, skipping update")
+            if hasattr(self, 'debug_mode') and self.debug_mode:
+                print(f"Menu dimensions already match: {width}x{height}, skipping update")
             return
         
-        print(f"Updating menu dimensions to: {width}x{height}")
+        if hasattr(self, 'debug_mode') and self.debug_mode:
+            print(f"Updating menu dimensions to: {width}x{height}")
         
         # Update dimensions
         self.width = width
@@ -348,11 +352,15 @@ class Menu:
             actual_width, actual_height = screen.get_size()
             # Update our stored dimensions to match actual screen
             if abs(self.width - actual_width) > 5 or abs(self.height - actual_height) > 5:
-                print(f"Updating menu dimensions from {self.width}x{self.height} to {actual_width}x{actual_height}")
+                if hasattr(self, 'debug_mode') and self.debug_mode:
+                    print(f"Updating menu dimensions from {self.width}x{self.height} to {actual_width}x{actual_height}")
                 self.width = actual_width
                 self.height = actual_height
-        else:
+        elif hasattr(self, 'debug_mode') and self.debug_mode:
             print(f"No screen surface available, using stored dimensions: {self.width}x{self.height}")
+        
+        if hasattr(self, 'debug_mode') and self.debug_mode:
+            print(f"Creating menus with dimensions: {self.width}x{self.height}")
         
         # Create custom theme
         self.theme = pygame_menu.themes.THEME_DARK.copy()

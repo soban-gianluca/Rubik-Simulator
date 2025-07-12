@@ -13,10 +13,10 @@
         Added soundtrack Music
         Added FPS counter with WORKING button setting
         Setting working with JSON
-
+        Fixed menu resolution change
 
 --- TO DO LIST ---
-- FIX resolution change (menu resolution problems)
+- Reread, simplify/remove unecessary lines
 - MOVEMENTS
 - Possible alternative solution for loading animation
 

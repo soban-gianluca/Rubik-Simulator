@@ -16,6 +16,7 @@
         Fixed menu resolution change
 
 --- TO DO LIST ---
+- FIX MENU WHEN GOING FULLSCREEN
 - Reread, simplify/remove unecessary lines
 - MOVEMENTS
 - Possible alternative solution for loading animation

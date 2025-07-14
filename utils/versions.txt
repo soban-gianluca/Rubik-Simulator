@@ -16,6 +16,8 @@
         Fixed menu resolution change
 
 --- TO DO LIST ---
+- FPS counter (Move it on the screen)
+- FIX colors
 - Reread, simplify/remove unecessary lines
 - MOVEMENTS
 - Possible alternative solution for loading animation

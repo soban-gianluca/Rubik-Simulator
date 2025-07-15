@@ -32,6 +32,10 @@ class Renderer:
             'black': (0.1, 0.1, 0.1)      # Internal faces
         }
         
+        # Import and initialize the Rubik's cube logic
+        from rubiks_cube import RubiksCube
+        self.rubiks_cube = RubiksCube()
+        
         # Now initialize cubes after colors are defined
         self.initialize_cubes()
         
@@ -63,37 +67,28 @@ class Renderer:
                         z * self.cube_spacing * scale_factor
                     ]
                     
-                    # Create color arrays for each face of this cube
-                    # Order: top, bottom, right, left, front, back
-                    colors = [
-                        self.cube_colors['black'],  # Top (default black)
-                        self.cube_colors['black'],  # Bottom (default black)
-                        self.cube_colors['black'],  # Right (default black)
-                        self.cube_colors['black'],  # Left (default black)
-                        self.cube_colors['black'],  # Front (default black)
-                        self.cube_colors['black'],  # Back (default black)
-                    ]
+                    # Get colors from the Rubik's cube state
+                    colors = []
+                    for face_index in range(6):
+                        color = self.rubiks_cube.get_cube_color(x, y, z, face_index)
+                        colors.append(color)
                     
-                    # ONLY color faces that are on the exterior of the entire cube
-                    # A face is on the exterior if its coordinate in that dimension is 1 or -1
-                    if y == 1:  # Top face is exterior
-                        colors[0] = self.cube_colors['white']
-                    if y == -1:  # Bottom face is exterior
-                        colors[1] = self.cube_colors['yellow']
-                    if x == 1:  # Right face is exterior
-                        colors[2] = self.cube_colors['red']
-                    if x == -1:  # Left face is exterior
-                        colors[3] = self.cube_colors['orange']
-                    if z == 1:  # Front face is exterior
-                        colors[4] = self.cube_colors['blue']
-                    if z == -1:  # Back face is exterior
-                        colors[5] = self.cube_colors['green']
-                
                     self.cubes.append({
                         'position': position,
-                        'colors': colors
+                        'colors': colors,
+                        'grid_pos': (x, y, z)  # Store grid position for updates
                     })
-        
+    
+    def update_cube_colors(self):
+        """Update cube colors based on current Rubik's cube state"""
+        for cube in self.cubes:
+            x, y, z = cube['grid_pos']
+            colors = []
+            for face_index in range(6):
+                color = self.rubiks_cube.get_cube_color(x, y, z, face_index)
+                colors.append(color)
+            cube['colors'] = colors
+    
     def load_obj(self, filename):
         """Load vertices, faces, and normals from OBJ file"""
         vertices = []

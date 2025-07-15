@@ -1,5 +1,6 @@
 import pygame
 import sys
+import time
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -73,6 +74,11 @@ class Game:
         self.debug_mode = False
         self.auto_rotation_speed = 0.2  # Reduced from 1.0 to 0.3 for slower rotation
         
+        # Movement system variables
+        self.move_counter = 0
+        self.start_time = None
+        self.cube_solved = False
+        
         print("Controls:")
         print("  Space: Toggle auto-rotation")
         print("  Arrow keys/WASD: Manual rotation")
@@ -80,6 +86,17 @@ class Game:
         print("  D: Toggle debug mode")
         print("  ESC: Toggle menu")
         print("  R: Reset rotation")
+        
+        print("Movement Controls:")
+        print("  1: R move    2: R' move")
+        print("  3: L move    4: L' move") 
+        print("  5: U move    6: U' move")
+        print("  7: D move    8: D' move")
+        print("  9: F move    0: F' move")
+        print("  Q: B move    W: B' move")
+        print("  Z: Undo last move")
+        print("  X: Scramble cube")
+        print("  C: Check if solved")
 
     def debug_print(self, message):
         if self.debug_mode:
@@ -209,7 +226,40 @@ class Game:
                     self.debug_print("Rotation reset")
                 elif event.key == pygame.K_F11:
                     self.toggle_fullscreen()
-            
+                
+                # Add movement controls
+                elif not self.menu.is_active():
+                    if event.key == pygame.K_1:
+                        self.execute_cube_move('R')
+                    elif event.key == pygame.K_2:
+                        self.execute_cube_move("R'")
+                    elif event.key == pygame.K_3:
+                        self.execute_cube_move('L')
+                    elif event.key == pygame.K_4:
+                        self.execute_cube_move("L'")
+                    elif event.key == pygame.K_5:
+                        self.execute_cube_move('U')
+                    elif event.key == pygame.K_6:
+                        self.execute_cube_move("U'")
+                    elif event.key == pygame.K_7:
+                        self.execute_cube_move('D')
+                    elif event.key == pygame.K_8:
+                        self.execute_cube_move("D'")
+                    elif event.key == pygame.K_9:
+                        self.execute_cube_move('F')
+                    elif event.key == pygame.K_0:
+                        self.execute_cube_move("F'")
+                    elif event.key == pygame.K_q:
+                        self.execute_cube_move('B')
+                    elif event.key == pygame.K_w:
+                        self.execute_cube_move("B'")
+                    elif event.key == pygame.K_z:
+                        self.undo_move()
+                    elif event.key == pygame.K_x:
+                        self.scramble_cube()
+                    elif event.key == pygame.K_c:
+                        self.check_solved()
+        
             elif self.menu.handle_event(event):
                 continue
                 
@@ -377,6 +427,104 @@ class Game:
             # Fallback: if there's an error, just print to console
             if self.debug_mode:
                 print(f"FPS counter rendering error: {e}")
+
+    def execute_cube_move(self, move_notation):
+        """Execute a Rubik's cube move"""
+        if self.start_time is None:
+            self.start_time = time.time()
+        
+        self.renderer.rubiks_cube.execute_move(move_notation)
+        self.renderer.update_cube_colors()
+        self.move_counter += 1
+        
+        self.debug_print(f"Move {self.move_counter}: {move_notation}")
+        
+        # Check if solved after move
+        if self.renderer.rubiks_cube.is_solved():
+            self.cube_solved = True
+            solve_time = time.time() - self.start_time
+            print(f"🎉 CUBE SOLVED! 🎉")
+            print(f"Moves: {self.move_counter}")
+            print(f"Time: {solve_time:.2f} seconds")
+            print(f"TPS: {self.move_counter/solve_time:.2f} moves/second")
+    
+    def undo_move(self):
+        """Undo the last move"""
+        if self.renderer.rubiks_cube.undo_last_move():
+            self.renderer.update_cube_colors()
+            self.move_counter = max(0, self.move_counter - 1)
+            self.debug_print(f"Move undone. Move count: {self.move_counter}")
+        else:
+            self.debug_print("No moves to undo")
+    
+    def scramble_cube(self):
+        """Scramble the cube"""
+        self.renderer.rubiks_cube.scramble(25)
+        self.renderer.update_cube_colors()
+        self.move_counter = 0
+        self.start_time = None
+        self.cube_solved = False
+        self.debug_print("Cube scrambled!")
+    
+    def check_solved(self):
+        """Check if the cube is solved"""
+        if self.renderer.rubiks_cube.is_solved():
+            print("✅ Cube is SOLVED!")
+        else:
+            print("❌ Cube is not solved yet")
+    
+    def _render_game_info(self):
+        """Render game information (FPS, moves, time)"""
+        try:
+            # Create font if not exists
+            if not hasattr(self, '_info_font'):
+                self._info_font = pygame.font.SysFont('Arial', 20, bold=True)
+            
+            info_lines = []
+            
+            # Add FPS if enabled
+            if self.show_fps:
+                fps = self.clock.get_fps()
+                info_lines.append(f"FPS: {fps:.1f}")
+            
+            # Add move counter and timer
+            if self.move_counter > 0:
+                info_lines.append(f"Moves: {self.move_counter}")
+                
+                if self.start_time:
+                    elapsed = time.time() - self.start_time
+                    info_lines.append(f"Time: {elapsed:.1f}s")
+                    
+                    if elapsed > 0:
+                        tps = self.move_counter / elapsed
+                        info_lines.append(f"TPS: {tps:.2f}")
+            
+            # Render status if solved
+            if self.cube_solved:
+                info_lines.append("🎉 SOLVED! 🎉")
+            
+            # Render each line
+            y_offset = 10
+            for line in info_lines:
+                text_surface = self._info_font.render(line, True, (255, 255, 255))
+                text_width, text_height = text_surface.get_size()
+                
+                # Background
+                bg_surface = pygame.Surface((text_width + 20, text_height + 6), pygame.SRCALPHA)
+                bg_surface.fill((0, 0, 0, 128))
+                bg_surface.blit(text_surface, (10, 3))
+                
+                # Render to screen
+                texture_data = pygame.image.tostring(bg_surface, 'RGBA', True)
+                glRasterPos2f(10, y_offset + text_height + 6)
+                glPixelZoom(1, 1)
+                glDrawPixels(text_width + 20, text_height + 6, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+                
+                y_offset += text_height + 12
+                
+        except Exception as e:
+            if self.debug_mode:
+                print(f"Game info rendering error: {e}")
 
     def run(self):
         while self.running:

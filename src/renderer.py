@@ -62,9 +62,9 @@ class Renderer:
         # Initialize OpenGL settings
         self.setup_opengl()
         
-        # Load skybox texture and create spherical skybox
+        # Load skybox texture and create cylindrical skybox
         self.load_skybox_texture("utils/skybox.jpg")
-        self.create_spherical_skybox_display_list()
+        self.create_cylindrical_skybox_display_list()  # Changed from spherical to cylindrical
         
         # Create optimized display list for single cube
         self.create_display_list()
@@ -88,9 +88,9 @@ class Renderer:
             self.skybox_texture = glGenTextures(1)
             glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
             
-            # Set texture parameters for seamless panoramic mapping
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            # CRITICAL: Set texture parameters for seamless panoramic wrapping
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)      # Horizontal repeat for 360°
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)  # Vertical clamp to prevent artifacts
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
             
@@ -134,11 +134,11 @@ class Renderer:
         
         print("Using fallback gradient skybox texture")
 
-    def create_spherical_skybox_display_list(self):
-        """Create a spherical skybox for panoramic image mapping"""
+    def create_cylindrical_skybox_display_list(self):
+        """Create a cylindrical skybox for seamless panoramic image mapping"""
         if not self.skybox_texture:
             return
-            
+        
         self.skybox_display_list = glGenLists(1)
         glNewList(self.skybox_display_list, GL_COMPILE)
         
@@ -147,40 +147,40 @@ class Renderer:
         glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
         glColor3f(1.0, 1.0, 1.0)
         
-        # Create a sphere for the skybox
+        # Create a cylinder for the skybox
         radius = self.skybox_size
-        slices = 32  # Number of vertical slices
-        stacks = 16  # Number of horizontal stacks
+        height = self.skybox_size * 2  # Make cylinder tall enough
+        slices = 64  # Number of vertical slices around the cylinder
         
-        for i in range(stacks):
-            lat0 = math.pi * (-0.5 + float(i) / stacks)
-            z0 = math.sin(lat0) * radius
-            zr0 = math.cos(lat0) * radius
+        # FIXED: Adjust texture coordinate scaling to reduce horizontal stretching
+        # Instead of mapping full texture across 360°, use a smaller portion
+        texture_scale = 2.0  # Increase this value to reduce stretching (try 1.5, 2.0, 2.5)
+        
+        # CRITICAL FIX: Draw the curved side with proper texture wrapping
+        glBegin(GL_QUAD_STRIP)
+        for i in range(slices + 1):  # +1 to complete the circle
+            angle = 2 * math.pi * i / slices
+            x = radius * math.cos(angle)
+            z = radius * math.sin(angle)
             
-            lat1 = math.pi * (-0.5 + float(i + 1) / stacks)
-            z1 = math.sin(lat1) * radius
-            zr1 = math.cos(lat1) * radius
+            # FIXED: Scale texture coordinates to reduce horizontal stretching
+            if i == slices:
+                u = texture_scale  # Explicitly set for the seam
+            else:
+                u = (float(i) / slices) * texture_scale
+        
+            # Bottom vertex
+            glTexCoord2f(u, 0.0)
+            glVertex3f(x, -height/2, z)
             
-            glBegin(GL_QUAD_STRIP)
-            for j in range(slices + 1):
-                lng = 2 * math.pi * float(j) / slices
-                x = math.cos(lng)
-                y = math.sin(lng)
-                
-                # Texture coordinates for panoramic mapping
-                u = float(j) / slices
-                v0 = float(i) / stacks
-                v1 = float(i + 1) / stacks
-                
-                # First vertex
-                glTexCoord2f(u, v0)
-                glVertex3f(x * zr0, z0, y * zr0)
-                
-                # Second vertex
-                glTexCoord2f(u, v1)
-                glVertex3f(x * zr1, z1, y * zr1)
-            
-            glEnd()
+            # Top vertex  
+            glTexCoord2f(u, 1.0)
+            glVertex3f(x, height/2, z)
+        
+        glEnd()
+        
+        # Optional: Remove caps entirely to avoid texture stretching issues
+        # If you want to keep caps, use a solid color instead of texture
         
         glDisable(GL_TEXTURE_2D)
         glEndList()

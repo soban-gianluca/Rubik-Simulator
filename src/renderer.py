@@ -7,7 +7,7 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 
 class Renderer:
-    def __init__(self, width=1024, height=768, cube_path="utils/single_cube.obj"):
+    def __init__(self, width=1024, height=768, cube_path="utils/cube.obj"):
         # Initialize properties
         self.width = width
         self.height = height
@@ -33,6 +33,11 @@ class Renderer:
         self.animation_clockwise = True
         self.animation_cubes = []  # Cubes that are part of the rotating face
         
+        # Skybox properties
+        self.skybox_texture = None
+        self.skybox_display_list = None
+        self.skybox_size = 20.0  # Large size to encompass the scene
+        
         # Rubik's cube face colors - define colors before initializing cubes
         self.cube_colors = {
             'white': (1.0, 1.0, 1.0),     # Top
@@ -57,13 +62,157 @@ class Renderer:
         # Initialize OpenGL settings
         self.setup_opengl()
         
+        # Load skybox texture and create spherical skybox
+        self.load_skybox_texture("utils/skybox.jpg")
+        self.create_spherical_skybox_display_list()
+        
         # Create optimized display list for single cube
         self.create_display_list()
         
         # Store camera rotation for manual control
         self.rotation_x = 0
         self.rotation_y = 0
-    
+
+    def load_skybox_texture(self, image_path):
+        """Load skybox texture from image file"""
+        try:
+            # Load image using pygame
+            skybox_image = pygame.image.load(image_path)
+            skybox_image = pygame.transform.flip(skybox_image, False, True)  # Flip vertically for OpenGL
+            
+            # Get image data
+            image_data = pygame.image.tostring(skybox_image, 'RGB')
+            image_width, image_height = skybox_image.get_size()
+            
+            # Generate and bind texture
+            self.skybox_texture = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
+            
+            # Set texture parameters for seamless panoramic mapping
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            
+            # Upload texture data
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image_width, image_height, 0, GL_RGB, GL_UNSIGNED_BYTE, image_data)
+            
+            print(f"Skybox texture loaded successfully: {image_width}x{image_height}")
+            
+        except Exception as e:
+            print(f"Failed to load skybox texture: {e}")
+            # Create a simple gradient texture as fallback
+            self.create_fallback_skybox_texture()
+
+    def create_fallback_skybox_texture(self):
+        """Create a simple gradient texture if image loading fails"""
+        # Create a simple 64x64 gradient texture
+        size = 64
+        texture_data = []
+        
+        for y in range(size):
+            for x in range(size):
+                # Create a blue to white gradient from bottom to top
+                intensity = y / size
+                r = int(135 + (255 - 135) * intensity)  # Sky blue to white
+                g = int(206 + (255 - 206) * intensity)
+                b = int(235 + (255 - 235) * intensity)
+                texture_data.extend([r, g, b])
+        
+        # Generate and bind texture
+        self.skybox_texture = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
+        
+        # Set texture parameters
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        
+        # Upload texture data
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, size, size, 0, GL_RGB, GL_UNSIGNED_BYTE, bytes(texture_data))
+        
+        print("Using fallback gradient skybox texture")
+
+    def create_spherical_skybox_display_list(self):
+        """Create a spherical skybox for panoramic image mapping"""
+        if not self.skybox_texture:
+            return
+            
+        self.skybox_display_list = glGenLists(1)
+        glNewList(self.skybox_display_list, GL_COMPILE)
+        
+        # Enable texturing
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
+        glColor3f(1.0, 1.0, 1.0)
+        
+        # Create a sphere for the skybox
+        radius = self.skybox_size
+        slices = 32  # Number of vertical slices
+        stacks = 16  # Number of horizontal stacks
+        
+        for i in range(stacks):
+            lat0 = math.pi * (-0.5 + float(i) / stacks)
+            z0 = math.sin(lat0) * radius
+            zr0 = math.cos(lat0) * radius
+            
+            lat1 = math.pi * (-0.5 + float(i + 1) / stacks)
+            z1 = math.sin(lat1) * radius
+            zr1 = math.cos(lat1) * radius
+            
+            glBegin(GL_QUAD_STRIP)
+            for j in range(slices + 1):
+                lng = 2 * math.pi * float(j) / slices
+                x = math.cos(lng)
+                y = math.sin(lng)
+                
+                # Texture coordinates for panoramic mapping
+                u = float(j) / slices
+                v0 = float(i) / stacks
+                v1 = float(i + 1) / stacks
+                
+                # First vertex
+                glTexCoord2f(u, v0)
+                glVertex3f(x * zr0, z0, y * zr0)
+                
+                # Second vertex
+                glTexCoord2f(u, v1)
+                glVertex3f(x * zr1, z1, y * zr1)
+            
+            glEnd()
+        
+        glDisable(GL_TEXTURE_2D)
+        glEndList()
+
+    def render_skybox(self):
+        """Render the spherical skybox"""
+        if not self.skybox_display_list:
+            return
+        
+        # Save current matrix
+        glPushMatrix()
+        
+        # Disable depth testing and lighting for skybox
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_LIGHTING)
+        
+        # Move skybox with camera (no translation, only rotation)
+        # The skybox should always be centered on the camera
+        glLoadIdentity()
+        glRotatef(self.rotation_x, 1, 0, 0)
+        glRotatef(self.rotation_y, 0, 1, 0)
+        
+        # Render the skybox
+        glCallList(self.skybox_display_list)
+        
+        # Re-enable depth testing and lighting
+        glEnable(GL_DEPTH_TEST)
+        glEnable(GL_LIGHTING)
+        
+        # Restore matrix
+        glPopMatrix()
+
     def start_face_animation(self, face_name, clockwise=True):
         """Start animation for a face rotation"""
         if self.is_animating:
@@ -229,9 +378,6 @@ class Renderer:
         glEnable(GL_COLOR_MATERIAL)
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
 
-        # Position the camera at a closer distance to see the entire 3x3x3 cube
-        glTranslatef(0.0, 0.0, -4.0)
-
     def create_display_list(self):
         """Create optimized display lists for the Rubik's cube"""
         self.create_single_cube_display_list()
@@ -389,34 +535,6 @@ class Renderer:
         # Keep single_cube_display_list for backward compatibility
         self.single_cube_display_list = self.face_display_lists[0]
 
-    def draw_faces(self, faces, color_index):
-        """Draw a group of faces with a specific color index"""
-        # Define colors for each face index
-        face_colors = [
-            self.cube_colors['white'],   # 0 - Top
-            self.cube_colors['yellow'],  # 1 - Bottom
-            self.cube_colors['red'],     # 2 - Right
-            self.cube_colors['orange'],  # 3 - Left
-            self.cube_colors['blue'],    # 4 - Front
-            self.cube_colors['green'],   # 5 - Back
-        ]
-        
-        # Set color for this face group
-        glColor3fv(face_colors[color_index])
-        
-        for face in faces:
-            if len(face) == 3:  # Triangle
-                glBegin(GL_TRIANGLES)
-            elif len(face) == 4:  # Quad
-                glBegin(GL_QUADS)
-            else:  # Polygon
-                glBegin(GL_POLYGON)
-            
-            for vertex_index in face:
-                glVertex3fv(self.obj_vertices[vertex_index])
-            
-            glEnd()
-        
     def rotate_camera(self, azimuth=0, elevation=0):
         """Rotate camera around the cube
         
@@ -497,7 +615,13 @@ class Renderer:
         
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
+        # Render skybox first (before any transformations)
+        self.render_skybox()
+        
         glPushMatrix()
+        
+        # Position the camera
+        glTranslatef(0.0, 0.0, -4.0)
         
         # Apply rotations
         glRotatef(self.rotation_x, 1, 0, 0)
@@ -518,3 +642,12 @@ class Renderer:
                 glDeleteLists(display_list, 1)
             self.face_display_lists = None
             self.single_cube_display_list = None
+        
+        # Clean up skybox resources
+        if self.skybox_texture:
+            glDeleteTextures([self.skybox_texture])
+            self.skybox_texture = None
+        
+        if self.skybox_display_list:
+            glDeleteLists(self.skybox_display_list, 1)
+            self.skybox_display_list = None

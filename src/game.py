@@ -337,6 +337,24 @@ class Game:
 
         if not self.menu.is_active() and self.auto_rotate:
             self.renderer.rotate_camera(azimuth=self.auto_rotation_speed, elevation=0)
+        
+        # Update cube colors after animation completes
+        if hasattr(self.renderer, 'is_animating') and not self.renderer.is_animating:
+            # Only update colors when animation just finished
+            if hasattr(self.renderer, '_last_animation_state') and self.renderer._last_animation_state:
+                self.renderer.update_cube_colors()
+                self.renderer._last_animation_state = False
+        
+        # Track animation state
+        if hasattr(self.renderer, 'is_animating'):
+            if not hasattr(self.renderer, '_last_animation_state'):
+                self.renderer._last_animation_state = False
+            
+            if self.renderer.is_animating != self.renderer._last_animation_state:
+                self.renderer._last_animation_state = self.renderer.is_animating
+                if not self.renderer.is_animating:
+                    # Animation just finished, update colors
+                    self.renderer.update_cube_colors()
     
     def render(self):
         # Render 3D cube
@@ -429,24 +447,33 @@ class Game:
                 print(f"FPS counter rendering error: {e}")
 
     def execute_cube_move(self, move_notation):
-        """Execute a Rubik's cube move"""
+        """Execute a Rubik's cube move with animation"""
+        # Don't allow new moves while animating
+        if self.renderer.is_animating:
+            return
+        
         if self.start_time is None:
             self.start_time = time.time()
         
-        self.renderer.rubiks_cube.execute_move(move_notation)
-        self.renderer.update_cube_colors()
-        self.move_counter += 1
+        # Start animation first
+        face_name = move_notation.replace("'", "")  # Remove prime notation
+        clockwise = "'" not in move_notation
         
-        self.debug_print(f"Move {self.move_counter}: {move_notation}")
-        
-        # Check if solved after move
-        if self.renderer.rubiks_cube.is_solved():
-            self.cube_solved = True
-            solve_time = time.time() - self.start_time
-            print(f"🎉 CUBE SOLVED! 🎉")
-            print(f"Moves: {self.move_counter}")
-            print(f"Time: {solve_time:.2f} seconds")
-            print(f"TPS: {self.move_counter/solve_time:.2f} moves/second")
+        if self.renderer.start_face_animation(face_name, clockwise):
+            # Execute the logical move immediately
+            self.renderer.rubiks_cube.execute_move(move_notation)
+            self.move_counter += 1
+            
+            self.debug_print(f"Move {self.move_counter}: {move_notation}")
+            
+            # Check if solved after move
+            if self.renderer.rubiks_cube.is_solved():
+                self.cube_solved = True
+                solve_time = time.time() - self.start_time
+                print(f"🎉 CUBE SOLVED! 🎉")
+                print(f"Moves: {self.move_counter}")
+                print(f"Time: {solve_time:.2f} seconds")
+                print(f"TPS: {self.move_counter/solve_time:.2f} moves/second")
     
     def undo_move(self):
         """Undo the last move"""

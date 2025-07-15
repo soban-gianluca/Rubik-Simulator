@@ -1,6 +1,8 @@
 import pygame
 from pygame.locals import *
 import numpy as np
+import math
+import time
 from OpenGL.GL import *
 from OpenGL.GLU import *
 
@@ -20,6 +22,16 @@ class Renderer:
         self.cube_size = 1.2  # Larger size for better appearance
         self.cube_spacing = 0.52  # Negative spacing to make cubes overlap slightly
         self.cubes = []
+        
+        # Animation system
+        self.is_animating = False
+        self.animation_start_time = 0
+        self.animation_duration = 0.3  # 300ms animation
+        self.animating_face = None
+        self.animation_axis = None
+        self.animation_angle_total = 0
+        self.animation_clockwise = True
+        self.animation_cubes = []  # Cubes that are part of the rotating face
         
         # Rubik's cube face colors - define colors before initializing cubes
         self.cube_colors = {
@@ -51,6 +63,66 @@ class Renderer:
         # Store camera rotation for manual control
         self.rotation_x = 0
         self.rotation_y = 0
+    
+    def start_face_animation(self, face_name, clockwise=True):
+        """Start animation for a face rotation"""
+        if self.is_animating:
+            return False  # Already animating
+        
+        # Define which cubes belong to each face and rotation axis
+        face_definitions = {
+            'R': {'axis': (1, 0, 0), 'cubes': [(1, y, z) for y in [-1, 0, 1] for z in [-1, 0, 1]]},
+            'L': {'axis': (-1, 0, 0), 'cubes': [(-1, y, z) for y in [-1, 0, 1] for z in [-1, 0, 1]]},
+            'U': {'axis': (0, 1, 0), 'cubes': [(x, 1, z) for x in [-1, 0, 1] for z in [-1, 0, 1]]},
+            'D': {'axis': (0, -1, 0), 'cubes': [(x, -1, z) for x in [-1, 0, 1] for z in [-1, 0, 1]]},
+            'F': {'axis': (0, 0, 1), 'cubes': [(x, y, 1) for x in [-1, 0, 1] for y in [-1, 0, 1]]},
+            'B': {'axis': (0, 0, -1), 'cubes': [(x, y, -1) for x in [-1, 0, 1] for y in [-1, 0, 1]]}
+        }
+        
+        if face_name not in face_definitions:
+            return False
+        
+        # Set up animation
+        self.is_animating = True
+        self.animation_start_time = time.time()
+        self.animating_face = face_name
+        self.animation_axis = face_definitions[face_name]['axis']
+        self.animation_angle_total = -90 if clockwise else 90
+        self.animation_clockwise = clockwise
+        
+        # Find cubes that are part of this face
+        face_cube_positions = face_definitions[face_name]['cubes']
+        self.animation_cubes = []
+        
+        for cube in self.cubes:
+            if cube['grid_pos'] in face_cube_positions:
+                self.animation_cubes.append(cube)
+        
+        return True
+    
+    def update_animation(self):
+        """Update animation state and return current rotation angle"""
+        if not self.is_animating:
+            return 0
+        
+        current_time = time.time()
+        elapsed = current_time - self.animation_start_time
+        progress = min(elapsed / self.animation_duration, 1.0)
+        
+        # Use easing function for smooth animation
+        # Ease-out cubic: 1 - (1-t)^3
+        eased_progress = 1 - (1 - progress) ** 3
+        
+        current_angle = self.animation_angle_total * eased_progress
+        
+        # Check if animation is complete
+        if progress >= 1.0:
+            self.is_animating = False
+            self.animating_face = None
+            self.animation_cubes = []
+            return self.animation_angle_total  # Return final angle
+        
+        return current_angle
     
     def initialize_cubes(self):
         """Initialize the position and colors for each small cube in the 3x3x3 grid"""
@@ -359,19 +431,45 @@ class Renderer:
         self.rotation_x = max(-90, min(90, self.rotation_x))
         
     def render_cube(self):
-        """Render the 3x3x3 Rubik's cube using individual cubes"""
+        """Render the 3x3x3 Rubik's cube using individual cubes with animation"""
         if not hasattr(self, 'face_display_lists'):
             return
-            
+        
+        # Get current animation angle
+        animation_angle = self.update_animation()
+        
         # Render each small cube
         for cube in self.cubes:
             position = cube['position']
             colors = cube['colors']
+            is_animating_cube = cube in self.animation_cubes
             
             glPushMatrix()
             
             # Position this cube
             glTranslatef(position[0], position[1], position[2])
+            
+            # Apply animation rotation if this cube is part of the animating face
+            if is_animating_cube and self.is_animating:
+                # Translate to origin for rotation
+                glTranslatef(-position[0], -position[1], -position[2])
+                
+                # Apply rotation around the face axis
+                if self.animation_axis == (1, 0, 0):  # X-axis
+                    glRotatef(animation_angle, 1, 0, 0)
+                elif self.animation_axis == (-1, 0, 0):  # -X-axis
+                    glRotatef(-animation_angle, 1, 0, 0)
+                elif self.animation_axis == (0, 1, 0):  # Y-axis
+                    glRotatef(animation_angle, 0, 1, 0)
+                elif self.animation_axis == (0, -1, 0):  # -Y-axis
+                    glRotatef(-animation_angle, 0, 1, 0)
+                elif self.animation_axis == (0, 0, 1):  # Z-axis
+                    glRotatef(animation_angle, 0, 0, 1)
+                elif self.animation_axis == (0, 0, -1):  # -Z-axis
+                    glRotatef(-animation_angle, 0, 0, 1)
+                
+                # Translate back to position
+                glTranslatef(position[0], position[1], position[2])
             
             # Scale the cube
             glScalef(0.8, 0.8, 0.8)

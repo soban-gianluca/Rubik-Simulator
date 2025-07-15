@@ -42,7 +42,7 @@ class Renderer:
         self.setup_opengl()
         
         # Create optimized display list for single cube
-        self.create_single_cube_display_list()
+        self.create_display_list()
         
         # Store camera rotation for manual control
         self.rotation_x = 0
@@ -52,12 +52,11 @@ class Renderer:
         """Initialize the position and colors for each small cube in the 3x3x3 grid"""
         self.cubes = []
         # Create 3x3x3 grid of cubes
-        # Scale factor to adjust the overall size of the Rubik's Cube - smaller value brings cubes closer
         scale_factor = 0.85
         for x in range(-1, 2):
             for y in range(-1, 2):
                 for z in range(-1, 2):
-                    # Calculate position with proper scaling for a tighter cube
+                    # Calculate position
                     position = [
                         x * self.cube_spacing * scale_factor,
                         y * self.cube_spacing * scale_factor,
@@ -67,28 +66,29 @@ class Renderer:
                     # Create color arrays for each face of this cube
                     # Order: top, bottom, right, left, front, back
                     colors = [
-                        self.cube_colors['black'],  # Top (will be replaced if it's visible)
-                        self.cube_colors['black'],  # Bottom (will be replaced if it's visible)
-                        self.cube_colors['black'],  # Right (will be replaced if it's visible)
-                        self.cube_colors['black'],  # Left (will be replaced if it's visible)
-                        self.cube_colors['black'],  # Front (will be replaced if it's visible)
-                        self.cube_colors['black'],  # Back (will be replaced if it's visible)
+                        self.cube_colors['black'],  # Top (default black)
+                        self.cube_colors['black'],  # Bottom (default black)
+                        self.cube_colors['black'],  # Right (default black)
+                        self.cube_colors['black'],  # Left (default black)
+                        self.cube_colors['black'],  # Front (default black)
+                        self.cube_colors['black'],  # Back (default black)
                     ]
                     
-                    # Assign proper colors based on position
-                    if y == 1:  # Top layer
+                    # ONLY color faces that are on the exterior of the entire cube
+                    # A face is on the exterior if its coordinate in that dimension is 1 or -1
+                    if y == 1:  # Top face is exterior
                         colors[0] = self.cube_colors['white']
-                    if y == -1:  # Bottom layer
+                    if y == -1:  # Bottom face is exterior
                         colors[1] = self.cube_colors['yellow']
-                    if x == 1:  # Right layer
+                    if x == 1:  # Right face is exterior
                         colors[2] = self.cube_colors['red']
-                    if x == -1:  # Left layer
+                    if x == -1:  # Left face is exterior
                         colors[3] = self.cube_colors['orange']
-                    if z == 1:  # Front layer
+                    if z == 1:  # Front face is exterior
                         colors[4] = self.cube_colors['blue']
-                    if z == -1:  # Back layer
+                    if z == -1:  # Back face is exterior
                         colors[5] = self.cube_colors['green']
-                    
+                
                     self.cubes.append({
                         'position': position,
                         'colors': colors
@@ -165,16 +165,16 @@ class Renderer:
         # Position the camera at a closer distance to see the entire 3x3x3 cube
         glTranslatef(0.0, 0.0, -4.0)
 
+    def create_display_list(self):
+        """Create optimized display lists for the Rubik's cube"""
+        self.create_single_cube_display_list()
+
     def create_single_cube_display_list(self):
-        """Create optimized display list for the single cube"""
-        self.single_cube_display_list = glGenLists(1)
+        """Create optimized display lists for each face of a single cube"""
+        # Create 6 display lists, one for each face
+        self.face_display_lists = [glGenLists(1) for _ in range(6)]
         
-        glNewList(self.single_cube_display_list, GL_COMPILE)
-        
-        # Enable smooth shading
-        glShadeModel(GL_SMOOTH)
-        
-        # Group faces by orientation (assuming cube faces are axis-aligned)
+        # Group faces by orientation
         top_faces = []
         bottom_faces = []
         right_faces = []
@@ -183,17 +183,15 @@ class Renderer:
         back_faces = []
         
         # Identify which faces belong to which orientation based on normals
-        for i, face in enumerate(self.obj_faces):
-            # Calculate face normal by using cross product of two edges
+        for face in self.obj_faces:
+            # Calculate face normal
             v0 = self.obj_vertices[face[0]]
             v1 = self.obj_vertices[face[1]]
             v2 = self.obj_vertices[face[2]]
             
-            # Calculate two edges
             edge1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]]
             edge2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]]
             
-            # Cross product to get normal
             normal = [
                 edge1[1] * edge2[2] - edge1[2] * edge2[1],
                 edge1[2] * edge2[0] - edge1[0] * edge2[2],
@@ -205,7 +203,7 @@ class Renderer:
             if length > 0:
                 normal = [n/length for n in normal]
             
-            # Identify face orientation by dominant normal component
+            # Identify face orientation
             abs_normal = [abs(n) for n in normal]
             max_idx = abs_normal.index(max(abs_normal))
             
@@ -225,16 +223,105 @@ class Renderer:
                 else:
                     back_faces.append(face)
         
-        # Draw each face with appropriate color index (colors will be applied when rendering)
-        self.draw_faces(top_faces, 0)      # Top faces - color index 0
-        self.draw_faces(bottom_faces, 1)   # Bottom faces - color index 1
-        self.draw_faces(right_faces, 2)    # Right faces - color index 2
-        self.draw_faces(left_faces, 3)     # Left faces - color index 3
-        self.draw_faces(front_faces, 4)    # Front faces - color index 4
-        self.draw_faces(back_faces, 5)     # Back faces - color index 5
-        
+        # Create display list for top faces (index 0)
+        glNewList(self.face_display_lists[0], GL_COMPILE)
+        for face in top_faces:
+            if len(face) == 3:
+                glBegin(GL_TRIANGLES)
+            elif len(face) == 4:
+                glBegin(GL_QUADS)
+            else:
+                glBegin(GL_POLYGON)
+            
+            for vertex_index in face:
+                glVertex3fv(self.obj_vertices[vertex_index])
+            
+            glEnd()
         glEndList()
-    
+        
+        # Create display list for bottom faces (index 1)
+        glNewList(self.face_display_lists[1], GL_COMPILE)
+        for face in bottom_faces:
+            if len(face) == 3:
+                glBegin(GL_TRIANGLES)
+            elif len(face) == 4:
+                glBegin(GL_QUADS)
+            else:
+                glBegin(GL_POLYGON)
+            
+            for vertex_index in face:
+                glVertex3fv(self.obj_vertices[vertex_index])
+            
+            glEnd()
+        glEndList()
+        
+        # Create display list for right faces (index 2)
+        glNewList(self.face_display_lists[2], GL_COMPILE)
+        for face in right_faces:
+            if len(face) == 3:
+                glBegin(GL_TRIANGLES)
+            elif len(face) == 4:
+                glBegin(GL_QUADS)
+            else:
+                glBegin(GL_POLYGON)
+            
+            for vertex_index in face:
+                glVertex3fv(self.obj_vertices[vertex_index])
+            
+            glEnd()
+        glEndList()
+        
+        # Create display list for left faces (index 3)
+        glNewList(self.face_display_lists[3], GL_COMPILE)
+        for face in left_faces:
+            if len(face) == 3:
+                glBegin(GL_TRIANGLES)
+            elif len(face) == 4:
+                glBegin(GL_QUADS)
+            else:
+                glBegin(GL_POLYGON)
+            
+            for vertex_index in face:
+                glVertex3fv(self.obj_vertices[vertex_index])
+            
+            glEnd()
+        glEndList()
+        
+        # Create display list for front faces (index 4)
+        glNewList(self.face_display_lists[4], GL_COMPILE)
+        for face in front_faces:
+            if len(face) == 3:
+                glBegin(GL_TRIANGLES)
+            elif len(face) == 4:
+                glBegin(GL_QUADS)
+            else:
+                glBegin(GL_POLYGON)
+            
+            for vertex_index in face:
+                glVertex3fv(self.obj_vertices[vertex_index])
+            
+            glEnd()
+        glEndList()
+        
+        # Create display list for back faces (index 5)
+        glNewList(self.face_display_lists[5], GL_COMPILE)
+        for face in back_faces:
+            if len(face) == 3:
+                glBegin(GL_TRIANGLES)
+            elif len(face) == 4:
+                glBegin(GL_QUADS)
+            else:
+                glBegin(GL_POLYGON)
+            
+            for vertex_index in face:
+                glVertex3fv(self.obj_vertices[vertex_index])
+            
+            glEnd()
+        glEndList()
+        
+        # Keep single_cube_display_list for backward compatibility
+        self.single_cube_display_list = self.face_display_lists[0]
+
     def draw_faces(self, faces, color_index):
         """Draw a group of faces with a specific color index"""
         # Define colors for each face index
@@ -278,7 +365,7 @@ class Renderer:
         
     def render_cube(self):
         """Render the 3x3x3 Rubik's cube using individual cubes"""
-        if not self.single_cube_display_list:
+        if not hasattr(self, 'face_display_lists'):
             return
             
         # Render each small cube
@@ -291,14 +378,16 @@ class Renderer:
             # Position this cube
             glTranslatef(position[0], position[1], position[2])
             
-            # Scale the cube to appropriate size - much larger cubes for better visibility
-            glScalef(0.8, 0.8, 0.8)  # Make cubes even bigger to fill the space better
+            # Scale the cube
+            glScalef(0.8, 0.8, 0.8)
             
             # Draw each face with its proper color
-            glCallList(self.single_cube_display_list)
+            for i in range(6):
+                glColor3fv(colors[i])  # Set color using glColor3fv instead of material
+                glCallList(self.face_display_lists[i])
             
             glPopMatrix()
-        
+
     def render_frame(self):
         """Render a frame and return the surface (for compatibility with existing code)"""
         # Check if viewport matches the current dimensions
@@ -331,6 +420,8 @@ class Renderer:
         
     def close(self):
         """Clean up resources"""
-        if self.single_cube_display_list:
-            glDeleteLists(self.single_cube_display_list, 1)
+        if hasattr(self, 'face_display_lists'):
+            for display_list in self.face_display_lists:
+                glDeleteLists(display_list, 1)
+            self.face_display_lists = None
             self.single_cube_display_list = None

@@ -292,26 +292,31 @@ class Game:
         # Render 3D cube
         self.renderer.render_frame()
         
-        # Render 2D menu overlay if active
+        # Render 2D overlays (menu and FPS)
+        # Switch to 2D orthographic projection
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, self.width, self.height, 0, -1, 1)
+        
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        
+        # Disable depth testing for 2D rendering
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_LIGHTING)
+        
+        # Enable blending for transparency
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        
+        # Render FPS counter if enabled
+        if self.show_fps:
+            self._render_fps_counter()
+        
+        # Render menu overlay if active
         if self.menu.is_active():
-            # Switch to 2D orthographic projection for menu
-            glMatrixMode(GL_PROJECTION)
-            glPushMatrix()
-            glLoadIdentity()
-            glOrtho(0, self.width, self.height, 0, -1, 1)
-            
-            glMatrixMode(GL_MODELVIEW)
-            glPushMatrix()
-            glLoadIdentity()
-            
-            # Disable depth testing for 2D rendering
-            glDisable(GL_DEPTH_TEST)
-            glDisable(GL_LIGHTING)
-            
-            # Enable blending for transparency
-            glEnable(GL_BLEND)
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-            
             # Create menu surface and render to it
             menu_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             self.menu.draw(menu_surface)
@@ -322,26 +327,57 @@ class Game:
             glRasterPos2f(0, self.height)
             glPixelZoom(1, 1)  # Flip vertically
             glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-            
-            # Restore 3D state
-            glDisable(GL_BLEND)
-            glEnable(GL_DEPTH_TEST)
-            glEnable(GL_LIGHTING)
-            
-            glPopMatrix()
-            glMatrixMode(GL_PROJECTION)
-            glPopMatrix()
-            glMatrixMode(GL_MODELVIEW)
+    
+        # Restore 3D state
+        glDisable(GL_BLEND)
+        glEnable(GL_DEPTH_TEST)
+        glEnable(GL_LIGHTING)
         
-        # Update window caption
-        if self.show_fps:
-            fps = self.clock.get_fps()
-            pygame.display.set_caption(f"Rubik's Cube Simulator - FPS: {fps:.1f}")
-        else:
-            pygame.display.set_caption("Rubik's Cube Simulator")
-            
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+        
+        # Update window caption (remove FPS from title since it's now on screen)
+        pygame.display.set_caption("Rubik's Cube Simulator")
+        
         pygame.display.flip()
-        
+
+    def _render_fps_counter(self):
+        """Render FPS counter in the top-left corner"""
+        try:
+            # Get current FPS
+            fps = self.clock.get_fps()
+            
+            # Create font if not exists
+            if not hasattr(self, '_fps_font'):
+                self._fps_font = pygame.font.SysFont('Arial', 24, bold=True)
+            
+            # Create FPS text surface
+            fps_text = f"FPS: {fps:.1f}"
+            text_surface = self._fps_font.render(fps_text, True, (255, 255, 255))
+            
+            # Add a semi-transparent background for better readability
+            text_width, text_height = text_surface.get_size()
+            bg_surface = pygame.Surface((text_width + 20, text_height + 10), pygame.SRCALPHA)
+            bg_surface.fill((0, 0, 0, 128))  # Semi-transparent black background
+            
+            # Blit text onto background
+            bg_surface.blit(text_surface, (10, 5))
+            
+            # Convert to OpenGL texture and render
+            texture_data = pygame.image.tostring(bg_surface, 'RGBA', True)
+            
+            # Position in top-left corner (10 pixels from edges)
+            glRasterPos2f(10, text_height + 15)
+            glPixelZoom(1, 1)
+            glDrawPixels(text_width + 20, text_height + 10, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+            
+        except Exception as e:
+            # Fallback: if there's an error, just print to console
+            if self.debug_mode:
+                print(f"FPS counter rendering error: {e}")
+
     def run(self):
         while self.running:
             self.handle_events()

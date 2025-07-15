@@ -212,6 +212,10 @@ class Menu:
                 self.settings_manager.save_settings()
                 
                 self.settings_changed = False
+                
+            # Return to main menu after applying settings
+            self._back_to_main()
+            
         except Exception as e:
             print(f"Error applying settings: {e}")
     

@@ -124,22 +124,22 @@ class RubiksCube:
             # Rotate top face clockwise
             self.faces['top'] = self.rotate_face_clockwise(self.faces['top'])
             
-            # Correct U move (clockwise): front → left → back → right → front
-            temp = self.faces['front'][0, :].copy()
-            self.faces['front'][0, :] = self.faces['left'][0, :].copy()
-            self.faces['left'][0, :] = self.faces['back'][0, :].copy()
-            self.faces['back'][0, :] = self.faces['right'][0, :].copy()
-            self.faces['right'][0, :] = temp.copy()
-        else:
-            # Rotate top face counterclockwise (U' move)
-            self.faces['top'] = self.rotate_face_counterclockwise(self.faces['top'])
-            
-            # Correct U' move (counter-clockwise): front → right → back → left → front
+            # U move (clockwise): front → right → back → left → front
             temp = self.faces['front'][0, :].copy()
             self.faces['front'][0, :] = self.faces['right'][0, :].copy()
             self.faces['right'][0, :] = self.faces['back'][0, :].copy()
             self.faces['back'][0, :] = self.faces['left'][0, :].copy()
             self.faces['left'][0, :] = temp.copy()
+        else:
+            # Rotate top face counterclockwise (U' move)
+            self.faces['top'] = self.rotate_face_counterclockwise(self.faces['top'])
+            
+            # U' move (counter-clockwise): front → left → back → right → front
+            temp = self.faces['front'][0, :].copy()
+            self.faces['front'][0, :] = self.faces['left'][0, :].copy()
+            self.faces['left'][0, :] = self.faces['back'][0, :].copy()
+            self.faces['back'][0, :] = self.faces['right'][0, :].copy()
+            self.faces['right'][0, :] = temp.copy()
     
     def move_D(self, clockwise=True):
         """Rotate the down (bottom) face - Standard Rubik's cube D move"""
@@ -149,22 +149,22 @@ class RubiksCube:
             # Rotate bottom face clockwise
             self.faces['bottom'] = self.rotate_face_clockwise(self.faces['bottom'])
             
-            # Correct D move (clockwise): front → right → back → left → front
-            temp = self.faces['front'][2, :].copy()
-            self.faces['front'][2, :] = self.faces['right'][2, :].copy()
-            self.faces['right'][2, :] = self.faces['back'][2, :].copy()
-            self.faces['back'][2, :] = self.faces['left'][2, :].copy()
-            self.faces['left'][2, :] = temp.copy()
-        else:
-            # Rotate bottom face counterclockwise (D' move)
-            self.faces['bottom'] = self.rotate_face_counterclockwise(self.faces['bottom'])
-            
-            # Correct D' move (counter-clockwise): front → left → back → right → front
+            # D move (clockwise): front → left → back → right → front
             temp = self.faces['front'][2, :].copy()
             self.faces['front'][2, :] = self.faces['left'][2, :].copy()
             self.faces['left'][2, :] = self.faces['back'][2, :].copy()
             self.faces['back'][2, :] = self.faces['right'][2, :].copy()
             self.faces['right'][2, :] = temp.copy()
+        else:
+            # Rotate bottom face counterclockwise (D' move)
+            self.faces['bottom'] = self.rotate_face_counterclockwise(self.faces['bottom'])
+            
+            # D' move (counter-clockwise): front → right → back → left → front
+            temp = self.faces['front'][2, :].copy()
+            self.faces['front'][2, :] = self.faces['right'][2, :].copy()
+            self.faces['right'][2, :] = self.faces['back'][2, :].copy()
+            self.faces['back'][2, :] = self.faces['left'][2, :].copy()
+            self.faces['left'][2, :] = temp.copy()
     
     def move_F(self, clockwise=True):
         """Rotate the front face - Standard Rubik's cube F move"""
@@ -174,22 +174,22 @@ class RubiksCube:
             # Rotate front face clockwise
             self.faces['front'] = self.rotate_face_clockwise(self.faces['front'])
             
-            # Correct F move (clockwise): top → right → bottom → left → top
+            # F move (clockwise): top → left → bottom → right → top
             temp = self.faces['top'][2, :].copy()
-            self.faces['top'][2, :] = self.faces['left'][:, 2][::-1].copy()  # Left to top needs reversal
+            self.faces['top'][2, :] = self.faces['left'][:, 2][::-1].copy()
             self.faces['left'][:, 2] = self.faces['bottom'][0, :].copy()
-            self.faces['bottom'][0, :] = self.faces['right'][:, 0][::-1].copy()  # Right to bottom needs reversal
+            self.faces['bottom'][0, :] = self.faces['right'][:, 0][::-1].copy()
             self.faces['right'][:, 0] = temp.copy()
         else:
             # Rotate front face counterclockwise (F' move)
             self.faces['front'] = self.rotate_face_counterclockwise(self.faces['front'])
             
-            # Correct F' move (counter-clockwise): top → left → bottom → right → top
+            # F' move (counter-clockwise): top → right → bottom → left → top
             temp = self.faces['top'][2, :].copy()
             self.faces['top'][2, :] = self.faces['right'][:, 0].copy()
-            self.faces['right'][:, 0] = self.faces['bottom'][0, :][::-1].copy()  # Bottom to right needs reversal
+            self.faces['right'][:, 0] = self.faces['bottom'][0, :][::-1].copy()
             self.faces['bottom'][0, :] = self.faces['left'][:, 2].copy()
-            self.faces['left'][:, 2] = temp[::-1].copy()  # Top to left needs reversal
+            self.faces['left'][:, 2] = temp[::-1].copy()
     
     def move_B(self, clockwise=True):
         """Rotate the back face - Standard Rubik's cube B move"""
@@ -199,21 +199,21 @@ class RubiksCube:
             # Rotate back face clockwise
             self.faces['back'] = self.rotate_face_clockwise(self.faces['back'])
             
-            # Correct B move (clockwise): top → left → bottom → right → top
+            # B move (clockwise): top → right → bottom → left → top
             temp = self.faces['top'][0, :].copy()
             self.faces['top'][0, :] = self.faces['right'][:, 2].copy()
-            self.faces['right'][:, 2] = self.faces['bottom'][2, :][::-1].copy()  # Bottom to right needs reversal
+            self.faces['right'][:, 2] = self.faces['bottom'][2, :][::-1].copy()
             self.faces['bottom'][2, :] = self.faces['left'][:, 0].copy()
-            self.faces['left'][:, 0] = temp[::-1].copy()  # Top to left needs reversal
+            self.faces['left'][:, 0] = temp[::-1].copy()
         else:
             # Rotate back face counterclockwise (B' move)
             self.faces['back'] = self.rotate_face_counterclockwise(self.faces['back'])
             
-            # Correct B' move (counter-clockwise): top → right → bottom → left → top
+            # B' move (counter-clockwise): top → left → bottom → right → top
             temp = self.faces['top'][0, :].copy()
-            self.faces['top'][0, :] = self.faces['left'][:, 0][::-1].copy()  # Left to top needs reversal
+            self.faces['top'][0, :] = self.faces['left'][:, 0][::-1].copy()
             self.faces['left'][:, 0] = self.faces['bottom'][2, :].copy()
-            self.faces['bottom'][2, :] = self.faces['right'][:, 2][::-1].copy()  # Right to bottom needs reversal
+            self.faces['bottom'][2, :] = self.faces['right'][:, 2][::-1].copy()
             self.faces['right'][:, 2] = temp.copy()
     
     def execute_move(self, move_notation):

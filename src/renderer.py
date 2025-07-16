@@ -238,8 +238,9 @@ class Renderer:
         self.animating_face = face_name
         self.animation_axis = face_definitions[face_name]['axis']
         
-        # This is the key part: Make sure the animation angle matches the logical model
-        # direction we set in rubiks_cube.py
+        # Keep all rotations consistent using a simple rule:
+        # The same animation angle will be used for all moves
+        # We'll handle the logical model differences in rubiks_cube.py
         self.animation_angle_total = 90 if clockwise else -90
         self.animation_clockwise = clockwise
         
@@ -577,18 +578,18 @@ class Renderer:
                 glTranslatef(-position[0], -position[1], -position[2])
                 
                 # Apply rotation around the face axis
-                if self.animation_axis == (1, 0, 0):  # X-axis
+                if self.animation_axis == (1, 0, 0):  # X-axis (R)
                     glRotatef(animation_angle, 1, 0, 0)
-                elif self.animation_axis == (-1, 0, 0):  # -X-axis
-                    glRotatef(animation_angle, -1, 0, 0)  # Use negative axis instead of negative angle
-                elif self.animation_axis == (0, 1, 0):  # Y-axis
+                elif self.animation_axis == (-1, 0, 0):  # -X-axis (L)
+                    glRotatef(animation_angle, -1, 0, 0)
+                elif self.animation_axis == (0, 1, 0):  # Y-axis (U)
                     glRotatef(animation_angle, 0, 1, 0)
-                elif self.animation_axis == (0, -1, 0):  # -Y-axis
-                    glRotatef(animation_angle, 0, -1, 0)  # Use negative axis instead of negative angle
-                elif self.animation_axis == (0, 0, 1):  # Z-axis
+                elif self.animation_axis == (0, -1, 0):  # -Y-axis (D)
+                    glRotatef(animation_angle, 0, -1, 0)
+                elif self.animation_axis == (0, 0, 1):  # Z-axis (F)
                     glRotatef(animation_angle, 0, 0, 1)
-                elif self.animation_axis == (0, 0, -1):  # -Z-axis
-                    glRotatef(animation_angle, 0, 0, -1)  # Use negative axis instead of negative angle
+                elif self.animation_axis == (0, 0, -1):  # -Z-axis (B)
+                    glRotatef(animation_angle, 0, 0, -1)
                 
                 # Translate back to position
                 glTranslatef(position[0], position[1], position[2])

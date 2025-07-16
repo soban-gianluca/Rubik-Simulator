@@ -32,6 +32,7 @@ class Renderer:
         self.animation_angle_total = 0
         self.animation_clockwise = True
         self.animation_cubes = []  # Cubes that are part of the rotating face
+        self.pending_move = None  # Move to execute when animation completes
         
         # Skybox properties
         self.skybox_texture = None
@@ -236,7 +237,7 @@ class Renderer:
         self.animation_start_time = time.time()
         self.animating_face = face_name
         self.animation_axis = face_definitions[face_name]['axis']
-        self.animation_angle_total = -90 if clockwise else 90
+        self.animation_angle_total = 90 if clockwise else -90  # Fixed: positive for clockwise
         self.animation_clockwise = clockwise
         
         # Find cubes that are part of this face

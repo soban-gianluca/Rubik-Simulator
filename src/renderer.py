@@ -237,7 +237,10 @@ class Renderer:
         self.animation_start_time = time.time()
         self.animating_face = face_name
         self.animation_axis = face_definitions[face_name]['axis']
-        self.animation_angle_total = 90 if clockwise else -90  # Fixed: positive for clockwise
+        
+        # This is the key part: Make sure the animation angle matches the logical model
+        # direction we set in rubiks_cube.py
+        self.animation_angle_total = 90 if clockwise else -90
         self.animation_clockwise = clockwise
         
         # Find cubes that are part of this face
@@ -577,15 +580,15 @@ class Renderer:
                 if self.animation_axis == (1, 0, 0):  # X-axis
                     glRotatef(animation_angle, 1, 0, 0)
                 elif self.animation_axis == (-1, 0, 0):  # -X-axis
-                    glRotatef(-animation_angle, 1, 0, 0)
+                    glRotatef(animation_angle, -1, 0, 0)  # Use negative axis instead of negative angle
                 elif self.animation_axis == (0, 1, 0):  # Y-axis
                     glRotatef(animation_angle, 0, 1, 0)
                 elif self.animation_axis == (0, -1, 0):  # -Y-axis
-                    glRotatef(-animation_angle, 0, 1, 0)
+                    glRotatef(animation_angle, 0, -1, 0)  # Use negative axis instead of negative angle
                 elif self.animation_axis == (0, 0, 1):  # Z-axis
                     glRotatef(animation_angle, 0, 0, 1)
                 elif self.animation_axis == (0, 0, -1):  # -Z-axis
-                    glRotatef(-animation_angle, 0, 0, 1)
+                    glRotatef(animation_angle, 0, 0, -1)  # Use negative axis instead of negative angle
                 
                 # Translate back to position
                 glTranslatef(position[0], position[1], position[2])

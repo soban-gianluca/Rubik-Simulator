@@ -2,6 +2,7 @@ import pygame
 import pygame_menu
 from pygame_menu import themes
 from settings_manager import SettingsManager
+from sound_manager import SoundManager
 
 class Menu:
     def __init__(self, screen_width, screen_height, game_instance=None):
@@ -12,6 +13,9 @@ class Menu:
         
         # Initialize settings manager directly
         self.settings_manager = SettingsManager()
+        
+        # Initialize sound manager for menu sounds
+        self.sound_manager = SoundManager()
         
         # Menu state
         self.active = False
@@ -137,18 +141,24 @@ class Menu:
     
     def _start_game(self):
         """Start the game (close menu)"""
+        self.sound_manager.play("menu_select")
         self.active = False
     
     def _open_settings(self):
         """Open settings submenu"""
+        self.sound_manager.play("menu_select")
         self.current_menu = self.settings_menu
     
     def _open_help(self):
         """Open help submenu"""
+        self.sound_manager.play("menu_select")
         self.current_menu = self.help_menu
     
     def _on_resolution_change(self, selected_tuple, index):
         """Handle resolution change from dropdown"""
+        # Play selection sound
+        self.sound_manager.play("menu_select")
+        
         # The dropselect widget passes: (selected_tuple, index)
         # where selected_tuple is (display_text, value)
         
@@ -168,6 +178,9 @@ class Menu:
     
     def _on_fullscreen_change(self, selected_tuple, index):
         """Handle fullscreen toggle from dropdown"""
+        # Play selection sound
+        self.sound_manager.play("menu_select")
+        
         # Extract the boolean value from the selected tuple
         if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
             self.fullscreen = selected_tuple[1]  # Extract boolean value
@@ -178,11 +191,17 @@ class Menu:
     
     def _on_fps_toggle(self, value):
         """Handle FPS toggle"""
+        # Play selection sound
+        self.sound_manager.play("menu_select")
+        
         self.show_fps = value
         self.settings_changed = True
     
     def _on_volume_change(self, value):
         """Handle volume slider change"""
+        # Play selection sound
+        self.sound_manager.play("menu_select")
+        
         self.volume = value
         
         # Apply volume immediately if we can
@@ -194,6 +213,9 @@ class Menu:
     def _apply_settings(self):
         """Apply all settings changes"""
         try:
+            # Play apply settings sound
+            self.sound_manager.play("menu_apply")
+            
             if self.settings_changed:
                 # Set the resolution changed flag to trigger resolution update in game.py
                 self.resolution_changed_flag = True
@@ -211,6 +233,9 @@ class Menu:
                 self.settings_manager.settings["volume"] = self.volume
                 self.settings_manager.save_settings()
                 
+                # Update sound effects volume based on game volume setting
+                self.sound_manager.set_volume(self.volume / 100)
+                
                 self.settings_changed = False
                 
             # Return to main menu after applying settings
@@ -221,11 +246,16 @@ class Menu:
     
     def _back_to_main(self):
         """Return to the main menu"""
+        self.sound_manager.play("menu_select")
         self.current_menu = self.main_menu
     
     def toggle(self):
         """Toggle the menu visibility"""
         self.active = not self.active
+        
+        # Play sound when opening menu
+        if self.active:
+            self.sound_manager.play("menu_open")
     
     def is_active(self):
         """Check if menu is active"""
@@ -264,6 +294,12 @@ class Menu:
         if event.type == pygame.MOUSEMOTION:
             self.update_cursor(event.pos)
         
+        # Play sound on certain menu interactions
+        if event.type == pygame.KEYDOWN:
+            # Play navigation sound for arrow keys, enter, etc.
+            if event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_RETURN):
+                self.sound_manager.play("menu_select")
+        
         # Handle menu navigation
         if self.current_menu and self.current_menu.is_enabled():
             if event.type == pygame.KEYDOWN:
@@ -272,8 +308,16 @@ class Menu:
                         self.active = False
                         return True
                     else:
+                        self.sound_manager.play("menu_select")
                         self.current_menu = self.main_menu
                         return True
+        
+        # Handle mouse click sound
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:  # Left mouse button
+            # Check if we clicked on a menu item
+            if self.current_menu:
+                # Play selection sound on mouse click
+                self.sound_manager.play("menu_select")
         
         # Let pygame-menu handle the event
         updated = self.current_menu.update([event])

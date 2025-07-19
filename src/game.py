@@ -30,11 +30,12 @@ class Game:
         
         # Initialize music
         self.playlist = [
+            "utils/soundtrack/dark_bar.mp3",
             "utils/soundtrack/lounge_layers.mp3",
             "utils/soundtrack/midnight_simmetry.mp3",
             "utils/soundtrack/the_fifth_color.mp3"
         ]
-        self.current_song = 1
+        self.current_song = 0
         self.MUSIC_END_EVENT = pygame.USEREVENT + 1
         
         try:

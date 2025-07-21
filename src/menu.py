@@ -47,96 +47,10 @@ class Menu:
         self.theme.widget_margin = (0, 10)
         self.theme.background_color = (0, 0, 0, 180)
         
-        # Create main menu
-        self.main_menu = pygame_menu.Menu(
-            "Rubik's Cube Simulator",
-            self.width,
-            self.height,
-            theme=self.theme
-        )
+        # Create menus
+        self._create_menus()
         
-        # Add main menu buttons
-        self.main_menu.add.button("Play", self._start_game)
-        self.main_menu.add.button("Settings", self._open_settings)
-        self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
-        
-        # Create settings menu
-        self.settings_menu = pygame_menu.Menu(
-            "Settings",
-            self.width,
-            self.height,
-            theme=self.theme
-        )
-        
-        # Resolution dropdown
-        resolution_options = [f"{w}x{h}" for w, h in self.available_resolutions]
-        self.settings_menu.add.dropselect(
-            title="Resolution: ",
-            items=[(res, i) for i, res in enumerate(resolution_options)],
-            default=self.current_resolution_index,
-            onchange=self._on_resolution_change
-        )
-        
-        # Replace the display mode selector with a dropdown
-        self.settings_menu.add.dropselect(
-            title="Display Mode: ",
-            items=[("Windowed", False), ("Fullscreen", True)],
-            default=int(self.fullscreen),
-            onchange=self._on_fullscreen_change
-        )
-        
-        # Show FPS toggle
-        self.settings_menu.add.toggle_switch(
-            "Show FPS: ",
-            default=self.show_fps,
-            onchange=self._on_fps_toggle
-        )
-        
-        # Volume slider
-        self.settings_menu.add.range_slider(
-            "Volume: ",
-            default=self.volume,
-            range_values=(0, 100),
-            increment=5,
-            onchange=self._on_volume_change
-        )
-        
-        # Settings menu buttons
-        self.settings_menu.add.button("Apply Changes", self._apply_settings)
-        self.settings_menu.add.button("Back", self._back_to_main)
-        
-        # Help menu
-        self.help_menu = pygame_menu.Menu(
-            "Controls",
-            self.width,
-            self.height,
-            theme=self.theme
-        )
-        
-        # Add help text
-        help_text = [
-            "Controls:",
-            "",
-            "Space: Toggle auto-rotation",
-            "Left/Right arrows: Manual rotation",
-            "Up/Down arrows: Vertical rotation",
-            "Click and drag: Rotate with mouse",
-            "D: Toggle debug mode",
-            "ESC: Toggle menu",
-            "F11: Toggle fullscreen",
-            "",
-            "Mouse rotation disables auto-rotation"
-        ]
-        
-        for line in help_text:
-            self.help_menu.add.label(line)
-        
-        self.help_menu.add.button("Back", self._back_to_main)
-        
-        # Add help button to main menu
-        self.main_menu.add.button("Help", self._open_help)
-        
-        # Set current menu
+        # Set current menu to main menu
         self.current_menu = self.main_menu
     
     def _start_game(self):
@@ -199,8 +113,8 @@ class Menu:
     
     def _on_volume_change(self, value):
         """Handle volume slider change"""
-        # Play selection sound
-        self.sound_manager.play("menu_select")
+        # Play selection sound with slider-specific debouncing
+        self.sound_manager.play_slider_sound("menu_select")
         
         self.volume = value
         
@@ -294,12 +208,6 @@ class Menu:
         if event.type == pygame.MOUSEMOTION:
             self.update_cursor(event.pos)
         
-        # Play sound on certain menu interactions
-        if event.type == pygame.KEYDOWN:
-            # Play navigation sound for arrow keys, enter, etc.
-            if event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_RETURN):
-                self.sound_manager.play("menu_select")
-        
         # Handle menu navigation
         if self.current_menu and self.current_menu.is_enabled():
             if event.type == pygame.KEYDOWN:
@@ -311,13 +219,6 @@ class Menu:
                         self.sound_manager.play("menu_select")
                         self.current_menu = self.main_menu
                         return True
-        
-        # Handle mouse click sound
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:  # Left mouse button
-            # Check if we clicked on a menu item
-            if self.current_menu:
-                # Play selection sound on mouse click
-                self.sound_manager.play("menu_select")
         
         # Let pygame-menu handle the event
         updated = self.current_menu.update([event])

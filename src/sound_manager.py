@@ -1,5 +1,6 @@
 import os
 import pygame
+import time
 
 class SoundManager:
     """Manages sound effects for the game"""
@@ -8,6 +9,8 @@ class SoundManager:
         """Initialize sound manager and load sound effects"""
         self.sounds = {}
         self.is_enabled = True
+        self.last_play_time = {}  # Track last play time for each sound
+        self.min_interval = 0.1  # Minimum interval between same sound plays (100ms)
         
         # Check if pygame mixer is initialized
         if not pygame.mixer.get_init():
@@ -40,14 +43,45 @@ class SoundManager:
             self.is_enabled = False
     
     def play(self, sound_name):
-        """Play a sound effect by name if enabled"""
-        if self.is_enabled and sound_name in self.sounds:
-            try:
-                self.sounds[sound_name].play()
-                return True
-            except Exception as e:
-                print(f"Error playing sound {sound_name}: {e}")
-                return False
+        """Play a sound effect by name if enabled and not played too recently"""
+        if not self.is_enabled or sound_name not in self.sounds:
+            return False
+            
+        # Check if enough time has passed since last play
+        current_time = time.time()
+        if sound_name in self.last_play_time:
+            time_since_last = current_time - self.last_play_time[sound_name]
+            if time_since_last < self.min_interval:
+                return False  # Too soon, don't play
+        
+        try:
+            self.sounds[sound_name].play()
+            self.last_play_time[sound_name] = current_time
+            return True
+        except Exception as e:
+            print(f"Error playing sound {sound_name}: {e}")
+            return False
+    
+    def play_slider_sound(self, sound_name):
+        """Play a sound effect for sliders with longer debounce (500ms)"""
+        if not self.is_enabled or sound_name not in self.sounds:
+            return False
+            
+        # Check if enough time has passed since last play (longer interval for sliders)
+        current_time = time.time()
+        slider_interval = 0.5  # 500ms for sliders
+        if sound_name in self.last_play_time:
+            time_since_last = current_time - self.last_play_time[sound_name]
+            if time_since_last < slider_interval:
+                return False  # Too soon, don't play
+        
+        try:
+            self.sounds[sound_name].play()
+            self.last_play_time[sound_name] = current_time
+            return True
+        except Exception as e:
+            print(f"Error playing slider sound {sound_name}: {e}")
+            return False
         return False
     
     def set_volume(self, volume):

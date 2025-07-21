@@ -180,10 +180,42 @@ class Renderer:
         
         glEnd()
         
-        # Optional: Remove caps entirely to avoid texture stretching issues
-        # If you want to keep caps, use a solid color instead of texture
-        
+        # Disable texture for solid color caps
         glDisable(GL_TEXTURE_2D)
+        
+        # Add solid color caps to close the environment
+        # Set a dark blue-gray color for the caps
+        glColor3f(0.59, 0.59, 0.71)  # Dark blue-gray color
+        
+        # Top cap (ceiling)
+        glBegin(GL_TRIANGLE_FAN)
+        # Center of top cap
+        glVertex3f(0, height/2, 0)
+        
+        # Create triangular segments from center to edge
+        for i in range(slices + 1):
+            angle = 2 * math.pi * i / slices
+            x = radius * math.cos(angle)
+            z = radius * math.sin(angle)
+            glVertex3f(x, height/2, z)
+        glEnd()
+        
+        # Bottom cap (floor)
+        glBegin(GL_TRIANGLE_FAN)
+        # Center of bottom cap
+        glVertex3f(0, -height/2, 0)
+        
+        # Create triangular segments from center to edge (reverse order for correct normal)
+        for i in range(slices, -1, -1):
+            angle = 2 * math.pi * i / slices
+            x = radius * math.cos(angle)
+            z = radius * math.sin(angle)
+            glVertex3f(x, -height/2, z)
+        glEnd()
+        
+        # Reset color to white for other rendering
+        glColor3f(1.0, 1.0, 1.0)
+        
         glEndList()
 
     def render_skybox(self):

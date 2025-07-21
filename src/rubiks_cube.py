@@ -37,13 +37,13 @@ class RubiksCube:
         # Map 3D coordinates to 2D face coordinates
         # This mapping is critical - it determines how the logical cube maps to visual
         if face_index == 0 and y == 1:  # Top face (white)
-            row, col = z+1, x+1  # Changed from 1-z to z+1 to fix orientation
+            row, col = z+1, x+1  
         elif face_index == 1 and y == -1:  # Bottom face (yellow)
-            row, col = 1-z, x+1  # Changed from z+1 to 1-z to fix orientation
+            row, col = 1-z, x+1  
         elif face_index == 2 and x == 1:  # Right face (red)
-            row, col = 1-y, z+1
+            row, col = 1-y, 1-z  # Fixed: prevent conflict with front face
         elif face_index == 3 and x == -1:  # Left face (orange)
-            row, col = 1-y, 1-z
+            row, col = 1-y, z+1  # Fixed: prevent conflict with front face
         elif face_index == 4 and z == 1:  # Front face (blue)
             row, col = 1-y, x+1
         elif face_index == 5 and z == -1:  # Back face (green)
@@ -71,8 +71,8 @@ class RubiksCube:
         self.move_history.append(('R', clockwise))
         
         if clockwise:
-            # Rotate right face clockwise
-            self.faces['right'] = self.rotate_face_clockwise(self.faces['right'])
+            # Rotate right face counterclockwise (visual fix for opposite rotation)
+            self.faces['right'] = self.rotate_face_counterclockwise(self.faces['right'])
             
             # Correct R move (clockwise): front → top → back → bottom → front
             temp = self.faces['front'][:, 2].copy()
@@ -81,8 +81,8 @@ class RubiksCube:
             self.faces['back'][:, 0] = self.faces['bottom'][:, 2][::-1].copy()  
             self.faces['bottom'][:, 2] = temp.copy()
         else:
-            # Rotate right face counterclockwise (R' move)
-            self.faces['right'] = self.rotate_face_counterclockwise(self.faces['right'])
+            # Rotate right face clockwise (visual fix for opposite rotation)
+            self.faces['right'] = self.rotate_face_clockwise(self.faces['right'])
             
             # Correct R' move (counter-clockwise): front → bottom → back → top → front
             temp = self.faces['front'][:, 2].copy()
@@ -96,8 +96,8 @@ class RubiksCube:
         self.move_history.append(('L', clockwise))
         
         if clockwise:
-            # Rotate left face clockwise
-            self.faces['left'] = self.rotate_face_clockwise(self.faces['left'])
+            # Rotate left face counterclockwise (visual fix for opposite rotation)
+            self.faces['left'] = self.rotate_face_counterclockwise(self.faces['left'])
             
             # Correct L move (clockwise): front → bottom → back → top → front
             temp = self.faces['front'][:, 0].copy()
@@ -106,8 +106,8 @@ class RubiksCube:
             self.faces['back'][:, 2] = self.faces['top'][:, 0][::-1].copy()  
             self.faces['top'][:, 0] = temp.copy()
         else:
-            # Rotate left face counterclockwise (L' move)
-            self.faces['left'] = self.rotate_face_counterclockwise(self.faces['left'])
+            # Rotate left face clockwise (visual fix for opposite rotation)
+            self.faces['left'] = self.rotate_face_clockwise(self.faces['left'])
             
             # Correct L' move (counter-clockwise): front → top → back → bottom → front
             temp = self.faces['front'][:, 0].copy()

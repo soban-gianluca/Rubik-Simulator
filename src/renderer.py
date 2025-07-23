@@ -304,6 +304,14 @@ class Renderer:
         # Check if animation is complete
         if progress >= 1.0:
             self.is_animating = False
+            
+            # Execute the pending logical move immediately when animation completes
+            if hasattr(self, 'pending_move') and self.pending_move:
+                self.rubiks_cube.execute_move(self.pending_move)
+                self.pending_move = None
+                # Update cube colors immediately to prevent flicker
+                self.update_cube_colors()
+            
             self.animating_face = None
             self.animation_cubes = []
             return self.animation_angle_total  # Return final angle

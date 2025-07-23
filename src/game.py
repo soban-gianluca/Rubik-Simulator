@@ -346,22 +346,14 @@ class Game:
             
             # Check if animation just finished
             if self.renderer._last_animation_state and not self.renderer.is_animating:
-                # Execute the pending logical move when animation completes
-                if hasattr(self.renderer, 'pending_move') and self.renderer.pending_move:
-                    self.renderer.rubiks_cube.execute_move(self.renderer.pending_move)
-                    
-                    # Check if solved after move
-                    if self.renderer.rubiks_cube.is_solved():
-                        self.cube_solved = True
-                        solve_time = time.time() - self.start_time
-                        print(f"🎉 CUBE SOLVED! 🎉")
-                        print(f"Moves: {self.move_counter}")
-                        print(f"Time: {solve_time:.2f} seconds")
-                        print(f"TPS: {self.move_counter/solve_time:.2f} moves/second")
-                    
-                    self.renderer.pending_move = None
-                
-                self.renderer.update_cube_colors()
+                # Check if solved after move (move is already executed in renderer)
+                if self.renderer.rubiks_cube.is_solved():
+                    self.cube_solved = True
+                    solve_time = time.time() - self.start_time
+                    print(f"🎉 CUBE SOLVED! 🎉")
+                    print(f"Moves: {self.move_counter}")
+                    print(f"Time: {solve_time:.2f} seconds")
+                    print(f"TPS: {self.move_counter/solve_time:.2f} moves/second")
             
             # Update animation state
             self.renderer._last_animation_state = self.renderer.is_animating

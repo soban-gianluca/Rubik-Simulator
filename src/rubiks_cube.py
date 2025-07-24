@@ -15,14 +15,14 @@ class RubiksCube:
             'back': np.full((3, 3), 5)     # Green
         }
         
-        # Map colors to RGB values for rendering
+        # Map colors to RGB values for rendering - Improved for better color distinction
         self.color_map = {
-            0: (1.0, 1.0, 1.0),    # White
-            1: (1.0, 1.0, 0.0),    # Yellow
-            2: (1.0, 0.0, 0.0),    # Red
-            3: (1.0, 0.5, 0.0),    # Orange
-            4: (0.0, 0.0, 1.0),    # Blue
-            5: (0.0, 1.0, 0.0),    # Green
+            0: (1.0, 1.0, 1.0),    # White - Pure white
+            1: (1.0, 0.95, 0.0),   # Yellow - Slightly less green for better contrast
+            2: (0.9, 0.1, 0.1),    # Red - Deep red with slight darkness for better realism
+            3: (1.0, 0.35, 0.0),   # Orange - More distinct orange, less green component
+            4: (0.0, 0.2, 0.9),    # Blue - Brighter blue with slight lightness
+            5: (0.0, 0.8, 0.2),    # Green - Forest green for better distinction from other colors
         }
         
         # Move history for undo functionality

@@ -8,6 +8,11 @@ from menu import Menu
 from renderer import Renderer
 from settings_manager import SettingsManager
 
+""" Puts the application in the taskbar with a custom icon on Windows."""
+import ctypes
+myappid = 'mycompany.myproduct.subproduct.version' # arbitrary string
+ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
 class Game:
     def __init__(self):
         # Initialize pygame

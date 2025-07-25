@@ -3,6 +3,11 @@ import math
 import time
 import threading
 
+""" Puts the application in the taskbar with a custom icon on Windows."""
+import ctypes
+myappid = 'mycompany.myproduct.subproduct.version' # arbitrary string
+ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
 class LoadingAnimation:
     def __init__(self, screen_width, screen_height):
         self.width = screen_width
@@ -16,10 +21,14 @@ class LoadingAnimation:
         self.loading_complete = False
         self.min_display_time = 3.0  # Minimum time to show animation in seconds
         
+        # Set caption and icon
+        pygame.display.set_caption("Rubik's Cube Simulator")
+        
         # Load cube icon for animation
         try:
             self.cube_icon = pygame.image.load("utils/rubiksCube_Icon.ico")
             self.cube_icon = pygame.transform.scale(self.cube_icon, (100, 100))
+            pygame.display.set_icon(self.cube_icon)
         except:
             print("Icon not found, using placeholder")
             self.cube_icon = None

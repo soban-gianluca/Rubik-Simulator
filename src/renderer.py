@@ -12,6 +12,7 @@ class Renderer:
         self.width = width
         self.height = height
         self.cube_path = cube_path
+        self.fov = 60 # Field of view for perspective projection
         
         # OpenGL cube data
         self.obj_vertices = []
@@ -388,7 +389,7 @@ class Renderer:
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         # Set up perspective projection
-        gluPerspective(60, (self.width/self.height), 0.1, 50.0)
+        gluPerspective(self.fov, (self.width/self.height), 0.1, 50.0)
         # Set the viewport to match window size
         glViewport(0, 0, self.width, self.height)
         

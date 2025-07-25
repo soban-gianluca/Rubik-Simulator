@@ -21,19 +21,19 @@ class SettingsManager:
                 "options": [
                     {
                         "name": "Skybox",
-                        "file": "utils/skybox_sky.jpg"
+                        "file": "utils/skyboxes/skybox_sky.jpg"
                     },
                     {
                         "name": "Venice",
-                        "file": "utils/skybox_venice.jpg"
+                        "file": "utils/skyboxes/skybox_venice.jpg"
                     },
                     {
                         "name": "Park",
-                        "file": "utils/skybox_park.jpg"
+                        "file": "utils/skyboxes/skybox_park.jpg"
                     },
                     {
                         "name": "Hall",
-                        "file": "utils/skybox_hall.jpg"
+                        "file": "utils/skyboxes/skybox_hall.jpg"
                     }
                 ]
             }

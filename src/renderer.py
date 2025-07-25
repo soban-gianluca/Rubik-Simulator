@@ -103,8 +103,6 @@ class Renderer:
             # Upload texture data
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image_width, image_height, 0, GL_RGB, GL_UNSIGNED_BYTE, image_data)
             
-            print(f"Skybox texture loaded successfully: {image_width}x{image_height}")
-            
         except Exception as e:
             print(f"Failed to load skybox texture: {e}")
             # Create a simple gradient texture as fallback
@@ -158,8 +156,6 @@ class Renderer:
             
             # Recreate display list with new texture
             self.create_spherical_skybox_display_list()
-            
-            print(f"Skybox texture reloaded: {new_image_path}")
             
         except Exception as e:
             print(f"Failed to reload skybox texture: {e}")
@@ -392,7 +388,7 @@ class Renderer:
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         # Set up perspective projection
-        gluPerspective(45, (self.width/self.height), 0.1, 50.0)
+        gluPerspective(60, (self.width/self.height), 0.1, 50.0)
         # Set the viewport to match window size
         glViewport(0, 0, self.width, self.height)
         

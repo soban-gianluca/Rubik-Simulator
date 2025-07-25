@@ -54,6 +54,10 @@ class Renderer:
         from rubiks_cube import RubiksCube
         self.rubiks_cube = RubiksCube()
         
+        # Import settings manager to get current skybox
+        from settings_manager import SettingsManager
+        self.settings_manager = SettingsManager()
+        
         # Now initialize cubes after colors are defined
         self.initialize_cubes()
         
@@ -63,9 +67,10 @@ class Renderer:
         # Initialize OpenGL settings
         self.setup_opengl()
         
-        # Load skybox texture and create cylindrical skybox
-        self.load_skybox_texture("utils/skybox.jpg")
-        self.create_cylindrical_skybox_display_list()  # Changed from spherical to cylindrical
+        # Load skybox texture from settings and create spherical skybox
+        skybox_path = self.settings_manager.get_current_skybox_path()
+        self.load_skybox_texture(skybox_path)
+        self.create_spherical_skybox_display_list()  # Using spherical skybox for full panoramic image
         
         # Create optimized display list for single cube
         self.create_display_list()
@@ -134,9 +139,36 @@ class Renderer:
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, size, size, 0, GL_RGB, GL_UNSIGNED_BYTE, bytes(texture_data))
         
         print("Using fallback gradient skybox texture")
+    
+    def reload_skybox_texture(self, new_image_path):
+        """Reload skybox texture with a new image file"""
+        try:
+            # Clean up old texture
+            if self.skybox_texture:
+                glDeleteTextures([self.skybox_texture])
+                self.skybox_texture = None
+            
+            # Clean up old display list
+            if self.skybox_display_list:
+                glDeleteLists(self.skybox_display_list, 1)
+                self.skybox_display_list = None
+            
+            # Load new texture
+            self.load_skybox_texture(new_image_path)
+            
+            # Recreate display list with new texture
+            self.create_spherical_skybox_display_list()
+            
+            print(f"Skybox texture reloaded: {new_image_path}")
+            
+        except Exception as e:
+            print(f"Failed to reload skybox texture: {e}")
+            # Fallback to default texture
+            self.load_skybox_texture("utils/skybox.jpg")
+            self.create_spherical_skybox_display_list()
 
-    def create_cylindrical_skybox_display_list(self):
-        """Create a cylindrical skybox for seamless panoramic image mapping"""
+    def create_spherical_skybox_display_list(self):
+        """Create a spherical skybox for seamless panoramic image mapping"""
         if not self.skybox_texture:
             return
         
@@ -148,74 +180,44 @@ class Renderer:
         glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
         glColor3f(1.0, 1.0, 1.0)
         
-        # Create a cylinder for the skybox
+        # Create a sphere for the skybox
         radius = self.skybox_size
-        height = self.skybox_size * 2  # Make cylinder tall enough
-        slices = 64  # Number of vertical slices around the cylinder
+        stacks = 32  # Number of horizontal divisions (latitude)
+        slices = 64  # Number of vertical divisions (longitude)
         
-        # FIXED: Adjust texture coordinate scaling to reduce horizontal stretching
-        # Instead of mapping full texture across 360°, use a smaller portion
-        texture_scale = 2.0  # Increase this value to reduce stretching (try 1.5, 2.0, 2.5)
-        
-        # CRITICAL FIX: Draw the curved side with proper texture wrapping
-        glBegin(GL_QUAD_STRIP)
-        for i in range(slices + 1):  # +1 to complete the circle
-            angle = 2 * math.pi * i / slices
-            x = radius * math.cos(angle)
-            z = radius * math.sin(angle)
+        # Generate sphere vertices and texture coordinates
+        for i in range(stacks):
+            lat0 = math.pi * (-0.5 + float(i) / stacks)
+            z0 = radius * math.sin(lat0)
+            zr0 = radius * math.cos(lat0)
             
-            # FIXED: Scale texture coordinates to reduce horizontal stretching
-            if i == slices:
-                u = texture_scale  # Explicitly set for the seam
-            else:
-                u = (float(i) / slices) * texture_scale
-        
-            # Bottom vertex
-            glTexCoord2f(u, 0.0)
-            glVertex3f(x, -height/2, z)
+            lat1 = math.pi * (-0.5 + float(i + 1) / stacks)
+            z1 = radius * math.sin(lat1)
+            zr1 = radius * math.cos(lat1)
             
-            # Top vertex  
-            glTexCoord2f(u, 1.0)
-            glVertex3f(x, height/2, z)
+            glBegin(GL_QUAD_STRIP)
+            for j in range(slices + 1):
+                lng = 2 * math.pi * float(j) / slices
+                x = math.cos(lng)
+                y = math.sin(lng)
+                
+                # Texture coordinates for panoramic mapping
+                # u goes from 0 to 1 as we go around horizontally
+                # v goes from 0 to 1 as we go from bottom to top
+                u = float(j) / slices
+                v0 = float(i) / stacks
+                v1 = float(i + 1) / stacks
+                
+                # First vertex (lower latitude)
+                glTexCoord2f(u, v0)
+                glVertex3f(x * zr0, z0, y * zr0)
+                
+                # Second vertex (higher latitude)
+                glTexCoord2f(u, v1)
+                glVertex3f(x * zr1, z1, y * zr1)
+            glEnd()
         
-        glEnd()
-        
-        # Disable texture for solid color caps
         glDisable(GL_TEXTURE_2D)
-        
-        # Add solid color caps to close the environment
-        # Set a dark blue-gray color for the caps
-        glColor3f(0.59, 0.59, 0.71)  # Dark blue-gray color
-        
-        # Top cap (ceiling)
-        glBegin(GL_TRIANGLE_FAN)
-        # Center of top cap
-        glVertex3f(0, height/2, 0)
-        
-        # Create triangular segments from center to edge
-        for i in range(slices + 1):
-            angle = 2 * math.pi * i / slices
-            x = radius * math.cos(angle)
-            z = radius * math.sin(angle)
-            glVertex3f(x, height/2, z)
-        glEnd()
-        
-        # Bottom cap (floor)
-        glBegin(GL_TRIANGLE_FAN)
-        # Center of bottom cap
-        glVertex3f(0, -height/2, 0)
-        
-        # Create triangular segments from center to edge (reverse order for correct normal)
-        for i in range(slices, -1, -1):
-            angle = 2 * math.pi * i / slices
-            x = radius * math.cos(angle)
-            z = radius * math.sin(angle)
-            glVertex3f(x, -height/2, z)
-        glEnd()
-        
-        # Reset color to white for other rendering
-        glColor3f(1.0, 1.0, 1.0)
-        
         glEndList()
 
     def render_skybox(self):

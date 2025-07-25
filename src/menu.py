@@ -39,6 +39,7 @@ class Menu:
         self.volume = self.settings_manager.settings.get("volume", 50)
         self.show_fps = self.settings_manager.settings.get("show_fps", False)
         self.fullscreen = self.settings_manager.settings.get("fullscreen", False)
+        self.skybox_index = self.settings_manager.get_current_skybox_index()
         
         # Create custom theme
         self.theme = themes.THEME_DARK.copy()
@@ -124,6 +125,19 @@ class Menu:
             
         self.settings_changed = True
     
+    def _on_skybox_change(self, selected_tuple, index):
+        """Handle skybox texture change from dropdown"""
+        # Play selection sound
+        self.sound_manager.play("menu_select")
+        
+        # Extract the index from the tuple
+        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
+            self.skybox_index = selected_tuple[1]  # Use the value part of the tuple
+        else:
+            self.skybox_index = index
+        
+        self.settings_changed = True
+    
     def _apply_settings(self):
         """Apply all settings changes"""
         try:
@@ -145,10 +159,19 @@ class Menu:
                 self.settings_manager.settings["fullscreen"] = self.fullscreen
                 self.settings_manager.settings["show_fps"] = self.show_fps
                 self.settings_manager.settings["volume"] = self.volume
+                
+                # Update skybox texture setting
+                self.settings_manager.set_skybox_texture(self.skybox_index)
+                
                 self.settings_manager.save_settings()
                 
                 # Update sound effects volume based on game volume setting
                 self.sound_manager.set_volume(self.volume / 100)
+                
+                # Apply skybox change to renderer if game instance is available
+                if self.game and hasattr(self.game, 'renderer'):
+                    skybox_path = self.settings_manager.get_current_skybox_path()
+                    self.game.renderer.reload_skybox_texture(skybox_path)
                 
                 self.settings_changed = False
                 
@@ -294,6 +317,7 @@ class Menu:
         current_volume = self.volume
         current_show_fps = self.show_fps
         current_fullscreen = self.fullscreen
+        current_skybox_index = getattr(self, 'skybox_index', 0)
         
         # Get actual screen dimensions
         screen = pygame.display.get_surface()
@@ -371,6 +395,16 @@ class Menu:
             range_values=(0, 100),
             increment=5,
             onchange=self._on_volume_change
+        )
+        
+        # Skybox texture dropdown
+        skybox_options = self.settings_manager.get_skybox_options()
+        skybox_items = [(option["name"], i) for i, option in enumerate(skybox_options)]
+        self.settings_menu.add.dropselect(
+            title="Skybox Texture: ",
+            items=skybox_items,
+            default=current_skybox_index,
+            onchange=self._on_skybox_change
         )
         
         # Settings menu buttons

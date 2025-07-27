@@ -28,9 +28,9 @@ class SoundManager:
         
         # Load sound effects
         try:
-            self.sounds["menu_open"] = pygame.mixer.Sound(os.path.join(sfx_dir, "menu_open.mp3"))
-            self.sounds["menu_select"] = pygame.mixer.Sound(os.path.join(sfx_dir, "menu_select.mp3"))
-            self.sounds["menu_apply"] = pygame.mixer.Sound(os.path.join(sfx_dir, "menu_close.mp3"))
+            self.sounds["menu_open"] = pygame.mixer.Sound(os.path.join(sfx_dir, "menu", "menu_open.mp3"))
+            self.sounds["menu_select"] = pygame.mixer.Sound(os.path.join(sfx_dir, "menu", "menu_select.mp3"))
+            self.sounds["menu_apply"] = pygame.mixer.Sound(os.path.join(sfx_dir, "menu", "menu_close.mp3"))
             
             # Set default volumes
             self.sounds["menu_open"].set_volume(0.5)

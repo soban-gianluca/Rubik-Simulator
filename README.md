@@ -1,4 +1,4 @@
-![Rubik Logo](rubik_logo.png)
+![Rubik Logo](utils/Rubik_logo.png)
 
 # RubikSimulator
 

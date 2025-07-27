@@ -1,11 +1,4 @@
-```
-__________     ___.   .__ __      _________.__              .__          __                
-\______   \__ _\_ |__ |__|  | __ /   _____/|__| _____  __ __|  | _____ _/  |_  ___________ 
- |       _/  |  \ __ \|  |  |/ / \_____  \ |  |/     \|  |  \  | \__  \\   __\/  _ \_  __ \
- |    |   \  |  / \_\ \  |    <  /        \|  |  Y Y  \  |  /  |__/ __ \|  | (  <_> )  | \/
- |____|_  /____/|___  /__|__|_ \/_______  /|__|__|_|  /____/|____|____  /__|  \____/|__|   
-        \/          \/        \/        \/          \/                \/      
-```            
+        ![Rubik Logo](rubik_logo.png)
 
 # RubikSimulator
 
@@ -17,7 +10,7 @@ Che tu sia un principiante o un esperto il nostro simulatore permette di:
 * Visualizzare lo stato del cubo in 3D
 * Allenarti con timer integrati e altre statistiche
 
-### Tecnologie utilizzate
+## Tecnologie utilizzate
 
 Il progetto è stato sviluppato utilizzando un insieme di tecnologie moderne, con l'obiettivo di offrire una simulazione fluida e accessibile del celebre Cubo di Rubik
 

@@ -7,6 +7,7 @@ from OpenGL.GLU import *
 from menu import Menu
 from renderer import Renderer
 from settings_manager import SettingsManager
+from sound_manager import SoundManager
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -61,6 +62,9 @@ class Game:
 
         # Initialize renderer
         self.renderer = Renderer(self.width, self.height)
+        
+        # Initialize sound manager
+        self.sound_manager = SoundManager()
         
         # Initialize menu
         self.menu = Menu(self.width, self.height)
@@ -467,6 +471,9 @@ class Game:
         clockwise = "'" not in move_notation
         
         if self.renderer.start_face_animation(face_name, clockwise):
+            # Play random cube movement sound
+            self.sound_manager.play_random_cube_sound()
+            
             # Store the move to execute when animation completes
             self.renderer.pending_move = move_notation
             self.move_counter += 1
@@ -476,6 +483,9 @@ class Game:
     def undo_move(self):
         """Undo the last move"""
         if self.renderer.rubiks_cube.undo_last_move():
+            # Play random cube movement sound for undo
+            self.sound_manager.play_random_cube_sound()
+            
             self.renderer.update_cube_colors()
             self.move_counter = max(0, self.move_counter - 1)
             self.debug_print(f"Move undone. Move count: {self.move_counter}")
@@ -484,6 +494,9 @@ class Game:
     
     def scramble_cube(self):
         """Scramble the cube"""
+        # Play a cube sound for scrambling
+        self.sound_manager.play_random_cube_sound()
+        
         self.renderer.rubiks_cube.scramble(25)
         self.renderer.update_cube_colors()
         self.move_counter = 0

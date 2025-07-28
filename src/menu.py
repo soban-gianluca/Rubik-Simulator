@@ -119,6 +119,10 @@ class Menu:
         
         self.volume = int(value)  # Ensure volume is stored as integer
         
+        # Update the slider title to show the current volume value
+        if hasattr(self, 'volume_slider'):
+            self.volume_slider.set_title(f"Volume: {self.volume}%")
+        
         # Apply volume immediately if we can
         if pygame.mixer.get_init() and self.game:
             pygame.mixer.music.set_volume(self.volume / 100)
@@ -389,12 +393,14 @@ class Menu:
         )
         
         # Volume slider
-        self.settings_menu.add.range_slider(
-            "Volume: ",
+        self.volume_slider = self.settings_menu.add.range_slider(
+            f"Volume: {current_volume}%",
             default=current_volume,
             range_values=(0, 100),
             increment=5,
-            value_format=lambda x: f"{int(x)}",  # Format display as integer
+            value_format=lambda x: "",  # Completely hide the value display
+            rangeslider_id="volume_slider",
+            slider_text_value_enabled=False,  # Disable text value on slider
             onchange=self._on_volume_change
         )
         

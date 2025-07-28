@@ -36,7 +36,7 @@ class Menu:
         if current_res in self.available_resolutions:
             self.current_resolution_index = self.available_resolutions.index(current_res)
         
-        self.volume = self.settings_manager.settings.get("volume", 50)
+        self.volume = int(self.settings_manager.settings.get("volume", 50))  # Ensure volume is integer
         self.show_fps = self.settings_manager.settings.get("show_fps", False)
         self.fullscreen = self.settings_manager.settings.get("fullscreen", False)
         self.skybox_index = self.settings_manager.get_current_skybox_index()
@@ -117,7 +117,7 @@ class Menu:
         # Play selection sound with slider-specific debouncing
         self.sound_manager.play_slider_sound("menu_select")
         
-        self.volume = value
+        self.volume = int(value)  # Ensure volume is stored as integer
         
         # Apply volume immediately if we can
         if pygame.mixer.get_init() and self.game:
@@ -394,6 +394,7 @@ class Menu:
             default=current_volume,
             range_values=(0, 100),
             increment=5,
+            value_format=lambda x: f"{int(x)}",  # Format display as integer
             onchange=self._on_volume_change
         )
         

@@ -8,6 +8,7 @@ from menu import Menu
 from renderer import Renderer
 from settings_manager import SettingsManager
 from sound_manager import SoundManager
+from results_window import ResultsWindow
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -70,6 +71,10 @@ class Game:
         self.menu = Menu(self.width, self.height)
         self.menu.set_game_instance(self)
         self.menu.toggle()  # Start with menu active
+        
+        # Initialize results window
+        self.results_window = ResultsWindow(self.width, self.height)
+        self.results_window.set_game_callback(self.handle_results_callback)
         
         # Game state
         self.running = True
@@ -201,7 +206,10 @@ class Game:
             return False
     
     def handle_events(self):
+        events = []
         for event in pygame.event.get():
+            events.append(event)
+            
             if event.type == pygame.QUIT:
                 self.running = False
                 
@@ -219,18 +227,20 @@ class Game:
                 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    menu_was_active = self.menu.is_active()
-                    self.menu.toggle()
-                    if menu_was_active:
-                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
-                    self.debug_print(f"Menu: {'ON' if self.menu.is_active() else 'OFF'}")
-                elif not self.menu.is_active() and event.key == pygame.K_SPACE:
+                    # Don't allow closing results window with ESC - user must choose an option
+                    if not self.results_window.active:
+                        menu_was_active = self.menu.is_active()
+                        self.menu.toggle()
+                        if menu_was_active:
+                            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                        self.debug_print(f"Menu: {'ON' if self.menu.is_active() else 'OFF'}")
+                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_SPACE:
                     self.auto_rotate = not self.auto_rotate
                     self.debug_print(f"Auto-rotate: {'ON' if self.auto_rotate else 'OFF'}")
-                elif not self.menu.is_active() and event.key == pygame.K_d:
+                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_d:
                     self.debug_mode = not self.debug_mode
                     self.debug_print(f"Debug mode: {'ON' if self.debug_mode else 'OFF'}")
-                elif not self.menu.is_active() and event.key == pygame.K_r:
+                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_r:
                     self.renderer.rotation_x = 0
                     self.renderer.rotation_y = 0
                     self.debug_print("Rotation reset")
@@ -238,7 +248,7 @@ class Game:
                     self.toggle_fullscreen()
                 
                 # Add movement controls
-                elif not self.menu.is_active():
+                elif not self.menu.is_active() and not self.results_window.active:
                     if event.key == pygame.K_1:
                         self.execute_cube_move('R')
                     elif event.key == pygame.K_2:
@@ -273,7 +283,7 @@ class Game:
             elif self.menu.handle_event(event):
                 continue
                 
-            elif not self.menu.is_active() and event.type == pygame.MOUSEBUTTONDOWN:
+            elif not self.menu.is_active() and not self.results_window.active and event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     self.mouse_rotating = True
                     self.prev_mouse_x, self.prev_mouse_y = event.pos
@@ -281,11 +291,11 @@ class Game:
                     self.debug_print(f"Mouse rotation started at {event.pos}")
                     
             elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1 and not self.menu.is_active():
+                if event.button == 1 and not self.menu.is_active() and not self.results_window.active:
                     self.mouse_rotating = False
                     self.debug_print("Mouse rotation ended")
                 
-            elif not self.menu.is_active() and event.type == pygame.MOUSEMOTION:
+            elif not self.menu.is_active() and not self.results_window.active and event.type == pygame.MOUSEMOTION:
                 if self.mouse_rotating:
                     current_x, current_y = event.pos
                     dx = current_x - self.prev_mouse_x
@@ -303,9 +313,13 @@ class Game:
                     
                     self.prev_mouse_x = current_x
                     self.prev_mouse_y = current_y
+        
+        # Handle results window events
+        if self.results_window.active:
+            self.results_window.handle_events(events)
     
         # Keyboard controls for rotation
-        if not self.menu.is_active():
+        if not self.menu.is_active() and not self.results_window.active:
             keys = pygame.key.get_pressed()
             if keys[pygame.K_LEFT] or keys[pygame.K_a]:
                 self.renderer.rotate_camera(azimuth=-2)
@@ -359,10 +373,16 @@ class Game:
                 if self.renderer.rubiks_cube.is_solved():
                     self.cube_solved = True
                     solve_time = time.time() - self.start_time
+                    tps = self.move_counter / solve_time if solve_time > 0 else 0
+                    
+                    # Still print to terminal for debug purposes
                     print(f"🎉 CUBE SOLVED! 🎉")
                     print(f"Moves: {self.move_counter}")
                     print(f"Time: {solve_time:.2f} seconds")
-                    print(f"TPS: {self.move_counter/solve_time:.2f} moves/second")
+                    print(f"TPS: {tps:.2f} moves/second")
+                    
+                    # Show results window
+                    self.results_window.show_results(self.move_counter, solve_time, tps)
             
             # Update animation state
             self.renderer._last_animation_state = self.renderer.is_animating
@@ -402,6 +422,19 @@ class Game:
             
             # Convert pygame surface to OpenGL texture
             texture_data = pygame.image.tostring(menu_surface, 'RGBA', True)
+            
+            glRasterPos2f(0, self.height)
+            glPixelZoom(1, 1)  # Flip vertically
+            glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+        
+        # Render results window overlay if active
+        elif self.results_window.active:
+            # Create results surface and render to it
+            results_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            self.results_window.menu.draw(results_surface)
+            
+            # Convert pygame surface to OpenGL texture
+            texture_data = pygame.image.tostring(results_surface, 'RGBA', True)
             
             glRasterPos2f(0, self.height)
             glPixelZoom(1, 1)  # Flip vertically
@@ -510,6 +543,16 @@ class Game:
             print("✅ Cube is SOLVED!")
         else:
             print("❌ Cube is not solved yet")
+    
+    def handle_results_callback(self, action):
+        """Handle callbacks from the results window"""
+        if action == 'play_again':
+            # Scramble the cube for a new game
+            self.scramble_cube()
+        elif action == 'main_menu':
+            # Show the main menu
+            self.menu.toggle()
+        # 'continue_playing' is handled by just closing the results window
     
     def _render_game_info(self):
         """Render game information (FPS, moves, time)"""

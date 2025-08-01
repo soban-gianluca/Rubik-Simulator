@@ -16,6 +16,7 @@
         Fixed menu resolution change
 
 --- TO DO LIST ---
+- Reset stats when starting new game
 - Reread, simplify/remove unecessary lines
 - MOVEMENTS
 - Possible alternative solution for loading animation

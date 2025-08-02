@@ -83,6 +83,7 @@ class Game:
         # Game state
         self.running = True
         self.auto_rotate = True
+        self.game_started = False  # Track if game has started
         
         # Control variables
         self.mouse_rotating = False
@@ -360,6 +361,17 @@ class Game:
 
     def update(self):
         """Update game state"""        
+        # Check for game start (when menu becomes inactive for the first time)
+        if not self.game_started and not self.menu.is_active():
+            self.game_started = True
+            difficulty = self.menu.get_selected_difficulty()
+            self.debug_print(f"Game starting with difficulty: {difficulty}")
+            self.scramble_cube_by_difficulty(difficulty)
+        
+        # Reset game_started flag when menu is opened (so user can select new difficulty)
+        elif self.menu.is_active() and self.game_started:
+            self.game_started = False
+        
         # Update face overlay system
         delta_time = self.clock.get_time() / 1000.0  # Convert to seconds
         self.face_overlay.update(delta_time)
@@ -577,6 +589,62 @@ class Game:
         self.start_time = None
         self.cube_solved = False
         self.debug_print("Cube scrambled!")
+    
+    def scramble_cube_by_difficulty(self, difficulty):
+        """Scramble the cube based on difficulty level"""
+        # Play a cube sound for scrambling
+        self.sound_manager.play_random_cube_sound()
+        
+        # Get difficulty configuration from menu
+        game_mode_config = self.menu.get_game_mode_config(difficulty)
+        
+        if difficulty == "easy":
+            # Easy: Keep cube solved (no scrambling)
+            # Reset to solved state by creating a new solved cube
+            from rubiks_cube import RubiksCube
+            self.renderer.rubiks_cube = RubiksCube()
+            self.debug_print("Easy mode: Cube ready to solve!")
+        elif difficulty == "medium":
+            # Medium: 30 moves scramble
+            self.renderer.rubiks_cube.scramble(30)
+            self.debug_print("Medium mode: Cube scrambled with 30 moves!")
+        elif difficulty == "hard":
+            # Hard: Full random scramble (completely randomize the cube state)
+            self._total_random_scramble()
+            self.debug_print("Hard mode: Cube completely randomized!")
+        else:
+            # Default case (fallback)
+            self.renderer.rubiks_cube.scramble(20)
+            self.debug_print(f"Unknown difficulty '{difficulty}', using default scramble!")
+        
+        self.renderer.update_cube_colors()
+        self.move_counter = 0
+        self.start_time = None
+        self.cube_solved = False
+    
+    def _total_random_scramble(self):
+        """Completely randomize the cube state for hard difficulty"""
+        import random
+        
+        # Get all available colors (0-5)
+        colors = list(range(6))
+        
+        # Create a list of all 54 sticker positions (9 stickers per face × 6 faces)
+        all_positions = []
+        for face_name in self.renderer.rubiks_cube.faces.keys():
+            for i in range(3):
+                for j in range(3):
+                    all_positions.append((face_name, i, j))
+        
+        # Create a random permutation of colors, ensuring each color appears exactly 9 times
+        random_colors = []
+        for color in colors:
+            random_colors.extend([color] * 9)
+        random.shuffle(random_colors)
+        
+        # Assign the shuffled colors to all positions
+        for idx, (face_name, i, j) in enumerate(all_positions):
+            self.renderer.rubiks_cube.faces[face_name][i][j] = random_colors[idx]
     
     def check_solved(self):
         """Check if the cube is solved"""

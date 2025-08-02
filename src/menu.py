@@ -61,24 +61,21 @@ class Menu:
         return {
             "easy": {
                 "name": "Easy",
-                "description": "Perfect for beginners",
-                "scramble_moves": 10,  # Future: number of scramble moves
+                "description": "Perfect for beginners - solved cube",
+                "scramble_moves": 0,  # No scrambling - cube stays solved
                 "timer_enabled": True,  # Future: enable/disable timer
-                "hints_enabled": True,  # Future: enable/disable hints
             },
             "medium": {
                 "name": "Medium", 
-                "description": "Standard difficulty",
-                "scramble_moves": 20,
+                "description": "Standard difficulty - 10 moves scramble",
+                "scramble_moves": 10,
                 "timer_enabled": True,
-                "hints_enabled": False,
             },
             "hard": {
                 "name": "Hard",
-                "description": "For experienced cubers",
-                "scramble_moves": 30,
+                "description": "Complete random scramble",
+                "scramble_moves": -1,  # Special value for total random scramble
                 "timer_enabled": True,
-                "hints_enabled": False,
             }
         }
     

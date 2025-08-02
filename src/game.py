@@ -91,7 +91,7 @@ class Game:
         self.rotation_sensitivity = 0.5
         self.vertical_sensitivity = 0.5
         self.debug_mode = False
-        self.auto_rotation_speed = 0.2  # Reduced from 1.0 to 0.3 for slower rotation
+        self.auto_rotation_speed = 0.2
         
         # Movement system variables
         self.move_counter = 0
@@ -122,7 +122,6 @@ class Game:
         if self.debug_mode:
             print(message)
 
-    # ...existing code... (keeping all the existing methods the same)
     def toggle_fullscreen(self):
         """Toggle between fullscreen and windowed mode with proper resolution handling"""
         if self.is_fullscreen:
@@ -492,7 +491,7 @@ class Game:
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
         
-        # Update window caption (remove FPS from title since it's now on screen)
+        # Update window caption
         pygame.display.set_caption("Rubik's Cube Simulator")
         
         pygame.display.flip()
@@ -542,7 +541,7 @@ class Game:
             self.start_time = time.time()
         
         # Start animation first
-        face_name = move_notation.replace("'", "")  # Remove prime notation
+        face_name = move_notation.replace("'", "") # FIX AND REMOVE THIS LINES
         clockwise = "'" not in move_notation
         
         if self.renderer.start_face_animation(face_name, clockwise):

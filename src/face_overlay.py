@@ -169,14 +169,14 @@ class FaceOverlay:
         center_x = overlay_size // 2
         center_y = overlay_size // 2
         
-        # Main key (clockwise) with ASCII rotation indicator - SWAPPED
-        clockwise_text = f"{key} <<"  # << for clockwise (swapped)
+        # Main key (clockwise) with ASCII rotation indicator
+        clockwise_text = f"{key} <<"  # << for clockwise
         clockwise_render = self.font_small.render(clockwise_text, True, self.clockwise_color[:3])
         clockwise_rect = clockwise_render.get_rect(center=(center_x, center_y - 10))
         overlay_surf.blit(clockwise_render, clockwise_rect)
         
-        # Inverse key (counter-clockwise) with ASCII rotation indicator - SWAPPED
-        counter_text = f"{key_inv}' >>"  # >> for counter-clockwise (swapped)
+        # Inverse key (counter-clockwise) with ASCII rotation indicator
+        counter_text = f"{key_inv}' >>"  # >> for counter-clockwise
         counter_render = self.font_small.render(counter_text, True, self.counterclockwise_color[:3])
         counter_rect = counter_render.get_rect(center=(center_x, center_y + 10))
         overlay_surf.blit(counter_render, counter_rect)

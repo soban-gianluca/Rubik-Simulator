@@ -9,6 +9,7 @@ from renderer import Renderer
 from settings_manager import SettingsManager
 from sound_manager import SoundManager
 from results_window import ResultsWindow
+from face_overlay import FaceOverlay
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -76,6 +77,9 @@ class Game:
         self.results_window = ResultsWindow(self.width, self.height)
         self.results_window.set_game_callback(self.handle_results_callback)
         
+        # Initialize face overlay system
+        self.face_overlay = FaceOverlay(self.width, self.height)
+        
         # Game state
         self.running = True
         self.auto_rotate = True
@@ -99,6 +103,7 @@ class Game:
         print("  Arrow keys/WASD: Manual rotation")
         print("  Mouse drag: Rotate cube")
         print("  D: Toggle debug mode")
+        print("  H: Toggle face overlays")
         print("  ESC: Toggle menu")
         print("  R: Reset rotation")
         
@@ -183,6 +188,11 @@ class Game:
                 if hasattr(self, 'debug_mode'):
                     self.menu.debug_mode = self.debug_mode
                 self.menu._create_menus()
+            
+            # Update face overlay with new dimensions
+            if hasattr(self, 'face_overlay'):
+                self.face_overlay.width = self.width
+                self.face_overlay.height = self.height
     
             # Try to restore icon
             try:
@@ -240,6 +250,9 @@ class Game:
                 elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_d:
                     self.debug_mode = not self.debug_mode
                     self.debug_print(f"Debug mode: {'ON' if self.debug_mode else 'OFF'}")
+                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_h:
+                    overlay_state = self.face_overlay.toggle()
+                    self.debug_print(f"Face overlays: {'ON' if overlay_state else 'OFF'}")
                 elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_r:
                     self.renderer.rotation_x = 0
                     self.renderer.rotation_y = 0
@@ -251,28 +264,40 @@ class Game:
                 elif not self.menu.is_active() and not self.results_window.active:
                     if event.key == pygame.K_1:
                         self.execute_cube_move('R')
+                        self.face_overlay.set_highlight('R')
                     elif event.key == pygame.K_2:
                         self.execute_cube_move("R'")
+                        self.face_overlay.set_highlight('R')
                     elif event.key == pygame.K_3:
                         self.execute_cube_move('L')
+                        self.face_overlay.set_highlight('L')
                     elif event.key == pygame.K_4:
                         self.execute_cube_move("L'")
+                        self.face_overlay.set_highlight('L')
                     elif event.key == pygame.K_5:
                         self.execute_cube_move('U')
+                        self.face_overlay.set_highlight('U')
                     elif event.key == pygame.K_6:
                         self.execute_cube_move("U'")
+                        self.face_overlay.set_highlight('U')
                     elif event.key == pygame.K_7:
                         self.execute_cube_move('D')
+                        self.face_overlay.set_highlight('D')
                     elif event.key == pygame.K_8:
                         self.execute_cube_move("D'")
+                        self.face_overlay.set_highlight('D')
                     elif event.key == pygame.K_9:
                         self.execute_cube_move('F')
+                        self.face_overlay.set_highlight('F')
                     elif event.key == pygame.K_0:
                         self.execute_cube_move("F'")
+                        self.face_overlay.set_highlight('F')
                     elif event.key == pygame.K_q:
                         self.execute_cube_move('B')
+                        self.face_overlay.set_highlight('B')
                     elif event.key == pygame.K_w:
                         self.execute_cube_move("B'")
+                        self.face_overlay.set_highlight('B')
                     elif event.key == pygame.K_z:
                         self.undo_move()
                     elif event.key == pygame.K_x:
@@ -336,6 +361,10 @@ class Game:
 
     def update(self):
         """Update game state"""        
+        # Update face overlay system
+        delta_time = self.clock.get_time() / 1000.0  # Convert to seconds
+        self.face_overlay.update(delta_time)
+        
         if hasattr(self, 'menu') and self.menu.resolution_changed():
             try:
                 new_width, new_height = self.menu.get_current_resolution()
@@ -413,6 +442,19 @@ class Game:
         # Render FPS counter if enabled
         if self.show_fps:
             self._render_fps_counter()
+        
+        # Render face overlays (only when menu is not active)
+        if not self.menu.is_active() and not self.results_window.active:
+            # Create overlay surface
+            overlay_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            self.face_overlay.render(overlay_surface, self.renderer.rotation_x, self.renderer.rotation_y)
+            
+            # Convert pygame surface to OpenGL texture and render
+            if overlay_surface:
+                texture_data = pygame.image.tostring(overlay_surface, 'RGBA', True)
+                glRasterPos2f(0, self.height)
+                glPixelZoom(1, 1)
+                glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
         
         # Render menu overlay if active
         if self.menu.is_active():

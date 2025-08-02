@@ -21,6 +21,7 @@ class Menu:
         self.active = False
         self.resolution_changed_flag = False
         self.settings_changed = False
+        self.selected_difficulty = "medium"  # Default difficulty
         
         # Available resolutions
         self.available_resolutions = [
@@ -54,10 +55,51 @@ class Menu:
         # Set current menu to main menu
         self.current_menu = self.main_menu
     
-    def _start_game(self):
-        """Start the game (close menu)"""
+    def _get_game_modes(self):
+        """Get available game modes with their configurations.
+        This structure makes it easy to add new difficulties and game modes."""
+        return {
+            "easy": {
+                "name": "Easy",
+                "description": "Perfect for beginners",
+                "scramble_moves": 10,  # Future: number of scramble moves
+                "timer_enabled": True,  # Future: enable/disable timer
+                "hints_enabled": True,  # Future: enable/disable hints
+            },
+            "medium": {
+                "name": "Medium", 
+                "description": "Standard difficulty",
+                "scramble_moves": 20,
+                "timer_enabled": True,
+                "hints_enabled": False,
+            },
+            "hard": {
+                "name": "Hard",
+                "description": "For experienced cubers",
+                "scramble_moves": 30,
+                "timer_enabled": True,
+                "hints_enabled": False,
+            }
+        }
+    
+    def get_game_mode_config(self, difficulty):
+        """Get the configuration for a specific game mode"""
+        game_modes = self._get_game_modes()
+        return game_modes.get(difficulty, game_modes["medium"])
+    
+    def _start_game(self, difficulty="normal"):
+        """Start the game (close menu) with specified difficulty"""
         self.sound_manager.play("menu_select")
+        # Store the selected difficulty for future use
+        self.selected_difficulty = difficulty
+        if hasattr(self, "debug_mode") and self.debug_mode:
+            print(f"Starting game with difficulty: {difficulty}")
         self.active = False
+    
+    def _open_difficulty_select(self):
+        """Open difficulty selection submenu"""
+        self.sound_manager.play("menu_select")
+        self.current_menu = self.difficulty_menu
     
     def _open_settings(self):
         """Open settings submenu"""
@@ -223,7 +265,13 @@ class Menu:
             return self.fullscreen
         elif name == "volume":
             return self.volume
+        elif name == "difficulty":
+            return self.selected_difficulty
         return None
+    
+    def get_selected_difficulty(self):
+        """Get the currently selected difficulty"""
+        return self.selected_difficulty
     
     def handle_event(self, event):
         """Handle events specific to the menu.
@@ -355,10 +403,28 @@ class Menu:
         )
         
         # Add main menu buttons
-        self.main_menu.add.button("Play", self._start_game)
+        self.main_menu.add.button("Play", self._open_difficulty_select)
         self.main_menu.add.button("Settings", self._open_settings)
         self.main_menu.add.button("Help", self._open_help)
         self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
+        
+        # Create difficulty selection menu with ACTUAL dimensions
+        self.difficulty_menu = pygame_menu.Menu(
+            "Select Difficulty",
+            self.width,
+            self.height,
+            theme=self.theme
+        )
+        
+        # Dynamically add difficulty options from game modes configuration
+        game_modes = self._get_game_modes()
+        for mode_key, mode_config in game_modes.items():
+            button_text = f"{mode_config['name']}"
+            # Create a lambda with default parameter to capture the current mode_key
+            button_action = lambda difficulty=mode_key: self._start_game(difficulty)
+            self.difficulty_menu.add.button(button_text, button_action)
+        
+        self.difficulty_menu.add.button("Back", self._back_to_main)
         
         # Create settings menu with ACTUAL dimensions
         self.settings_menu = pygame_menu.Menu(
@@ -452,6 +518,8 @@ class Menu:
                 self.current_menu = self.settings_menu
             elif self.current_menu == self.help_menu:
                 self.current_menu = self.help_menu
+            elif self.current_menu == self.difficulty_menu:
+                self.current_menu = self.difficulty_menu
             else:
                 self.current_menu = self.main_menu
         else:

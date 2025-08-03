@@ -7,8 +7,8 @@ class RubiksCube:
         # Each face is represented as a 3x3 array of colors
         # 0=white(top), 1=yellow(bottom), 2=red(right), 3=orange(left), 4=blue(front), 5=green(back)
         self.faces = {
-            'top': np.full((3, 3), 1),     # Yellow
-            'bottom': np.full((3, 3), 0),  # White
+            'top': np.full((3, 3), 0),     # White
+            'bottom': np.full((3, 3), 1),  # Yellow
             'right': np.full((3, 3), 2),   # Red
             'left': np.full((3, 3), 3),    # Orange
             'front': np.full((3, 3), 4),   # Blue
@@ -17,8 +17,8 @@ class RubiksCube:
         
         # Map colors to RGB values for rendering - Improved for better color distinction
         self.color_map = {
-            0: (1.0, 0.95, 0.0),    # Yellow - Pure white
-            1: (1.0, 1.0, 1.0),     # White - Slightly less green for better contrast
+            0: (1.0, 0.95, 0.0),   # White - Pure white
+            1: (1.0, 1.0, 1.0),    # Yellow - Pure yellow
             2: (0.9, 0.1, 0.1),    # Red - Deep red with slight darkness for better realism
             3: (1.0, 0.35, 0.0),   # Orange - More distinct orange, less green component
             4: (0.0, 0.2, 0.9),    # Blue - Brighter blue with slight lightness

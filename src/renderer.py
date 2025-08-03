@@ -80,6 +80,25 @@ class Renderer:
         # Store camera rotation for manual control
         self.rotation_x = 0
         self.rotation_y = 0
+        
+        # Face visibility and glow effect system
+        self.face_visibility_scores = [0.0] * 6  # Visibility scores for each face
+        self.most_visible_face = 0  # Index of the most visible face
+        self.glow_intensity = 0.0  # Current glow intensity (animated)
+        self.glow_target = 1.0  # Target glow intensity
+        self.glow_speed = 3.0  # Speed of glow animation
+        self.glow_pulse_time = 0.0  # Time for pulsing animation
+        self.glow_pulse_speed = 2.0  # Speed of pulse animation
+        
+        # Face normal vectors in world space (pointing outward from cube center)
+        self.face_normals = [
+            (0, 1, 0),   # Top face normal
+            (0, -1, 0),  # Bottom face normal  
+            (1, 0, 0),   # Right face normal
+            (-1, 0, 0),  # Left face normal
+            (0, 0, 1),   # Front face normal
+            (0, 0, -1)   # Back face normal
+        ]
 
     def load_skybox_texture(self, image_path):
         """Load skybox texture from image file"""
@@ -580,6 +599,160 @@ class Renderer:
         # Keep single_cube_display_list for backward compatibility
         self.single_cube_display_list = self.face_display_lists[0]
 
+    def calculate_face_visibility(self):
+        """Calculate which face is most visible based on camera rotation"""
+        import math
+        
+        # Convert rotation angles to radians
+        rx_rad = math.radians(self.rotation_x)
+        ry_rad = math.radians(self.rotation_y)
+        
+        # Calculate camera direction vector (normalized)
+        # Camera looks down negative Z axis, then we apply rotations
+        # We need to invert the calculation since we want the face pointing towards camera
+        cam_x = -math.sin(ry_rad) * math.cos(rx_rad)
+        cam_y = math.sin(rx_rad)
+        cam_z = math.cos(ry_rad) * math.cos(rx_rad)
+        
+        # Calculate dot product between camera direction and each face normal
+        # Higher dot product means the face is more directly facing the camera
+        max_visibility = -1.0
+        most_visible = 0
+        
+        for i, (nx, ny, nz) in enumerate(self.face_normals):
+            # Dot product gives us the cosine of the angle between vectors
+            visibility = cam_x * nx + cam_y * ny + cam_z * nz
+            self.face_visibility_scores[i] = max(0.0, visibility)  # Clamp to positive values
+            
+            if visibility > max_visibility:
+                max_visibility = visibility
+                most_visible = i
+        
+        # Only update most visible face if there's a clear winner
+        if max_visibility > 0.3:  # Threshold to prevent rapid switching
+            if most_visible != self.most_visible_face:
+                self.most_visible_face = most_visible
+    
+    def update_glow_effect(self, delta_time):
+        """Update the glow effect animation"""
+        # Update pulse time for breathing effect
+        self.glow_pulse_time += delta_time * self.glow_pulse_speed
+        
+        # Animate glow intensity towards target
+        if self.glow_intensity < self.glow_target:
+            self.glow_intensity += self.glow_speed * delta_time
+            if self.glow_intensity > self.glow_target:
+                self.glow_intensity = self.glow_target
+        elif self.glow_intensity > self.glow_target:
+            self.glow_intensity -= self.glow_speed * delta_time
+            if self.glow_intensity < self.glow_target:
+                self.glow_intensity = self.glow_target
+    
+    def render_face_corner_glow(self):
+        """Render animated glowing effects at the outer corners of the most visible face"""
+        if self.glow_intensity <= 0.01:
+            return
+        
+        import math
+        
+        # Calculate pulsing effect
+        pulse_factor = 0.7 + 0.3 * math.sin(self.glow_pulse_time)
+        current_intensity = self.glow_intensity * pulse_factor
+        
+        # Save current OpenGL state
+        depth_test_enabled = glIsEnabled(GL_DEPTH_TEST)
+        cull_face_enabled = glIsEnabled(GL_CULL_FACE)
+        blend_enabled = glIsEnabled(GL_BLEND)
+        
+        # Enable blending for glow effect
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_CULL_FACE)
+        
+        # Calculate the spacing between cubes to find face boundaries
+        cube_spacing = self.cube_spacing * 0.85  # Same as in initialize_cubes
+        
+        # Expand outward to create border around the face (not inside)
+        border_offset = 0.23  # Distance outside the face
+        
+        # Define outer corner positions for each face of the entire 3x3x3 cube
+        # These positions are outside the actual face to create a border effect
+        face_corners = {
+            0: [  # Top face corners (expanded outward)
+                (-cube_spacing - border_offset, cube_spacing + border_offset, -cube_spacing - border_offset),  # Top-left-back
+                (cube_spacing + border_offset, cube_spacing + border_offset, -cube_spacing - border_offset),   # Top-right-back
+                (cube_spacing + border_offset, cube_spacing + border_offset, cube_spacing + border_offset),    # Top-right-front
+                (-cube_spacing - border_offset, cube_spacing + border_offset, cube_spacing + border_offset)    # Top-left-front
+            ],
+            1: [  # Bottom face corners (expanded outward)
+                (-cube_spacing - border_offset, -cube_spacing - border_offset, cube_spacing + border_offset),  # Bottom-left-front
+                (cube_spacing + border_offset, -cube_spacing - border_offset, cube_spacing + border_offset),   # Bottom-right-front
+                (cube_spacing + border_offset, -cube_spacing - border_offset, -cube_spacing - border_offset),  # Bottom-right-back
+                (-cube_spacing - border_offset, -cube_spacing - border_offset, -cube_spacing - border_offset)  # Bottom-left-back
+            ],
+            2: [  # Right face corners (expanded outward)
+                (cube_spacing + border_offset, -cube_spacing - border_offset, -cube_spacing - border_offset),  # Bottom-right-back
+                (cube_spacing + border_offset, cube_spacing + border_offset, -cube_spacing - border_offset),   # Top-right-back
+                (cube_spacing + border_offset, cube_spacing + border_offset, cube_spacing + border_offset),    # Top-right-front
+                (cube_spacing + border_offset, -cube_spacing - border_offset, cube_spacing + border_offset)    # Bottom-right-front
+            ],
+            3: [  # Left face corners (expanded outward)
+                (-cube_spacing - border_offset, -cube_spacing - border_offset, cube_spacing + border_offset),  # Bottom-left-front
+                (-cube_spacing - border_offset, cube_spacing + border_offset, cube_spacing + border_offset),   # Top-left-front
+                (-cube_spacing - border_offset, cube_spacing + border_offset, -cube_spacing - border_offset),  # Top-left-back
+                (-cube_spacing - border_offset, -cube_spacing - border_offset, -cube_spacing - border_offset)  # Bottom-left-back
+            ],
+            4: [  # Front face corners (expanded outward)
+                (-cube_spacing - border_offset, -cube_spacing - border_offset, cube_spacing + border_offset),  # Bottom-left-front
+                (cube_spacing + border_offset, -cube_spacing - border_offset, cube_spacing + border_offset),   # Bottom-right-front
+                (cube_spacing + border_offset, cube_spacing + border_offset, cube_spacing + border_offset),    # Top-right-front
+                (-cube_spacing - border_offset, cube_spacing + border_offset, cube_spacing + border_offset)    # Top-left-front
+            ],
+            5: [  # Back face corners (expanded outward)
+                (cube_spacing + border_offset, -cube_spacing - border_offset, -cube_spacing - border_offset),  # Bottom-right-back
+                (-cube_spacing - border_offset, -cube_spacing - border_offset, -cube_spacing - border_offset), # Bottom-left-back
+                (-cube_spacing - border_offset, cube_spacing + border_offset, -cube_spacing - border_offset),  # Top-left-back
+                (cube_spacing + border_offset, cube_spacing + border_offset, -cube_spacing - border_offset)    # Top-right-back
+            ]
+        }
+        
+        if self.most_visible_face not in face_corners:
+            # Restore OpenGL state before returning
+            if depth_test_enabled:
+                glEnable(GL_DEPTH_TEST)
+            if cull_face_enabled:
+                glEnable(GL_CULL_FACE)
+            if not blend_enabled:
+                glDisable(GL_BLEND)
+            return
+        
+        corners = face_corners[self.most_visible_face]
+        
+        # Set glow colors with animated intensity
+        glow_alpha = current_intensity * 0.8
+        
+        # Render edge glow lines connecting corners
+        glColor4f(1, 1, 1.0, glow_alpha)  # White glow
+        line_width = 5.0 + current_intensity * 4.0
+        glLineWidth(line_width)
+        
+        glBegin(GL_LINE_LOOP)
+        for corner in corners:
+            glVertex3f(corner[0], corner[1], corner[2])
+        glEnd()
+        
+        # Restore OpenGL state properly
+        if depth_test_enabled:
+            glEnable(GL_DEPTH_TEST)
+        if cull_face_enabled:
+            glEnable(GL_CULL_FACE)
+        if not blend_enabled:
+            glDisable(GL_BLEND)
+        
+        glColor3f(1.0, 1.0, 1.0)  # Reset color
+        glLineWidth(1.0)  # Reset line width
+
     def rotate_camera(self, azimuth=0, elevation=0):
         """Rotate camera around the cube
         
@@ -597,6 +770,9 @@ class Renderer:
         """Render the 3x3x3 Rubik's cube using individual cubes with animation"""
         if not hasattr(self, 'face_display_lists'):
             return
+        
+        # Calculate which face is most visible
+        self.calculate_face_visibility()
         
         # Get current animation angle
         animation_angle = self.update_animation()
@@ -643,6 +819,9 @@ class Renderer:
                 glCallList(self.face_display_lists[i])
             
             glPopMatrix()
+        
+        # Render the glow effect for the entire most visible face (after all cubes)
+        self.render_face_corner_glow()
 
     def render_frame(self):
         """Render a frame and return the surface (for compatibility with existing code)"""

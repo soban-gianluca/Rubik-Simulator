@@ -101,12 +101,12 @@ class Game:
         
         print("Controls:")
         print("  Space: Toggle auto-rotation")
-        print("  Arrow keys/WASD: Manual rotation")
+        print("  Arrow keys: Manual rotation")
         print("  Mouse drag: Rotate cube")
         print("  D: Toggle debug mode")
         print("  H: Toggle face overlays")
-        print("  ESC: Toggle menu")
         print("  R: Reset rotation")
+        print("  ESC: Toggle menu")
         
         print("Movement Controls:")
         print("  1: R move    2: R' move")
@@ -375,6 +375,10 @@ class Game:
         # Update face overlay system
         delta_time = self.clock.get_time() / 1000.0  # Convert to seconds
         self.face_overlay.update(delta_time)
+        
+        # Update renderer glow effect
+        if hasattr(self.renderer, 'update_glow_effect'):
+            self.renderer.update_glow_effect(delta_time)
         
         if hasattr(self, 'menu') and self.menu.resolution_changed():
             try:

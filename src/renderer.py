@@ -69,7 +69,8 @@ class Renderer:
         self.setup_opengl()
         
         # Load skybox texture from settings and create spherical skybox
-        skybox_path = self.settings_manager.get_current_skybox_path()
+        # Use medium difficulty as default on initialization
+        skybox_path = self.settings_manager.get_skybox_by_difficulty("medium")
         self.load_skybox_texture(skybox_path)
         self.create_spherical_skybox_display_list()  # Using spherical skybox for full panoramic image
         

@@ -16,26 +16,10 @@ class SettingsManager:
             "auto_rotate": True,
             "auto_rotate_speed": 0.2,
             "background": "skybox",
-            "skybox_texture": {
-                "current": 0,
-                "options": [
-                    {
-                        "name": "Skybox",
-                        "file": "utils/skyboxes/skybox_sky.jpg"
-                    },
-                    {
-                        "name": "Venice",
-                        "file": "utils/skyboxes/skybox_venice.jpg"
-                    },
-                    {
-                        "name": "Park",
-                        "file": "utils/skyboxes/skybox_park.jpg"
-                    },
-                    {
-                        "name": "Hall",
-                        "file": "utils/skyboxes/skybox_hall.jpg"
-                    }
-                ]
+            "difficulty_skyboxes": {
+                "easy": "utils/skyboxes/skybox_easy.jpg",
+                "medium": "utils/skyboxes/skybox_medium.jpg", 
+                "hard": "utils/skyboxes/skybox_hard.jpg"
             }
         }
 
@@ -67,36 +51,12 @@ class SettingsManager:
         except Exception as e:
             print(f"Error saving settings: {e}")
     
+    def get_skybox_by_difficulty(self, difficulty):
+        """Get the skybox path for a specific difficulty level"""
+        difficulty_skyboxes = self.settings.get("difficulty_skyboxes", self.default_settings["difficulty_skyboxes"])
+        return difficulty_skyboxes.get(difficulty, difficulty_skyboxes["medium"])  # Default to medium if difficulty not found
+    
     def get_current_skybox_path(self):
-        """Get the file path of the currently selected skybox texture"""
-        skybox_settings = self.settings.get("skybox_texture", self.default_settings["skybox_texture"])
-        current_index = skybox_settings.get("current", 0)
-        options = skybox_settings.get("options", self.default_settings["skybox_texture"]["options"])
-        
-        if 0 <= current_index < len(options):
-            return options[current_index]["file"]
-        else:
-            # Fallback to first option if index is invalid
-            return options[0]["file"] if options else "utils/skybox.jpg"
-    
-    def get_skybox_options(self):
-        """Get all available skybox texture options"""
-        skybox_settings = self.settings.get("skybox_texture", self.default_settings["skybox_texture"])
-        return skybox_settings.get("options", self.default_settings["skybox_texture"]["options"])
-    
-    def get_current_skybox_index(self):
-        """Get the index of the currently selected skybox texture"""
-        skybox_settings = self.settings.get("skybox_texture", self.default_settings["skybox_texture"])
-        return skybox_settings.get("current", 0)
-    
-    def set_skybox_texture(self, index):
-        """Set the current skybox texture by index"""
-        if "skybox_texture" not in self.settings:
-            self.settings["skybox_texture"] = self.default_settings["skybox_texture"].copy()
-        
-        options = self.settings["skybox_texture"].get("options", [])
-        if 0 <= index < len(options):
-            self.settings["skybox_texture"]["current"] = index
-            self.save_settings()
-            return True
-        return False
+        """Get the file path of the currently selected skybox texture - deprecated, use get_skybox_by_difficulty instead"""
+        # For backward compatibility, return the medium difficulty skybox
+        return self.get_skybox_by_difficulty("medium")

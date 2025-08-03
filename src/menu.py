@@ -468,15 +468,14 @@ class Menu:
         help_text = [
             "Controls:",
             "",
+            "ESC: Toggle menu",
+            "F11: Toggle fullscreen",
             "Space: Toggle auto-rotation",
             "Left/Right arrows: Manual rotation",
             "Up/Down arrows: Vertical rotation",
             "Click and drag: Rotate with mouse",
-            "D: Toggle debug mode",
-            "ESC: Toggle menu",
-            "F11: Toggle fullscreen",
             "1 to W: Rotate cube faces",
-            "The overlay tells you what to press to rotate the face"
+            "D: Toggle debug mode",
             "",
             "Mouse rotation disables auto-rotation"
         ]

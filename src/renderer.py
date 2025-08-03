@@ -656,7 +656,7 @@ class Renderer:
         import math
         
         # Calculate pulsing effect
-        pulse_factor = 0.7 + 0.3 * math.sin(self.glow_pulse_time)
+        pulse_factor = 0.5 + 0.3 * math.sin(self.glow_pulse_time)
         current_intensity = self.glow_intensity * pulse_factor
         
         # Save current OpenGL state
@@ -674,7 +674,7 @@ class Renderer:
         cube_spacing = self.cube_spacing * 0.85  # Same as in initialize_cubes
         
         # Expand outward to create border around the face (not inside)
-        border_offset = 0.23  # Distance outside the face
+        border_offset = 0.26  # Distance outside the face
         
         # Define outer corner positions for each face of the entire 3x3x3 cube
         # These positions are outside the actual face to create a border effect
@@ -732,14 +732,111 @@ class Renderer:
         # Set glow colors with animated intensity
         glow_alpha = current_intensity * 0.8
         
-        # Render edge glow lines connecting corners
+        # Render a single thick square border with rounded corners
         glColor4f(1, 1, 1.0, glow_alpha)  # White glow
-        line_width = 5.0 + current_intensity * 4.0
-        glLineWidth(line_width)
         
-        glBegin(GL_LINE_LOOP)
-        for corner in corners:
-            glVertex3f(corner[0], corner[1], corner[2])
+        # Calculate border thickness and corner radius
+        border_thickness = 0.02 + current_intensity * 0.01
+        corner_radius = 0.05 + current_intensity * 0.02  # Radius for rounded corners
+        segments_per_corner = 12  # Number of segments for smooth corners
+        
+        # Calculate center point
+        center_x = sum(corner[0] for corner in corners) / len(corners)
+        center_y = sum(corner[1] for corner in corners) / len(corners)
+        center_z = sum(corner[2] for corner in corners) / len(corners)
+        
+        import math
+        
+        # Generate all vertices for the rounded square border
+        all_inner_vertices = []
+        all_outer_vertices = []
+        
+        for i in range(len(corners)):
+            current_corner = corners[i]
+            next_corner = corners[(i + 1) % len(corners)]
+            prev_corner = corners[(i - 1) % len(corners)]
+            
+            # Calculate vectors to adjacent corners
+            to_next = [next_corner[j] - current_corner[j] for j in range(3)]
+            to_prev = [prev_corner[j] - current_corner[j] for j in range(3)]
+            
+            # Normalize vectors
+            next_len = math.sqrt(sum(x*x for x in to_next))
+            prev_len = math.sqrt(sum(x*x for x in to_prev))
+            
+            if next_len > 0 and prev_len > 0:
+                to_next_norm = [x/next_len for x in to_next]
+                to_prev_norm = [x/prev_len for x in to_prev]
+                
+                # Calculate start and end points for the rounded corner
+                corner_start = [current_corner[j] + to_prev_norm[j] * corner_radius for j in range(3)]
+                corner_end = [current_corner[j] + to_next_norm[j] * corner_radius for j in range(3)]
+                
+                # Add the straight edge leading to this corner
+                if i == 0:  # Only add the first straight edge to avoid duplicates
+                    # Vector from center to start point for thickness calculation
+                    to_start = [corner_start[j] - center_j for j, center_j in enumerate([center_x, center_y, center_z])]
+                    start_len = math.sqrt(sum(x*x for x in to_start))
+                    if start_len > 0:
+                        to_start_norm = [x/start_len for x in to_start]
+                        
+                        inner_start = [center_x + to_start_norm[0] * (start_len - border_thickness),
+                                     center_y + to_start_norm[1] * (start_len - border_thickness),
+                                     center_z + to_start_norm[2] * (start_len - border_thickness)]
+                        outer_start = [center_x + to_start_norm[0] * (start_len + border_thickness),
+                                     center_y + to_start_norm[1] * (start_len + border_thickness),
+                                     center_z + to_start_norm[2] * (start_len + border_thickness)]
+                        
+                        all_inner_vertices.append(inner_start)
+                        all_outer_vertices.append(outer_start)
+                
+                # Generate rounded corner vertices
+                for seg in range(segments_per_corner + 1):
+                    t = seg / segments_per_corner
+                    
+                    # Linear interpolation between start and end points
+                    interp_point = [corner_start[j] + t * (corner_end[j] - corner_start[j]) for j in range(3)]
+                    
+                    # Calculate outward direction from corner center for rounding
+                    to_corner_center = [current_corner[j] - center_j for j, center_j in enumerate([center_x, center_y, center_z])]
+                    center_len = math.sqrt(sum(x*x for x in to_corner_center))
+                    outward_dir = [x/center_len for x in to_corner_center] if center_len > 0 else [0, 0, 0]
+                    
+                    # Add outward bulge for rounded effect
+                    bulge_factor = math.sin(t * math.pi) * corner_radius * 0.3
+                    rounded_point = [interp_point[j] + outward_dir[j] * bulge_factor for j in range(3)]
+                    
+                    # Calculate inner and outer vertices
+                    to_rounded = [rounded_point[j] - center_j for j, center_j in enumerate([center_x, center_y, center_z])]
+                    rounded_len = math.sqrt(sum(x*x for x in to_rounded))
+                    
+                    if rounded_len > 0:
+                        to_rounded_norm = [x/rounded_len for x in to_rounded]
+                        
+                        inner_vertex = [center_x + to_rounded_norm[0] * (rounded_len - border_thickness),
+                                      center_y + to_rounded_norm[1] * (rounded_len - border_thickness),
+                                      center_z + to_rounded_norm[2] * (rounded_len - border_thickness)]
+                        outer_vertex = [center_x + to_rounded_norm[0] * (rounded_len + border_thickness),
+                                      center_y + to_rounded_norm[1] * (rounded_len + border_thickness),
+                                      center_z + to_rounded_norm[2] * (rounded_len + border_thickness)]
+                        
+                        all_inner_vertices.append(inner_vertex)
+                        all_outer_vertices.append(outer_vertex)
+        
+        # Draw the rounded border as triangular strips
+        glBegin(GL_TRIANGLE_STRIP)
+        for i in range(len(all_inner_vertices)):
+            # Create triangular strip between inner and outer vertices
+            current_i = i
+            next_i = (i + 1) % len(all_inner_vertices)
+            
+            # Add vertices in triangle strip order
+            glVertex3f(all_inner_vertices[current_i][0], all_inner_vertices[current_i][1], all_inner_vertices[current_i][2])
+            glVertex3f(all_outer_vertices[current_i][0], all_outer_vertices[current_i][1], all_outer_vertices[current_i][2])
+        
+        # Close the strip by connecting back to the first vertices
+        glVertex3f(all_inner_vertices[0][0], all_inner_vertices[0][1], all_inner_vertices[0][2])
+        glVertex3f(all_outer_vertices[0][0], all_outer_vertices[0][1], all_outer_vertices[0][2])
         glEnd()
         
         # Restore OpenGL state properly

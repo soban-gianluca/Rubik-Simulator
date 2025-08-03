@@ -500,6 +500,8 @@ class Menu:
             "D: Toggle debug mode",
             "ESC: Toggle menu",
             "F11: Toggle fullscreen",
+            "1 to W: Rotate cube faces",
+            "The overlay tells you what to press to rotate the face"
             "",
             "Mouse rotation disables auto-rotation"
         ]

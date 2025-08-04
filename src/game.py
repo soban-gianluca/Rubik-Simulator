@@ -102,22 +102,24 @@ class Game:
         print("Controls:")
         print("  Space: Toggle auto-rotation")
         print("  Arrow keys: Manual rotation")
+        print("  A/S: Additional rotation controls")
         print("  Mouse drag: Rotate cube")
-        print("  D: Toggle debug mode")
+        print("  Ctrl+B: Toggle debug mode")
         print("  H: Toggle face overlays")
-        print("  R: Reset rotation")
+        print("  T: Reset rotation")
         print("  ESC: Toggle menu")
         
         print("Movement Controls:")
-        print("  1: R move    2: R' move")
-        print("  3: L move    4: L' move") 
-        print("  5: U move    6: U' move")
-        print("  7: D move    8: D' move")
-        print("  9: F move    0: F' move")
-        print("  Q: B move    W: B' move")
+        print("  R: R move       Shift+R: R' move")
+        print("  L: L move       Shift+L: L' move") 
+        print("  U: U move       Shift+U: U' move")
+        print("  D: D move       Shift+D: D' move")
+        print("  F: F move       Shift+F: F' move")
+        print("  B: B move       Shift+B: B' move")
         print("  Z: Undo last move")
         print("  X: Scramble cube")
         print("  C: Check if solved")
+        print("  Ctrl+B: Toggle debug mode")
 
     def debug_print(self, message):
         if self.debug_mode:
@@ -273,56 +275,62 @@ class Game:
                 elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_SPACE:
                     self.auto_rotate = not self.auto_rotate
                     self.debug_print(f"Auto-rotate: {'ON' if self.auto_rotate else 'OFF'}")
-                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_d:
+                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_b and event.mod & pygame.KMOD_CTRL:
                     self.debug_mode = not self.debug_mode
                     self.debug_print(f"Debug mode: {'ON' if self.debug_mode else 'OFF'}")
                 elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_h:
                     overlay_state = self.face_overlay.toggle()
                     self.debug_print(f"Face overlays: {'ON' if overlay_state else 'OFF'}")
-                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_r:
+                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_t:
                     self.renderer.rotation_x = 0
                     self.renderer.rotation_y = 0
                     self.debug_print("Rotation reset")
                 elif event.key == pygame.K_F11:
                     self.toggle_fullscreen()
                 
-                # Add movement controls
+                # Cube movement controls using standard notation
                 elif not self.menu.is_active() and not self.results_window.active:
-                    if event.key == pygame.K_1:
-                        self.execute_cube_move('R')
+                    # R moves
+                    if event.key == pygame.K_r:
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.execute_cube_move("R'")
+                        else:
+                            self.execute_cube_move('R')
                         self.face_overlay.set_highlight('R')
-                    elif event.key == pygame.K_2:
-                        self.execute_cube_move("R'")
-                        self.face_overlay.set_highlight('R')
-                    elif event.key == pygame.K_3:
-                        self.execute_cube_move('L')
+                    # L moves
+                    elif event.key == pygame.K_l:
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.execute_cube_move("L'")
+                        else:
+                            self.execute_cube_move('L')
                         self.face_overlay.set_highlight('L')
-                    elif event.key == pygame.K_4:
-                        self.execute_cube_move("L'")
-                        self.face_overlay.set_highlight('L')
-                    elif event.key == pygame.K_5:
-                        self.execute_cube_move('U')
+                    # U moves
+                    elif event.key == pygame.K_u:
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.execute_cube_move("U'")
+                        else:
+                            self.execute_cube_move('U')
                         self.face_overlay.set_highlight('U')
-                    elif event.key == pygame.K_6:
-                        self.execute_cube_move("U'")
-                        self.face_overlay.set_highlight('U')
-                    elif event.key == pygame.K_7:
-                        self.execute_cube_move('D')
+                    # D moves
+                    elif event.key == pygame.K_d:
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.execute_cube_move("D'")
+                        else:
+                            self.execute_cube_move('D')
                         self.face_overlay.set_highlight('D')
-                    elif event.key == pygame.K_8:
-                        self.execute_cube_move("D'")
-                        self.face_overlay.set_highlight('D')
-                    elif event.key == pygame.K_9:
-                        self.execute_cube_move('F')
+                    # F moves
+                    elif event.key == pygame.K_f:
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.execute_cube_move("F'")
+                        else:
+                            self.execute_cube_move('F')
                         self.face_overlay.set_highlight('F')
-                    elif event.key == pygame.K_0:
-                        self.execute_cube_move("F'")
-                        self.face_overlay.set_highlight('F')
-                    elif event.key == pygame.K_q:
-                        self.execute_cube_move('B')
-                        self.face_overlay.set_highlight('B')
-                    elif event.key == pygame.K_w:
-                        self.execute_cube_move("B'")
+                    # B moves
+                    elif event.key == pygame.K_b:
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.execute_cube_move("B'")
+                        else:
+                            self.execute_cube_move('B')
                         self.face_overlay.set_highlight('B')
                     elif event.key == pygame.K_z:
                         self.undo_move()
@@ -375,10 +383,10 @@ class Game:
             if keys[pygame.K_LEFT] or keys[pygame.K_a]:
                 self.renderer.rotate_camera(azimuth=-2)
                 self.auto_rotate = False
-            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            if keys[pygame.K_RIGHT]:
                 self.renderer.rotate_camera(azimuth=2)
                 self.auto_rotate = False
-            if keys[pygame.K_UP] or keys[pygame.K_w]:
+            if keys[pygame.K_UP]:
                 self.renderer.rotate_camera(elevation=-2)
                 self.auto_rotate = False
             if keys[pygame.K_DOWN] or keys[pygame.K_s]:
@@ -401,10 +409,6 @@ class Game:
         # Update face overlay system
         delta_time = self.clock.get_time() / 1000.0  # Convert to seconds
         self.face_overlay.update(delta_time)
-        
-        # Update renderer glow effect
-        if hasattr(self.renderer, 'update_glow_effect'):
-            self.renderer.update_glow_effect(delta_time)
         
         if hasattr(self, 'menu') and self.menu.resolution_changed():
             try:

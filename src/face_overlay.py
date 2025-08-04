@@ -14,12 +14,12 @@ class FaceOverlay:
         
         # Face mapping to keyboard controls and labels
         self.face_controls = {
-            'R': {'key': '1', 'key_inv': '2', 'label': 'R', 'label_inv': "R'"},
-            'L': {'key': '3', 'key_inv': '4', 'label': 'L', 'label_inv': "L'"},
-            'U': {'key': '5', 'key_inv': '6', 'label': 'U', 'label_inv': "U'"},
-            'D': {'key': '7', 'key_inv': '8', 'label': 'D', 'label_inv': "D'"},
-            'F': {'key': '9', 'key_inv': '0', 'label': 'F', 'label_inv': "F'"},
-            'B': {'key': 'Q', 'key_inv': 'W', 'label': 'B', 'label_inv': "B'"}
+            'R': {'key': 'R', 'key_inv': 'Shift+R', 'label': 'R', 'label_inv': "R'"},
+            'L': {'key': 'L', 'key_inv': 'Shift+L', 'label': 'L', 'label_inv': "L'"},
+            'U': {'key': 'U', 'key_inv': 'Shift+U', 'label': 'U', 'label_inv': "U'"},
+            'D': {'key': 'D', 'key_inv': 'Shift+D', 'label': 'D', 'label_inv': "D'"},
+            'F': {'key': 'F', 'key_inv': 'Shift+F', 'label': 'F', 'label_inv': "F'"},
+            'B': {'key': 'B', 'key_inv': 'Shift+B', 'label': 'B', 'label_inv': "B'"}
         }
         
         # Initialize fonts for text rendering
@@ -170,13 +170,13 @@ class FaceOverlay:
         center_y = overlay_size // 2
         
         # Main key (clockwise) with ASCII rotation indicator
-        clockwise_text = f"{key} <<"  # << for clockwise
+        clockwise_text = f"{key}"  # Just show the key
         clockwise_render = self.font_small.render(clockwise_text, True, self.clockwise_color[:3])
         clockwise_rect = clockwise_render.get_rect(center=(center_x, center_y - 10))
         overlay_surf.blit(clockwise_render, clockwise_rect)
         
-        # Inverse key (counter-clockwise) with ASCII rotation indicator
-        counter_text = f"{key_inv}' >>"  # >> for counter-clockwise
+        # Inverse key (counter-clockwise) with shortened format
+        counter_text = f"S+{key}"  # Shortened "Shift+" to "S+"
         counter_render = self.font_small.render(counter_text, True, self.counterclockwise_color[:3])
         counter_rect = counter_render.get_rect(center=(center_x, center_y + 10))
         overlay_surf.blit(counter_render, counter_rect)
@@ -192,7 +192,7 @@ class FaceOverlay:
         if not self.enabled:
             return
             
-        hint_text = "Face Controls: 1/2=R/R' | 3/4=L/L' | 5/6=U/U' | 7/8=D/D' | 9/0=F/F' | Q/W=B/B' | H=Toggle Overlays"
+        hint_text = "Face Controls: R/Shift+R | L/Shift+L | U/Shift+U | D/Shift+D | F/Shift+F | B/Shift+B | H=Toggle Overlays"
         text_surf = self.font_small.render(hint_text, True, (255, 255, 255))
         text_rect = text_surf.get_rect(center=(self.width//2, self.height - 20))
         

@@ -274,10 +274,13 @@ class Renderer:
         self.animating_face = face_name
         self.animation_axis = face_definitions[face_name]['axis']
         
-        # Keep all rotations consistent using a simple rule:
-        # The same animation angle will be used for all moves
-        # We'll handle the logical model differences in rubiks_cube.py
-        self.animation_angle_total = 90 if clockwise else -90
+        # Handle animation direction: face moves vs slice moves need different logic
+        if face_name in ['M', 'E', 'S']:
+            # Slice moves: keep original direction (they weren't flipped in the logic)
+            self.animation_angle_total = 90 if clockwise else -90
+        else:
+            # Face moves: use flipped direction to match the corrected logic
+            self.animation_angle_total = -90 if clockwise else 90
         self.animation_clockwise = clockwise
         
         # Find cubes that are part of this face

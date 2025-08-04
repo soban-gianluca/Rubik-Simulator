@@ -222,6 +222,8 @@ class Menu:
         # Play sound when opening menu
         if self.active:
             self.sound_manager.play("menu_open")
+            # Always reset to main menu when opening from in-game
+            self.current_menu = self.main_menu
     
     def is_active(self):
         """Check if menu is active"""

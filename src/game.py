@@ -689,8 +689,9 @@ class Game:
             # Scramble the cube for a new game
             self.scramble_cube()
         elif action == 'main_menu':
-            # Show the main menu
-            self.menu.toggle()
+            # Show the main menu (ensure we're at main menu, not difficulty selection)
+            self.menu.current_menu = self.menu.main_menu
+            self.menu.active = True
         # 'continue_playing' is handled by just closing the results window
     
     def _render_game_info(self):

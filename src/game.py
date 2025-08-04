@@ -9,7 +9,6 @@ from renderer import Renderer
 from settings_manager import SettingsManager
 from sound_manager import SoundManager
 from results_window import ResultsWindow
-from face_overlay import FaceOverlay
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -77,9 +76,6 @@ class Game:
         self.results_window = ResultsWindow(self.width, self.height)
         self.results_window.set_game_callback(self.handle_results_callback)
         
-        # Initialize face overlay system
-        self.face_overlay = FaceOverlay(self.width, self.height)
-        
         # Game state
         self.running = True
         self.auto_rotate = True
@@ -102,10 +98,9 @@ class Game:
         print("Controls:")
         print("  Space: Toggle auto-rotation")
         print("  Arrow keys: Manual rotation")
-        print("  A/S: Additional rotation controls")
+        print("  A: Additional rotation control")
         print("  Mouse drag: Rotate cube")
         print("  Ctrl+B: Toggle debug mode")
-        print("  H: Toggle face overlays")
         print("  T: Reset rotation")
         print("  ESC: Toggle menu")
         
@@ -116,6 +111,10 @@ class Game:
         print("  D: D move       Shift+D: D' move")
         print("  F: F move       Shift+F: F' move")
         print("  B: B move       Shift+B: B' move")
+        print("Slice Moves:")
+        print("  M: M move       Shift+M: M' move (Middle)")
+        print("  E: E move       Shift+E: E' move (Equatorial)")
+        print("  S: S move       Shift+S: S' move (Standing)")
         print("  Z: Undo last move")
         print("  X: Scramble cube")
         print("  C: Check if solved")
@@ -153,10 +152,6 @@ class Game:
                 if hasattr(self, 'debug_mode'):
                     self.menu.debug_mode = self.debug_mode
                 self.menu._create_menus()
-            
-            if hasattr(self, 'face_overlay'):
-                self.face_overlay.width = self.width
-                self.face_overlay.height = self.height
             
             if hasattr(self, 'results_window'):
                 self.results_window.update_dimensions(self.width, self.height)
@@ -212,11 +207,6 @@ class Game:
                 if hasattr(self, 'debug_mode'):
                     self.menu.debug_mode = self.debug_mode
                 self.menu._create_menus()
-            
-            # Update face overlay with new dimensions
-            if hasattr(self, 'face_overlay'):
-                self.face_overlay.width = self.width
-                self.face_overlay.height = self.height
             
             # Update results window with new dimensions
             if hasattr(self, 'results_window'):
@@ -278,9 +268,6 @@ class Game:
                 elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_b and event.mod & pygame.KMOD_CTRL:
                     self.debug_mode = not self.debug_mode
                     self.debug_print(f"Debug mode: {'ON' if self.debug_mode else 'OFF'}")
-                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_h:
-                    overlay_state = self.face_overlay.toggle()
-                    self.debug_print(f"Face overlays: {'ON' if overlay_state else 'OFF'}")
                 elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_t:
                     self.renderer.rotation_x = 0
                     self.renderer.rotation_y = 0
@@ -296,42 +283,54 @@ class Game:
                             self.execute_cube_move("R'")
                         else:
                             self.execute_cube_move('R')
-                        self.face_overlay.set_highlight('R')
                     # L moves
                     elif event.key == pygame.K_l:
                         if event.mod & pygame.KMOD_SHIFT:
                             self.execute_cube_move("L'")
                         else:
                             self.execute_cube_move('L')
-                        self.face_overlay.set_highlight('L')
                     # U moves
                     elif event.key == pygame.K_u:
                         if event.mod & pygame.KMOD_SHIFT:
                             self.execute_cube_move("U'")
                         else:
                             self.execute_cube_move('U')
-                        self.face_overlay.set_highlight('U')
                     # D moves
                     elif event.key == pygame.K_d:
                         if event.mod & pygame.KMOD_SHIFT:
                             self.execute_cube_move("D'")
                         else:
                             self.execute_cube_move('D')
-                        self.face_overlay.set_highlight('D')
                     # F moves
                     elif event.key == pygame.K_f:
                         if event.mod & pygame.KMOD_SHIFT:
                             self.execute_cube_move("F'")
                         else:
                             self.execute_cube_move('F')
-                        self.face_overlay.set_highlight('F')
                     # B moves
                     elif event.key == pygame.K_b:
                         if event.mod & pygame.KMOD_SHIFT:
                             self.execute_cube_move("B'")
                         else:
                             self.execute_cube_move('B')
-                        self.face_overlay.set_highlight('B')
+                    # M moves (Middle slice)
+                    elif event.key == pygame.K_m:
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.execute_cube_move("M'")
+                        else:
+                            self.execute_cube_move('M')
+                    # E moves (Equatorial slice)
+                    elif event.key == pygame.K_e:
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.execute_cube_move("E'")
+                        else:
+                            self.execute_cube_move('E')
+                    # S moves (Standing slice)
+                    elif event.key == pygame.K_s:
+                        if event.mod & pygame.KMOD_SHIFT:
+                            self.execute_cube_move("S'")
+                        else:
+                            self.execute_cube_move('S')
                     elif event.key == pygame.K_z:
                         self.undo_move()
                     elif event.key == pygame.K_x:
@@ -389,7 +388,7 @@ class Game:
             if keys[pygame.K_UP]:
                 self.renderer.rotate_camera(elevation=-2)
                 self.auto_rotate = False
-            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+            if keys[pygame.K_DOWN]:
                 self.renderer.rotate_camera(elevation=2)
                 self.auto_rotate = False
 
@@ -405,10 +404,6 @@ class Game:
         # Reset game_started flag when menu is opened (so user can select new difficulty)
         elif self.menu.is_active() and self.game_started:
             self.game_started = False
-        
-        # Update face overlay system
-        delta_time = self.clock.get_time() / 1000.0  # Convert to seconds
-        self.face_overlay.update(delta_time)
         
         if hasattr(self, 'menu') and self.menu.resolution_changed():
             try:
@@ -491,20 +486,6 @@ class Game:
         # Render game stats (timer and moves) if game is in progress
         if not self.menu.is_active() and not self.results_window.active:
             self._render_game_stats()
-        
-        # Render face overlays (only when menu is not active)
-        if not self.menu.is_active() and not self.results_window.active:
-            # Create overlay surface
-            overlay_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            self.face_overlay.render(overlay_surface, self.renderer.rotation_x, self.renderer.rotation_y)
-            
-            # Convert pygame surface to OpenGL texture and render
-            if overlay_surface:
-                texture_data = pygame.image.tostring(overlay_surface, 'RGBA', True)
-                glRasterPos2f(0, self.height)
-                glPixelZoom(1, 1)
-                glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-        
         # Render menu overlay if active
         if self.menu.is_active():
             # Create menu surface and render to it
@@ -868,11 +849,6 @@ class Game:
                 self.menu.width = fallback_width
                 self.menu.height = fallback_height
                 self.menu._create_menus()
-            
-            # Update face overlay dimensions if it exists
-            if hasattr(self, 'face_overlay'):
-                self.face_overlay.width = fallback_width
-                self.face_overlay.height = fallback_height
             
             # Update results window dimensions if it exists
             if hasattr(self, 'results_window'):

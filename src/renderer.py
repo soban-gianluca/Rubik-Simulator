@@ -258,7 +258,11 @@ class Renderer:
             'U': {'axis': (0, 1, 0), 'cubes': [(x, 1, z) for x in [-1, 0, 1] for z in [-1, 0, 1]]},
             'D': {'axis': (0, -1, 0), 'cubes': [(x, -1, z) for x in [-1, 0, 1] for z in [-1, 0, 1]]},
             'F': {'axis': (0, 0, 1), 'cubes': [(x, y, 1) for x in [-1, 0, 1] for y in [-1, 0, 1]]},
-            'B': {'axis': (0, 0, -1), 'cubes': [(x, y, -1) for x in [-1, 0, 1] for y in [-1, 0, 1]]}
+            'B': {'axis': (0, 0, -1), 'cubes': [(x, y, -1) for x in [-1, 0, 1] for y in [-1, 0, 1]]},
+            # Slice moves
+            'M': {'axis': (-1, 0, 0), 'cubes': [(0, y, z) for y in [-1, 0, 1] for z in [-1, 0, 1]]},  # Middle slice (same direction as L)
+            'E': {'axis': (0, -1, 0), 'cubes': [(x, 0, z) for x in [-1, 0, 1] for z in [-1, 0, 1]]},  # Equatorial slice (same direction as D)
+            'S': {'axis': (0, 0, 1), 'cubes': [(x, y, 0) for x in [-1, 0, 1] for y in [-1, 0, 1]]}   # Standing slice (same direction as F)
         }
         
         if face_name not in face_definitions:

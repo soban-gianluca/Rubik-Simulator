@@ -215,6 +215,66 @@ class RubiksCube:
             self.faces['right'][:, 2] = self.faces['bottom'][2, :][::-1].copy()
             self.faces['bottom'][2, :] = self.faces['left'][:, 0].copy()
             self.faces['left'][:, 0] = temp[::-1].copy()
+
+    def move_M(self, clockwise=True):
+        """Rotate the middle slice (M move) - between L and R faces"""
+        self.move_history.append(('M', clockwise))
+        
+        if clockwise:
+            # M move (clockwise when looking from R face): front → top → back → bottom → front
+            # This affects the middle column (index 1) of front, top, back, bottom faces
+            temp = self.faces['front'][:, 1].copy()
+            self.faces['front'][:, 1] = self.faces['bottom'][:, 1].copy()
+            self.faces['bottom'][:, 1] = self.faces['back'][:, 1][::-1].copy()
+            self.faces['back'][:, 1] = self.faces['top'][:, 1][::-1].copy()
+            self.faces['top'][:, 1] = temp.copy()
+        else:
+            # M' move (counter-clockwise): front → bottom → back → top → front
+            temp = self.faces['front'][:, 1].copy()
+            self.faces['front'][:, 1] = self.faces['top'][:, 1].copy()
+            self.faces['top'][:, 1] = self.faces['back'][:, 1][::-1].copy()
+            self.faces['back'][:, 1] = self.faces['bottom'][:, 1][::-1].copy()
+            self.faces['bottom'][:, 1] = temp.copy()
+
+    def move_E(self, clockwise=True):
+        """Rotate the equatorial slice (E move) - between U and D faces"""
+        self.move_history.append(('E', clockwise))
+        
+        if clockwise:
+            # E move (clockwise when looking from D face): front → right → back → left → front
+            # This affects the middle row (index 1) of front, left, back, right faces
+            temp = self.faces['front'][1, :].copy()
+            self.faces['front'][1, :] = self.faces['right'][1, :].copy()
+            self.faces['right'][1, :] = self.faces['back'][1, :].copy()
+            self.faces['back'][1, :] = self.faces['left'][1, :].copy()
+            self.faces['left'][1, :] = temp.copy()
+        else:
+            # E' move (counter-clockwise): front → left → back → right → front
+            temp = self.faces['front'][1, :].copy()
+            self.faces['front'][1, :] = self.faces['left'][1, :].copy()
+            self.faces['left'][1, :] = self.faces['back'][1, :].copy()
+            self.faces['back'][1, :] = self.faces['right'][1, :].copy()
+            self.faces['right'][1, :] = temp.copy()
+
+    def move_S(self, clockwise=True):
+        """Rotate the standing slice (S move) - between F and B faces"""
+        self.move_history.append(('S', clockwise))
+        
+        if clockwise:
+            # S move (clockwise when looking from F face): top → right → bottom → left → top
+            # This affects the middle slice (index 1) of top, right, bottom, left faces
+            temp = self.faces['top'][1, :].copy()
+            self.faces['top'][1, :] = self.faces['right'][:, 1].copy()
+            self.faces['right'][:, 1] = self.faces['bottom'][1, :][::-1].copy()
+            self.faces['bottom'][1, :] = self.faces['left'][:, 1].copy()
+            self.faces['left'][:, 1] = temp[::-1].copy()
+        else:
+            # S' move (counter-clockwise): top → left → bottom → right → top
+            temp = self.faces['top'][1, :].copy()
+            self.faces['top'][1, :] = self.faces['left'][:, 1][::-1].copy()
+            self.faces['left'][:, 1] = self.faces['bottom'][1, :].copy()
+            self.faces['bottom'][1, :] = self.faces['right'][:, 1][::-1].copy()
+            self.faces['right'][:, 1] = temp.copy()
     
     def execute_move(self, move_notation):
         """Execute a move using standard Rubik's cube notation"""
@@ -244,6 +304,18 @@ class RubiksCube:
             self.move_B(True)
         elif move_notation == "B'":
             self.move_B(False)
+        elif move_notation == 'M':
+            self.move_M(True)
+        elif move_notation == "M'":
+            self.move_M(False)
+        elif move_notation == 'E':
+            self.move_E(True)
+        elif move_notation == "E'":
+            self.move_E(False)
+        elif move_notation == 'S':
+            self.move_S(True)
+        elif move_notation == "S'":
+            self.move_S(False)
         else:
             print(f"Unknown move: {move_notation}")
     
@@ -267,6 +339,12 @@ class RubiksCube:
             self.move_F(not was_clockwise)
         elif last_move == 'B':
             self.move_B(not was_clockwise)
+        elif last_move == 'M':
+            self.move_M(not was_clockwise)
+        elif last_move == 'E':
+            self.move_E(not was_clockwise)
+        elif last_move == 'S':
+            self.move_S(not was_clockwise)
         
         # Remove the undo move from history
         self.move_history.pop()
@@ -275,7 +353,7 @@ class RubiksCube:
     def scramble(self, num_moves=20):
         """Scramble the cube with random moves"""
         import random
-        moves = ['R', "R'", 'L', "L'", 'U', "U'", 'D', "D'", 'F', "F'", 'B', "B'"]
+        moves = ['R', "R'", 'L', "L'", 'U', "U'", 'D', "D'", 'F', "F'", 'B', "B'", 'M', "M'", 'E', "E'", 'S', "S'"]
         
         # Clear history before scrambling
         self.move_history.clear()

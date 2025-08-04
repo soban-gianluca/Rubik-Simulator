@@ -484,6 +484,10 @@ class Game:
         if self.show_fps:
             self._render_fps_counter()
         
+        # Render game stats (timer and moves) if game is in progress
+        if not self.menu.is_active() and not self.results_window.active:
+            self._render_game_stats()
+        
         # Render face overlays (only when menu is not active)
         if not self.menu.is_active() and not self.results_window.active:
             # Create overlay surface
@@ -572,6 +576,72 @@ class Game:
             # Fallback: if there's an error, just print to console
             if self.debug_mode:
                 print(f"FPS counter rendering error: {e}")
+
+    def _render_game_stats(self):
+        """Render timer and moves counter in the bottom-left corner"""
+        try:
+            # Create font if not exists
+            if not hasattr(self, '_stats_font'):
+                self._stats_font = pygame.font.SysFont('Arial', 24, bold=True)
+            
+            # Prepare text lines
+            text_lines = []
+            
+            # Add moves counter
+            text_lines.append(f"Moves: {self.move_counter}")
+            
+            # Add timer if game has started
+            if self.start_time is not None:
+                elapsed = time.time() - self.start_time
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                text_lines.append(f"Time: {minutes:02d}:{seconds:02d}")
+            else:
+                text_lines.append("Time: 00:00")
+            
+            # Calculate dimensions for background
+            text_surfaces = []
+            max_width = 0
+            total_height = 0
+            line_height = 0
+            
+            for line in text_lines:
+                text_surface = self._stats_font.render(line, True, (255, 255, 255))
+                text_surfaces.append(text_surface)
+                width, height = text_surface.get_size()
+                max_width = max(max_width, width)
+                total_height += height
+                line_height = height
+            
+            # Add padding and spacing
+            padding = 10
+            line_spacing = 5
+            bg_width = max_width + (padding * 2)
+            bg_height = total_height + (padding * 2) + (line_spacing * (len(text_lines) - 1))
+            
+            # Create background surface
+            bg_surface = pygame.Surface((bg_width, bg_height), pygame.SRCALPHA)
+            bg_surface.fill((0, 0, 0, 128))  # Semi-transparent black background
+            
+            # Blit text lines onto background
+            y_offset = padding
+            for text_surface in text_surfaces:
+                bg_surface.blit(text_surface, (padding, y_offset))
+                y_offset += line_height + line_spacing
+            
+            # Convert to OpenGL texture and render
+            texture_data = pygame.image.tostring(bg_surface, 'RGBA', True)
+            
+            # Position in bottom-left corner (10 pixels from edges)
+            y_position = self.height - bg_height - 10
+            glRasterPos2f(10, y_position + bg_height)
+            glPixelZoom(1, 1)
+            glDrawPixels(bg_width, bg_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+            
+        except Exception as e:
+            # Fallback: if there's an error, just print to console
+            if self.debug_mode:
+                print(f"Game stats rendering error: {e}")
 
     def execute_cube_move(self, move_notation):
         """Execute a Rubik's cube move with animation"""

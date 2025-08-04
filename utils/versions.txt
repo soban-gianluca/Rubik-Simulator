@@ -16,6 +16,7 @@
         Fixed menu resolution change
 
 --- TO DO LIST ---
+- FLIP MOVEMENTS
 - Reset stats when starting new game
 - Reread, simplify/remove unecessary lines
 - Possible alternative solution for loading animation

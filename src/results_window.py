@@ -146,3 +146,23 @@ class ResultsWindow:
     def set_game_callback(self, callback):
         """Set the callback function to communicate with the game"""
         self.game_callback = callback
+    
+    def update_dimensions(self, new_width, new_height):
+        """Update the results window dimensions and recreate the menu"""
+        self.width = new_width
+        self.height = new_height
+        
+        # Store current results data if any
+        current_results = self.results_data.copy() if hasattr(self, 'results_data') and self.results_data else {}
+        current_active = self.active
+        
+        # Recreate the menu with new dimensions
+        self.create_results_menu()
+        
+        # Restore results data if the window was showing results
+        if current_results and current_active:
+            self.show_results(
+                current_results['moves'],
+                current_results['time'],
+                current_results['tps']
+            )

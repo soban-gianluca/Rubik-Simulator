@@ -126,10 +126,12 @@ class Game:
     def toggle_fullscreen(self):
         """Toggle between fullscreen and windowed mode with proper resolution handling"""
         if self.is_fullscreen:
+            # Switch to windowed mode
             self.screen = pygame.display.set_mode((self.width, self.height), DOUBLEBUF | OPENGL)
             self.renderer.setup_opengl()
             self.renderer.create_display_list()
         else:
+            # Switch to fullscreen mode
             display_info = pygame.display.Info()
             fullscreen_width = display_info.current_w
             fullscreen_height = display_info.current_h
@@ -137,6 +139,26 @@ class Game:
             self.screen = pygame.display.set_mode((fullscreen_width, fullscreen_height), DOUBLEBUF | OPENGL | FULLSCREEN)
             self.renderer.setup_opengl()
             self.renderer.create_display_list()
+            
+            # Update dimensions for fullscreen
+            self.width = fullscreen_width
+            self.height = fullscreen_height
+            
+            # Update all components with new dimensions
+            if hasattr(self, 'menu'):
+                self.menu.width = self.width
+                self.menu.height = self.height
+                if hasattr(self, 'debug_mode'):
+                    self.menu.debug_mode = self.debug_mode
+                self.menu._create_menus()
+            
+            if hasattr(self, 'face_overlay'):
+                self.face_overlay.width = self.width
+                self.face_overlay.height = self.height
+            
+            if hasattr(self, 'results_window'):
+                self.results_window.update_dimensions(self.width, self.height)
+            
             self.debug_print(f"Switched to fullscreen: {fullscreen_width}x{fullscreen_height}")
         
         self.is_fullscreen = not self.is_fullscreen
@@ -193,6 +215,10 @@ class Game:
             if hasattr(self, 'face_overlay'):
                 self.face_overlay.width = self.width
                 self.face_overlay.height = self.height
+            
+            # Update results window with new dimensions
+            if hasattr(self, 'results_window'):
+                self.results_window.update_dimensions(self.width, self.height)
     
             # Try to restore icon
             try:
@@ -767,6 +793,15 @@ class Game:
                 self.menu.width = fallback_width
                 self.menu.height = fallback_height
                 self.menu._create_menus()
+            
+            # Update face overlay dimensions if it exists
+            if hasattr(self, 'face_overlay'):
+                self.face_overlay.width = fallback_width
+                self.face_overlay.height = fallback_height
+            
+            # Update results window dimensions if it exists
+            if hasattr(self, 'results_window'):
+                self.results_window.update_dimensions(fallback_width, fallback_height)
             
             print(f"Successfully restored to fallback resolution: {fallback_width}x{fallback_height}")
         except Exception as e:

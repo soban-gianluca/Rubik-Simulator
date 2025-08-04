@@ -21,21 +21,12 @@
 - Possible alternative solution for loading animation
 - Different difficulties and gamemodes
 
-- Timer 
-- Moves counter 
-- Division moves/sec 
- --> to show when the cube is solved
-
 - (Different gamemodes)
     - Speedrun
     - race against time
     - limited moves
 
 - possible soundtrack expansion
-
-- undo/replay mossa --> forward (+-1 move)
-
-- color schemes (cube, sky, sand, camo, rain, others...)
 
 --- FUTURE IDEAS ---
 

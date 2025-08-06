@@ -96,6 +96,7 @@ class Game:
         self.running = True
         self.auto_rotate = True
         self.game_started = False  # Track if game has started
+        self.new_game_requested = False  # Track if user explicitly requested a new game
         
         # Control variables
         self.mouse_rotating = False
@@ -137,6 +138,18 @@ class Game:
         print("  X: Scramble cube")
         print("  C: Check if solved")
         print("  Ctrl+B: Toggle debug mode")
+
+    def request_new_game(self):
+        """Request a new game to be started (triggers scrambling)"""
+        self.new_game_requested = True
+        self.game_started = False  # Reset game state for new game
+        self.move_counter = 0  # Reset move counter
+        self.start_time = None  # Reset timer
+        self.cube_solved = False  # Reset solved state
+
+    def has_game_progress(self):
+        """Check if the current game has any progress (moves made)"""
+        return self.move_counter > 0 or self.start_time is not None
 
     def debug_print(self, message):
         if self.debug_mode:
@@ -433,16 +446,26 @@ class Game:
 
     def update(self):
         """Update game state"""        
-        # Check for game start (when menu becomes inactive for the first time)
-        if not self.game_started and not self.menu.is_active():
-            self.game_started = True
-            difficulty = self.menu.get_selected_difficulty()
-            self.debug_print(f"Game starting with difficulty: {difficulty}")
-            self.scramble_cube_by_difficulty(difficulty)
+        # Update menu animation
+        if hasattr(self, 'menu'):
+            self.menu.update()
         
-        # Reset game_started flag when menu is opened (so user can select new difficulty)
-        elif self.menu.is_active() and self.game_started:
-            self.game_started = False
+        # Check for game start (when menu becomes inactive for the first time OR new game is requested)
+        if not self.menu.is_active():
+            if not self.game_started or self.new_game_requested:
+                self.game_started = True
+                difficulty = self.menu.get_selected_difficulty()
+                self.debug_print(f"Game starting with difficulty: {difficulty}")
+                
+                # Only scramble if this is a new game request or the very first start
+                if self.new_game_requested or not hasattr(self, '_ever_started'):
+                    self.scramble_cube_by_difficulty(difficulty)
+                    self._ever_started = True
+                
+                self.new_game_requested = False  # Reset the flag
+        
+        # Note: We no longer reset game_started when menu is opened
+        # This allows the user to pause and resume their current game
         
         if hasattr(self, 'menu') and self.menu.resolution_changed():
             try:
@@ -535,11 +558,19 @@ class Game:
         # Render game stats (timer and moves) if game is in progress
         if not self.menu.is_active() and not self.results_window.active:
             self._render_game_stats()
-        # Render menu overlay if active
-        if self.menu.is_active():
+        # Render menu overlay if active (including during animation)
+        menu_alpha = self.menu.get_current_alpha()
+        if menu_alpha > 0.0:
             # Create menu surface and render to it
             menu_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             self.menu.draw(menu_surface)
+            
+            # Apply alpha to entire menu surface if needed
+            if menu_alpha < 1.0:
+                # Create alpha overlay surface
+                alpha_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                alpha_surface.fill((255, 255, 255, int(255 * menu_alpha)))
+                menu_surface.blit(alpha_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
             
             # Convert pygame surface to OpenGL texture
             texture_data = pygame.image.tostring(menu_surface, 'RGBA', True)

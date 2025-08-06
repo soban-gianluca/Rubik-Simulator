@@ -24,7 +24,15 @@ class Menu:
         self.active = False
         self.resolution_changed_flag = False
         self.settings_changed = False
-        self.selected_difficulty = "medium"  # Default difficulty
+        self.selected_difficulty = "easy"  # Default difficulty - start in easy mode
+        
+        # Animation state for smooth transitions
+        self.is_animating = False
+        self.animation_start_time = 0
+        self.animation_duration = 0.3  # 300ms transition
+        self.is_opening = False  # True when opening, False when closing
+        self.target_alpha = 1.0  # Target alpha value (0.0 to 1.0)
+        self.current_alpha = 0.0  # Current alpha value for animation
         
         # Available resolutions
         self.available_resolutions = [
@@ -192,10 +200,16 @@ class Menu:
             self.game.renderer.reload_skybox_texture(skybox_path)
             if hasattr(self, "debug_mode") and self.debug_mode:
                 print(f"Changed skybox to: {skybox_path}")
+            
+            # Request a new game to be started (this will trigger scrambling)
+            self.game.request_new_game()
         
         if hasattr(self, "debug_mode") and self.debug_mode:
             print(f"Starting game with difficulty: {difficulty}")
-        self.active = False
+        
+        # Start closing animation instead of immediately setting active to False
+        if not self.is_animating:  # Prevent multiple animations
+            self.toggle()
     
     def _open_difficulty_select(self):
         """Open difficulty selection submenu"""
@@ -316,16 +330,65 @@ class Menu:
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.main_menu
     
+    def update(self):
+        """Update animation state and alpha values"""
+        if not self.is_animating:
+            return
+            
+        current_time = time.time()
+        elapsed_time = current_time - self.animation_start_time
+        
+        # Calculate animation progress (0.0 to 1.0)
+        progress = min(elapsed_time / self.animation_duration, 1.0)
+        
+        # Use smooth easing function for better animation feel
+        # Ease-out quadratic function: t * (2 - t)
+        eased_progress = progress * (2 - progress)
+        
+        if self.is_opening:
+            # Opening animation: alpha goes from 0 to 1
+            self.current_alpha = eased_progress
+        else:
+            # Closing animation: alpha goes from 1 to 0
+            self.current_alpha = 1.0 - eased_progress
+        
+        # Check if animation is complete
+        if progress >= 1.0:
+            self.is_animating = False
+            self.current_alpha = self.target_alpha
+            
+            # If we just finished closing, deactivate the menu
+            if not self.is_opening:
+                self.active = False
+    
+    def get_current_alpha(self):
+        """Get the current alpha value for rendering"""
+        if not self.is_animating and not self.active:
+            return 0.0
+        return self.current_alpha if self.is_animating else 1.0
+    
+    def is_fully_visible(self):
+        """Check if menu is fully visible (not animating or fully open)"""
+        return self.active and (not self.is_animating or self.current_alpha >= 1.0)
+
     def toggle(self):
-        """Toggle the menu visibility"""
-        self.active = not self.active
+        """Toggle the menu visibility with smooth animation"""
+        # Start animation
+        self.is_animating = True
+        self.animation_start_time = time.time()
         
-        # Clear hover effects when toggling menu
-        if not self.active:
-            self._clear_all_hover_effects()
-        
-        # Play sound when opening menu
         if self.active:
+            # Menu is currently active, start closing animation
+            self.is_opening = False
+            self.target_alpha = 0.0
+            # Clear hover effects when starting to close
+            self._clear_all_hover_effects()
+        else:
+            # Menu is currently inactive, start opening animation
+            self.is_opening = True
+            self.target_alpha = 1.0
+            self.active = True  # Set active immediately for opening so events are handled
+            # Play sound when opening menu
             self.sound_manager.play("menu_open")
             # Always reset to main menu when opening from in-game
             self.current_menu = self.main_menu
@@ -366,7 +429,8 @@ class Menu:
     def handle_event(self, event):
         """Handle events specific to the menu with enhanced feedback.
         Returns True if the event was handled by the menu."""
-        if not self.active or not self.current_menu:
+        # Only handle events if menu is active and not in closing animation
+        if not self.active or (self.is_animating and not self.is_opening):
             return False
             
         # Enhanced mouse motion handling for hover effects
@@ -383,8 +447,9 @@ class Menu:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     if self.current_menu == self.main_menu:
-                        self.active = False
-                        self._clear_all_hover_effects()  # Clear hover effects when closing menu
+                        # Start closing animation instead of immediately setting active to False
+                        if not self.is_animating:  # Prevent multiple toggle calls during animation
+                            self.toggle()
                         return True
                     else:
                         self.sound_manager.play("menu_select")
@@ -496,25 +561,29 @@ class Menu:
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
     
     def draw(self, screen):
-        """Draw the menu on the screen with fancy effects and hover colors"""
-        if not self.active:
+        """Draw the menu on the screen with fancy effects and alpha animation"""
+        # Don't draw if completely invisible
+        current_alpha = self.get_current_alpha()
+        if current_alpha <= 0.0:
             return
         
-        # Draw animated background overlay
+        # Draw animated background overlay with alpha
         overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
         
         # Create a subtle animated gradient effect
         time_offset = time.time() * 2  # Animation speed
         for y in range(0, screen.get_height(), 4):
-            alpha = int(140 + 40 * (0.5 + 0.5 * math.sin(time_offset + y * 0.01)))
-            alpha = max(100, min(200, alpha))  # Clamp alpha values
-            color = (5, 10, 20, alpha)
+            base_alpha = int(140 + 40 * (0.5 + 0.5 * math.sin(time_offset + y * 0.01)))
+            base_alpha = max(100, min(200, base_alpha))  # Clamp alpha values
+            # Apply current animation alpha
+            final_alpha = int(base_alpha * current_alpha)
+            color = (5, 10, 20, final_alpha)
             pygame.draw.rect(overlay, color, (0, y, screen.get_width(), 4))
         
         screen.blit(overlay, (0, 0))
         
-        # Add subtle particle effects or glow
-        self._draw_background_effects(screen)
+        # Add subtle particle effects or glow with alpha
+        self._draw_background_effects(screen, current_alpha)
         
         # Only check and recreate if there's a significant mismatch
         actual_width, actual_height = screen.get_size()
@@ -526,12 +595,25 @@ class Menu:
             self.height = actual_height
             self._create_menus()
         
-        # Draw the current menu
+        # Draw the current menu with alpha applied
         if self.current_menu:
-            self.current_menu.draw(screen)
+            # Create a temporary surface for the menu
+            menu_surface = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
+            
+            # Draw the menu to the temporary surface
+            self.current_menu.draw(menu_surface)
+            
+            # Apply alpha to the entire menu surface
+            if current_alpha < 1.0:
+                alpha_surface = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
+                alpha_surface.fill((255, 255, 255, int(255 * current_alpha)))
+                menu_surface.blit(alpha_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            
+            # Blit the menu surface to the screen
+            screen.blit(menu_surface, (0, 0))
     
-    def _draw_background_effects(self, screen):
-        """Draw subtle background effects like glowing particles"""
+    def _draw_background_effects(self, screen, alpha=1.0):
+        """Draw subtle background effects like glowing particles with alpha"""
         try:
             # Create a subtle glow effect around the menu area
             center_x = screen.get_width() // 2
@@ -549,12 +631,14 @@ class Menu:
                 # Ensure particles stay on screen
                 if 0 <= x <= screen.get_width() and 0 <= y <= screen.get_height():
                     size = int(3 + 2 * math.sin(time_offset * 3 + i))
-                    alpha = int(100 + 50 * math.sin(time_offset * 2 + i * 0.5))
+                    base_alpha = int(100 + 50 * math.sin(time_offset * 2 + i * 0.5))
+                    # Apply current animation alpha
+                    final_alpha = int(base_alpha * alpha)
                     
                     # Create a small glowing circle
                     glow_surface = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
-                    pygame.draw.circle(glow_surface, (100, 150, 255, alpha), (size * 2, size * 2), size * 2)
-                    pygame.draw.circle(glow_surface, (150, 200, 255, alpha // 2), (size * 2, size * 2), size)
+                    pygame.draw.circle(glow_surface, (100, 150, 255, final_alpha), (size * 2, size * 2), size * 2)
+                    pygame.draw.circle(glow_surface, (150, 200, 255, final_alpha // 2), (size * 2, size * 2), size)
                     
                     screen.blit(glow_surface, (x - size * 2, y - size * 2))
         except Exception as e:

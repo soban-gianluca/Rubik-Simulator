@@ -16,10 +16,7 @@ myappid = 'mycompany.myproduct.subproduct.version' # arbitrary string
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
 class Game:
-    def __init__(self):
-        # Initialize pygame
-        pygame.init()
-        
+    def __init__(self, existing_screen=None):
         # Load settings
         self.settings = SettingsManager()
         self.width = self.settings.settings["resolution"]["width"]
@@ -27,11 +24,26 @@ class Game:
         self.is_fullscreen = self.settings.settings["fullscreen"]
         self.show_fps = self.settings.settings["show_fps"]
         
-        # Set initial display mode with OpenGL
-        display_flags = DOUBLEBUF | OPENGL
-        if self.is_fullscreen:
-            display_flags |= FULLSCREEN
-        self.screen = pygame.display.set_mode((self.width, self.height), display_flags)
+        # Use existing OpenGL screen or create new one
+        if existing_screen:
+            current_size = existing_screen.get_size()
+            
+            # Check if we need to change size or fullscreen mode
+            if current_size == (self.width, self.height) and not self.is_fullscreen:
+                # Perfect match - reuse the existing OpenGL context
+                self.screen = existing_screen
+            else:
+                # Need to recreate for different size/fullscreen
+                display_flags = DOUBLEBUF | OPENGL
+                if self.is_fullscreen:
+                    display_flags |= FULLSCREEN
+                self.screen = pygame.display.set_mode((self.width, self.height), display_flags)
+        else:
+            # Create new OpenGL window
+            display_flags = DOUBLEBUF | OPENGL
+            if self.is_fullscreen:
+                display_flags |= FULLSCREEN
+            self.screen = pygame.display.set_mode((self.width, self.height), display_flags)
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         

@@ -14,6 +14,14 @@
         Added FPS counter with WORKING button setting
         Setting working with JSON
         Fixed menu resolution change
+        Added sound effects system with menu sounds and cube movement sounds
+        Added complete cube movement controls
+        Added difficulty selection system (Easy, Medium, Hard)
+        Added dynamic skybox switching based on difficulty
+        Added game timer and move counter
+        Added solve detection with performance statistics
+        Added results window showing solve time, moves, and TPS (turns per second)
+        
 
 --- TO DO LIST ---
 - Reset stats when starting new game

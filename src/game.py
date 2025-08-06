@@ -406,6 +406,10 @@ class Game:
                     if detected_move:
                         self.debug_print(f"Mouse detected move: {detected_move}")
                         self.execute_cube_move(detected_move)
+                
+                # Update hover detection when not doing anything else
+                else:
+                    self.mouse_interaction.update_hover(event.pos)
         
         # Handle results window events
         if self.results_window.active:

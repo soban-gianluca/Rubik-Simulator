@@ -1,81 +1,53 @@
+"""
+Rubik's Cube Mouse Interaction System
+
+HOW IT WORKS:
+- The screen is divided into 6 regions (top, bottom, left, right, front, back)
+- Each region corresponds to a face of the cube
+- Click and drag in any region to rotate that face
+- Drag direction determines rotation: horizontal (left/right) or vertical (up/down)
+- Visual guide shows color-coded zones and available moves
+- Hover over regions to see which face you'll control
+
+CONTROLS:
+- Drag horizontally: clockwise/counter-clockwise rotation
+- Drag vertically: alternate rotation direction
+- Visual feedback shows active regions and move hints
+"""
+
 import math
 import pygame
 import numpy as np
 from OpenGL.GL import *
 from OpenGL.GLU import *
 
-""" How it works:
-Screen divided into 3 vertical columns (left, center, right)
-Each column + direction = ONE specific move (NO cycling, NO repetition)
-12 total moves available across the 3 areas
-Direct mapping:
-Left area:
-
-⬆️ Up drag = U
-⬇️ Down drag = D
-⬅️ Left drag = L
-➡️ Right drag = R
-Center area:
-
-⬆️ Up drag = U'
-⬇️ Down drag = D'
-⬅️ Left drag = L'
-➡️ Right drag = R'
-Right area:
-
-⬆️ Up drag = F
-⬇️ Down drag = B
-⬅️ Left drag = F'
-➡️ Right drag = B' """
-
 class MouseCubeInteraction:
-    """ULTRA RELIABLE mouse interaction - direct screen mapping to specific moves"""
     
     def __init__(self, renderer):
         self.renderer = renderer
         self.is_dragging = False
         self.drag_start_pos = None
         self.drag_current_pos = None
-        self.detected_area = None
+        self.detected_face = None
         self.move_executed = False
         
-        # Sensitivity settings
-        self.move_sensitivity = 25
+        # Simple settings
+        self.move_sensitivity = 15
+        self.last_move_time = 0
+        self.move_cooldown = 0.05  # Very short cooldown
         
         # Visual feedback
-        self.highlight_area = None
+        self.highlight_face = None
         self.highlight_intensity = 0.0
-        self.fade_speed = 4.0
+        self.fade_speed = 3.0
         
-        # Movement tracking
-        self.last_move_time = 0
-        self.move_cooldown = 0.2
-        
-        # DIRECT SCREEN-TO-MOVE MAPPING - NO CYCLING, NO CONFUSION
-        # Screen divided into 3 columns, each column has 4 directional moves
-        self.screen_moves = {
-            # Left column - Basic moves
-            'left_up': 'U',
-            'left_down': 'D', 
-            'left_left': 'L',
-            'left_right': 'R',
-            
-            # Center column - Prime moves
-            'center_up': "U'",
-            'center_down': "D'",
-            'center_left': "L'",
-            'center_right': "R'",
-            
-            # Right column - Front/Back moves  
-            'right_up': 'F',
-            'right_down': 'B',
-            'right_left': "F'",
-            'right_right': "B'"
-        }
+        # Visual guide system
+        self.show_guide = True
+        self.guide_alpha = 0.8
+        self.guide_fade_time = 3.0  # Show guide for 3 seconds after start
         
     def start_drag(self, mouse_pos):
-        """Start a drag operation with area detection"""
-        # Check cooldown to prevent rapid moves
+        """Start dragging - detect face immediately"""
         import time
         current_time = time.time()
         if current_time - self.last_move_time < self.move_cooldown:
@@ -86,48 +58,51 @@ class MouseCubeInteraction:
         self.drag_current_pos = mouse_pos
         self.move_executed = False
         
-        # Detect which screen area the mouse is in
-        self.detected_area = self._detect_screen_area(mouse_pos)
-        
-        if self.detected_area:
-            self.highlight_area = self.detected_area
+        # Simple face detection based on screen regions
+        self.detected_face = self._simple_face_detection(mouse_pos)
+        if self.detected_face:
+            self.highlight_face = self.detected_face
             self.highlight_intensity = 1.0
             
-    def _detect_screen_area(self, mouse_pos):
-        """Detect which area of the screen the mouse is in (3x1 grid)"""
+    def _simple_face_detection(self, mouse_pos):
+        """ULTRA SIMPLE face detection that actually works"""
         x, y = mouse_pos
         width = self.renderer.width
         height = self.renderer.height
         
-        # Divide screen into 3 columns
-        col_width = width // 3
+        # Convert to percentages
+        x_pct = x / width
+        y_pct = y / height
         
-        # Determine column (left, center, right)
-        if x < col_width:
+        # Simple 6-region detection
+        if y_pct < 0.25:
+            return 'top'
+        elif y_pct > 0.75:
+            return 'bottom'
+        elif x_pct < 0.25:
             return 'left'
-        elif x < 2 * col_width:
-            return 'center'
-        else:
+        elif x_pct > 0.75:
             return 'right'
+        elif x_pct < 0.5:
+            return 'front'
+        else:
+            return 'back'
             
     def update_drag(self, mouse_pos):
-        """Update drag with direct move detection - NO CYCLING"""
-        if not self.is_dragging or self.move_executed:
+        """Update drag and generate moves"""
+        if not self.is_dragging or self.move_executed or not self.detected_face:
             return None
             
         self.drag_current_pos = mouse_pos
         
-        # Calculate drag vector
-        drag_vector = (
-            mouse_pos[0] - self.drag_start_pos[0],
-            mouse_pos[1] - self.drag_start_pos[1]
-        )
+        # Calculate drag distance
+        dx = mouse_pos[0] - self.drag_start_pos[0]
+        dy = mouse_pos[1] - self.drag_start_pos[1]
+        distance = math.sqrt(dx*dx + dy*dy)
         
-        drag_distance = math.sqrt(drag_vector[0]**2 + drag_vector[1]**2)
-        
-        # Check if we've dragged far enough
-        if drag_distance > self.move_sensitivity and self.detected_area:
-            move = self._get_move_for_drag(drag_vector)
+        if distance > self.move_sensitivity:
+            # Generate move based on drag direction
+            move = self._get_move(self.detected_face, dx, dy)
             if move:
                 self.move_executed = True
                 import time
@@ -136,161 +111,243 @@ class MouseCubeInteraction:
                 
         return None
     
-    def _get_move_for_drag(self, drag_vector):
-        """Get move based on area and direction - DIRECT MAPPING"""
-        if not self.detected_area:
-            return None
-            
-        dx, dy = drag_vector
-        area = self.detected_area
-        
-        # Simple direction detection
-        abs_dx = abs(dx)
-        abs_dy = abs(dy)
-        
-        # Determine direction
-        if abs_dx > abs_dy:
-            # Horizontal movement
-            direction = 'right' if dx > 0 else 'left'
+    def _get_move(self, face, dx, dy):
+        """Generate move based on face and drag direction"""
+        # Use strongest direction
+        if abs(dx) > abs(dy):
+            # Horizontal drag
+            if dx > 0:  # Right
+                moves = {'front': 'F', 'back': "B'", 'right': 'R', 'left': "L'", 'top': 'U', 'bottom': "D'"}
+            else:  # Left
+                moves = {'front': "F'", 'back': 'B', 'right': "R'", 'left': 'L', 'top': "U'", 'bottom': 'D'}
         else:
-            # Vertical movement  
-            direction = 'up' if dy < 0 else 'down'  # Screen Y is inverted
+            # Vertical drag
+            if dy > 0:  # Down
+                moves = {'front': "F'", 'back': 'B', 'right': "R'", 'left': 'L', 'top': "U'", 'bottom': 'D'}
+            else:  # Up
+                moves = {'front': 'F', 'back': "B'", 'right': 'R', 'left': "L'", 'top': 'U', 'bottom': "D'"}
         
-        # Create lookup key
-        lookup_key = f"{area}_{direction}"
-        
-        # Return the specific move for this area + direction
-        return self.screen_moves.get(lookup_key)
+        return moves.get(face)
     
     def end_drag(self):
-        """End drag operation with proper cleanup"""
+        """End drag operation"""
         self.is_dragging = False
         self.drag_start_pos = None
         self.drag_current_pos = None
         self.move_executed = False
+        self.detected_face = None
         
     def update_visual_feedback(self, dt):
-        """Update visual feedback animations"""
+        """Update visual effects"""
         if self.highlight_intensity > 0 and not self.is_dragging:
             self.highlight_intensity = max(0, self.highlight_intensity - self.fade_speed * dt)
             if self.highlight_intensity <= 0:
-                self.highlight_area = None
-    
-    def reset_interaction(self):
-        """Reset the interaction state"""
-        self.is_dragging = False
-        self.drag_start_pos = None
-        self.drag_current_pos = None
-        self.detected_area = None
-        self.move_executed = False
-        self.highlight_area = None
-        self.highlight_intensity = 0.0
-        self.last_move_time = 0
-    
-    def get_debug_info(self):
-        """Get debug information about current interaction state"""
-        return {
-            'is_dragging': self.is_dragging,
-            'detected_area': self.detected_area,
-            'highlight_area': self.highlight_area,
-            'move_executed': self.move_executed,
-            'last_move_time': self.last_move_time,
-            'drag_start': self.drag_start_pos,
-            'drag_current': self.drag_current_pos
-        }
+                self.highlight_face = None
+                
+        # Fade out guide after some time
+        if self.show_guide and self.guide_alpha > 0:
+            self.guide_fade_time -= dt
+            if self.guide_fade_time <= 0:
+                self.guide_alpha = max(0, self.guide_alpha - dt * 0.5)
+                if self.guide_alpha <= 0:
+                    self.show_guide = False
     
     def render_visual_feedback(self):
-        """Render visual feedback for mouse interaction"""
-        if not self.highlight_area or self.highlight_intensity <= 0:
-            return
-        
-        # Enable blending for transparency
+        """Render visual feedback AND helpful guide"""
+        # Show control guide overlay
+        if self.show_guide and self.guide_alpha > 0:
+            self._render_control_guide()
+            
+        # Show current hover/selection
+        if self.highlight_face and self.highlight_intensity > 0:
+            self._render_highlight()
+            
+    def _render_control_guide(self):
+        """Render helpful control guide overlay"""
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         
-        # Render area highlight
-        self._render_area_highlight()
+        w, h = self.renderer.width, self.renderer.height
+        alpha = self.guide_alpha * 0.2  # Subtle overlay
         
-        # Render drag indicator if dragging
-        if self.is_dragging and self.drag_start_pos and self.drag_current_pos:
-            self._render_drag_indicator()
-    
-    def _render_area_highlight(self):
-        """Render highlight for the detected area"""
-        alpha = self.highlight_intensity * 0.3
+        # Draw guide zones
+        zones = [
+            ('TOP', (0, 0, w, h*0.25), (1.0, 0.5, 0.0), 'U / U\''),  # Orange
+            ('BOTTOM', (0, h*0.75, w, h*0.25), (0.8, 0.0, 1.0), 'D / D\''),  # Purple
+            ('LEFT', (0, h*0.25, w*0.25, h*0.5), (0.0, 1.0, 0.0), 'L / L\''),  # Green
+            ('RIGHT', (w*0.75, h*0.25, w*0.25, h*0.5), (1.0, 0.0, 0.4), 'R / R\''),  # Red
+            ('FRONT', (w*0.25, h*0.25, w*0.25, h*0.5), (0.0, 0.8, 1.0), 'F / F\''),  # Blue
+            ('BACK', (w*0.5, h*0.25, w*0.25, h*0.5), (1.0, 0.8, 0.0), 'B / B\'')  # Yellow
+        ]
         
-        # Set highlight color based on area
-        area_colors = {
-            'left': (1.0, 0.0, 0.0, alpha),      # Red
-            'center': (0.0, 1.0, 0.0, alpha),   # Green  
-            'right': (0.0, 0.0, 1.0, alpha),    # Blue
+        # Set up 2D rendering for text overlays
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, self.renderer.width, self.renderer.height, 0, -1, 1)
+        
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        
+        # Draw zone backgrounds and borders
+        for zone_name, (x, y, width, height), color, moves in zones:
+            # Background
+            glColor4f(color[0], color[1], color[2], alpha)
+            glBegin(GL_QUADS)
+            glVertex2f(x, y)
+            glVertex2f(x + width, y)
+            glVertex2f(x + width, y + height)
+            glVertex2f(x, y + height)
+            glEnd()
+            
+            # Border
+            glColor4f(1.0, 1.0, 1.0, self.guide_alpha * 0.8)
+            glLineWidth(2.0)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(x, y)
+            glVertex2f(x + width, y)
+            glVertex2f(x + width, y + height)
+            glVertex2f(x, y + height)
+            glEnd()
+        
+        # Draw grid lines
+        glColor4f(1.0, 1.0, 1.0, self.guide_alpha * 0.4)
+        glLineWidth(1.0)
+        glBegin(GL_LINES)
+        # Horizontal lines
+        glVertex2f(0, h*0.25)
+        glVertex2f(w, h*0.25)
+        glVertex2f(0, h*0.75)
+        glVertex2f(w, h*0.75)
+        # Vertical lines
+        glVertex2f(w*0.25, h*0.25)
+        glVertex2f(w*0.25, h*0.75)
+        glVertex2f(w*0.5, h*0.25)
+        glVertex2f(w*0.5, h*0.75)
+        glVertex2f(w*0.75, h*0.25)
+        glVertex2f(w*0.75, h*0.75)
+        glEnd()
+        
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+            
+    def _render_highlight(self):
+        """Render face highlight"""
+        # Simple colored overlay based on face
+        colors = {
+            'front': (0.0, 0.8, 1.0),   # Blue
+            'back': (1.0, 0.8, 0.0),    # Yellow
+            'right': (1.0, 0.0, 0.4),   # Red
+            'left': (0.0, 1.0, 0.0),    # Green
+            'top': (1.0, 0.5, 0.0),     # Orange
+            'bottom': (0.8, 0.0, 1.0)   # Purple
         }
         
-        color = area_colors.get(self.highlight_area, (1.0, 1.0, 1.0, alpha))
-        glColor4f(*color)
+        color = colors.get(self.highlight_face, (1.0, 1.0, 1.0))
+        alpha = self.highlight_intensity * 0.3
         
-        # Render a simple screen overlay for area indication
-        glBegin(GL_QUADS)
-        screen_area = self._get_area_screen_coordinates(self.highlight_area)
-        if screen_area:
-            for vertex in screen_area:
-                glVertex2f(*vertex)
-        glEnd()
+        # Simple screen overlay
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, self.renderer.width, self.renderer.height, 0, -1, 1)
+        
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        
+        glColor4f(color[0], color[1], color[2], alpha)
+        
+        # Draw region based on detected face
+        w, h = self.renderer.width, self.renderer.height
+        if self.highlight_face == 'top':
+            glBegin(GL_QUADS)
+            glVertex2f(0, 0)
+            glVertex2f(w, 0)
+            glVertex2f(w, h*0.25)
+            glVertex2f(0, h*0.25)
+            glEnd()
+        elif self.highlight_face == 'bottom':
+            glBegin(GL_QUADS)
+            glVertex2f(0, h*0.75)
+            glVertex2f(w, h*0.75)
+            glVertex2f(w, h)
+            glVertex2f(0, h)
+            glEnd()
+        elif self.highlight_face == 'left':
+            glBegin(GL_QUADS)
+            glVertex2f(0, h*0.25)
+            glVertex2f(w*0.25, h*0.25)
+            glVertex2f(w*0.25, h*0.75)
+            glVertex2f(0, h*0.75)
+            glEnd()
+        elif self.highlight_face == 'right':
+            glBegin(GL_QUADS)
+            glVertex2f(w*0.75, h*0.25)
+            glVertex2f(w, h*0.25)
+            glVertex2f(w, h*0.75)
+            glVertex2f(w*0.75, h*0.75)
+            glEnd()
+        elif self.highlight_face == 'front':
+            glBegin(GL_QUADS)
+            glVertex2f(w*0.25, h*0.25)
+            glVertex2f(w*0.5, h*0.25)
+            glVertex2f(w*0.5, h*0.75)
+            glVertex2f(w*0.25, h*0.75)
+            glEnd()
+        elif self.highlight_face == 'back':
+            glBegin(GL_QUADS)
+            glVertex2f(w*0.5, h*0.25)
+            glVertex2f(w*0.75, h*0.25)
+            glVertex2f(w*0.75, h*0.75)
+            glVertex2f(w*0.5, h*0.75)
+            glEnd()
+        
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+        
+    def update_hover(self, mouse_pos):
+        """Update hover detection and show which region is active"""
+        if self.is_dragging:
+            return
+            
+        # Detect face under mouse for hover effect
+        face = self._simple_face_detection(mouse_pos)
+        if face != self.highlight_face:
+            self.highlight_face = face
+            self.highlight_intensity = 0.5  # Gentle hover
     
-    def _get_area_screen_coordinates(self, area):
-        """Get screen coordinates for the area"""
-        width = self.renderer.width
-        height = self.renderer.height
-        
-        col_width = width // 3
-        
-        # Map areas to screen coordinates
-        if area == 'left':
-            return [(0, 0), (col_width, 0), (col_width, height), (0, height)]
-        elif area == 'center':
-            return [(col_width, 0), (2 * col_width, 0), (2 * col_width, height), (col_width, height)]
-        elif area == 'right':
-            return [(2 * col_width, 0), (width, 0), (width, height), (2 * col_width, height)]
-        
-        return None
+    def toggle_guide(self):
+        """Toggle the visual guide on/off"""
+        self.show_guide = not self.show_guide
+        if self.show_guide:
+            self.guide_alpha = 0.8
+            self.guide_fade_time = 5.0  # Show for 5 seconds
     
-    def _render_drag_indicator(self):
-        """Render line showing drag direction"""
-        glColor4f(1.0, 1.0, 1.0, 0.8)
-        glLineWidth(3.0)
-        
-        glBegin(GL_LINES)
-        glVertex2f(*self.drag_start_pos)
-        glVertex2f(*self.drag_current_pos)
-        glEnd()
-        
-        # Draw arrow head
-        dx = self.drag_current_pos[0] - self.drag_start_pos[0]
-        dy = self.drag_current_pos[1] - self.drag_start_pos[1]
-        
-        if dx != 0 or dy != 0:
-            length = math.sqrt(dx**2 + dy**2)
-            if length > 10:
-                # Normalize
-                dx /= length
-                dy /= length
-                
-                # Arrow head points
-                arrow_size = 10
-                angle = 0.5  # radians
-                
-                # Calculate arrow head points
-                x1 = self.drag_current_pos[0] - arrow_size * (dx * math.cos(angle) - dy * math.sin(angle))
-                y1 = self.drag_current_pos[1] - arrow_size * (dx * math.sin(angle) + dy * math.cos(angle))
-                
-                x2 = self.drag_current_pos[0] - arrow_size * (dx * math.cos(-angle) - dy * math.sin(-angle))
-                y2 = self.drag_current_pos[1] - arrow_size * (dx * math.sin(-angle) + dy * math.cos(-angle))
-                
-                glBegin(GL_LINES)
-                glVertex2f(*self.drag_current_pos)
-                glVertex2f(x1, y1)
-                glVertex2f(*self.drag_current_pos)
-                glVertex2f(x2, y2)
-                glEnd()
-        
-        glLineWidth(1.0)
+    def get_debug_info(self):
+        """Get debug info for compatibility"""
+        return {
+            'is_dragging': self.is_dragging,
+            'detected_face': self.detected_face,
+            'highlight_face': self.highlight_face,
+            'move_executed': self.move_executed
+        }
+    
+    def reset_interaction(self):
+        """Reset everything"""
+        self.is_dragging = False
+        self.drag_start_pos = None
+        self.drag_current_pos = None
+        self.detected_face = None
+        self.move_executed = False
+        self.highlight_face = None
+        self.highlight_intensity = 0.0
+        self.last_move_time = 0

@@ -280,6 +280,25 @@ class RubiksCube:
         """Execute a move using standard Rubik's cube notation"""
         move_notation = move_notation.strip().upper()
         
+        # Handle double moves (2)
+        if move_notation.endswith('2'):
+            base_move = move_notation[:-1]
+            self.execute_move(base_move)
+            self.execute_move(base_move)
+            return
+            
+        # Handle wide moves (w)
+        if move_notation.endswith('W') or move_notation.endswith("W'"):
+            if move_notation.endswith("W'"):
+                base_face = move_notation[:-2]
+                clockwise = False
+            else:
+                base_face = move_notation[:-1]
+                clockwise = True
+            self._execute_wide_move(base_face, clockwise)
+            return
+        
+        # Standard moves
         if move_notation == 'R':
             self.move_R(True)
         elif move_notation == "R'":
@@ -318,6 +337,27 @@ class RubiksCube:
             self.move_S(False)
         else:
             print(f"Unknown move: {move_notation}")
+    
+    def _execute_wide_move(self, face, clockwise=True):
+        """Execute a wide move (face + middle slice)"""
+        if face == 'R':
+            self.move_R(clockwise)
+            self.move_M(not clockwise)  # M moves opposite to R
+        elif face == 'L':
+            self.move_L(clockwise)
+            self.move_M(clockwise)  # M moves same as L
+        elif face == 'U':
+            self.move_U(clockwise)
+            self.move_E(not clockwise)  # E moves opposite to U
+        elif face == 'D':
+            self.move_D(clockwise)
+            self.move_E(clockwise)  # E moves same as D
+        elif face == 'F':
+            self.move_F(clockwise)
+            self.move_S(clockwise)  # S moves same as F
+        elif face == 'B':
+            self.move_B(clockwise)
+            self.move_S(not clockwise)  # S moves opposite to B
     
     def undo_last_move(self):
         """Undo the last move"""

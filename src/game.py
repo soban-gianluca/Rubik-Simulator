@@ -9,6 +9,7 @@ from renderer import Renderer
 from settings_manager import SettingsManager
 from sound_manager import SoundManager
 from results_window import ResultsWindow
+from mouse_interaction import MouseCubeInteraction
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -79,6 +80,9 @@ class Game:
         # Initialize sound manager
         self.sound_manager = SoundManager()
         
+        # Initialize mouse cube interaction system
+        self.mouse_interaction = MouseCubeInteraction(self.renderer)
+        
         # Initialize menu
         self.menu = Menu(self.width, self.height)
         self.menu.set_game_instance(self)
@@ -95,6 +99,7 @@ class Game:
         
         # Control variables
         self.mouse_rotating = False
+        self.mouse_cube_moving = False  # New variable for cube move detection
         self.prev_mouse_x = 0
         self.prev_mouse_y = 0
         self.rotation_sensitivity = 0.5
@@ -111,7 +116,8 @@ class Game:
         print("  Space: Toggle auto-rotation")
         print("  Arrow keys: Manual rotation")
         print("  A: Additional rotation control")
-        print("  Mouse drag: Rotate cube")
+        print("  Left Mouse + Drag: Rotate cube view")
+        print("  Right Mouse + Drag: Perform cube moves")
         print("  Ctrl+B: Toggle debug mode")
         print("  T: Reset rotation")
         print("  ESC: Toggle menu")
@@ -354,18 +360,28 @@ class Game:
                 continue
                 
             elif not self.menu.is_active() and not self.results_window.active and event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
+                if event.button == 1:  # Left mouse button - camera rotation
                     self.mouse_rotating = True
                     self.prev_mouse_x, self.prev_mouse_y = event.pos
                     self.auto_rotate = False
                     self.debug_print(f"Mouse rotation started at {event.pos}")
+                elif event.button == 3:  # Right mouse button - cube moves
+                    self.mouse_cube_moving = True
+                    self.mouse_interaction.start_drag(event.pos)
+                    self.auto_rotate = False
+                    self.debug_print(f"Mouse cube interaction started at {event.pos}")
                     
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1 and not self.menu.is_active() and not self.results_window.active:
                     self.mouse_rotating = False
                     self.debug_print("Mouse rotation ended")
+                elif event.button == 3 and not self.menu.is_active() and not self.results_window.active:
+                    self.mouse_cube_moving = False
+                    self.mouse_interaction.end_drag()
+                    self.debug_print("Mouse cube interaction ended")
                 
             elif not self.menu.is_active() and not self.results_window.active and event.type == pygame.MOUSEMOTION:
+                # Handle camera rotation with left mouse button
                 if self.mouse_rotating:
                     current_x, current_y = event.pos
                     dx = current_x - self.prev_mouse_x
@@ -379,10 +395,17 @@ class Game:
                         elevation=vertical_rotation
                     )
                     
-                    self.debug_print(f"Rotating: dx={dx}, dy={dy}")
+                    self.debug_print(f"Rotating camera: dx={dx}, dy={dy}")
                     
                     self.prev_mouse_x = current_x
                     self.prev_mouse_y = current_y
+                
+                # Handle cube moves with right mouse button
+                elif self.mouse_cube_moving:
+                    detected_move = self.mouse_interaction.update_drag(event.pos)
+                    if detected_move:
+                        self.debug_print(f"Mouse detected move: {detected_move}")
+                        self.execute_cube_move(detected_move)
         
         # Handle results window events
         if self.results_window.active:
@@ -443,6 +466,12 @@ class Game:
         if not self.menu.is_active() and self.auto_rotate:
             self.renderer.rotate_camera(azimuth=self.auto_rotation_speed, elevation=0)
         
+        # Update mouse interaction visual feedback
+        if hasattr(self, 'mouse_interaction'):
+            # Calculate delta time for smooth animations
+            dt = self.clock.get_time() / 1000.0  # Convert to seconds
+            self.mouse_interaction.update_visual_feedback(dt)
+        
         # Update cube colors after animation completes
         if hasattr(self.renderer, 'is_animating'):
             if not hasattr(self.renderer, '_last_animation_state'):
@@ -471,6 +500,10 @@ class Game:
     def render(self):
         # Render 3D cube
         self.renderer.render_frame()
+        
+        # Render mouse interaction visual feedback
+        if hasattr(self, 'mouse_interaction'):
+            self.mouse_interaction.render_visual_feedback()
         
         # Render 2D overlays (menu and FPS)
         # Switch to 2D orthographic projection

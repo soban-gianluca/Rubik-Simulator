@@ -1,6 +1,9 @@
 import pygame
 import pygame_menu
 from pygame_menu import themes
+import os
+import time
+import math
 from settings_manager import SettingsManager
 from sound_manager import SoundManager
 
@@ -41,18 +44,109 @@ class Menu:
         self.show_fps = self.settings_manager.settings.get("show_fps", False)
         self.fullscreen = self.settings_manager.settings.get("fullscreen", False)
         
-        # Create custom theme
-        self.theme = themes.THEME_DARK.copy()
-        self.theme.title_font_size = 50
-        self.theme.widget_font_size = 30
-        self.theme.widget_margin = (0, 10)
-        self.theme.background_color = (0, 0, 0, 180)
+        # Initialize hover tracking
+        self.hovered_widgets = set()  # Track which widgets are currently hovered
+        
+        # Create custom fancy theme with improved styling
+        self._create_custom_theme()
         
         # Create menus
         self._create_menus()
         
         # Set current menu to main menu
         self.current_menu = self.main_menu
+    
+    def _create_custom_theme(self):
+        """Create a fancy custom theme with better styling"""
+        # Start with the blue theme as base
+        self.theme = pygame_menu.themes.THEME_BLUE.copy()
+        
+        # Background styling
+        self.theme.background_color = (10, 15, 25, 220)  # Dark blue with transparency
+        
+        # Title styling
+        self.theme.title_font_size = 65
+        self.theme.title_font_color = (255, 255, 255)
+        self.theme.title_font_shadow = True
+        self.theme.title_font_shadow_color = (0, 0, 0)
+        self.theme.title_font_shadow_offset = 3
+        self.theme.title_background_color = (10, 15, 25, 0)  # Transparent background
+        self.theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_NONE
+        
+        # Widget styling
+        self.theme.widget_font_size = 32
+        self.theme.widget_font_color = (255, 255, 255)  # White text
+        self.theme.widget_font_shadow = True
+        self.theme.widget_font_shadow_color = (0, 0, 0)
+        self.theme.widget_font_shadow_offset = 2
+        self.theme.widget_margin = (0, 15)
+        self.theme.widget_padding = (15, 10)
+        
+        # Button styling - use NoneSelection for now and handle custom effects manually
+        self.theme.widget_selection_effect = pygame_menu.widgets.NoneSelection()
+        
+        # Button background colors - make them transparent/invisible
+        self.theme.widget_background_color = (0, 0, 0, 0)  # Completely transparent
+        self.theme.widget_background_color_disabled = (0, 0, 0, 0)  # Completely transparent
+        
+        # Scrollbar styling (for help menu)
+        self.theme.scrollbar_color = (50, 70, 100)
+        self.theme.scrollbar_slider_color = (100, 130, 180)
+        self.theme.scrollbar_slider_hover_color = (120, 150, 200)
+        
+        # Border styling - remove borders
+        self.theme.widget_border_color = (0, 0, 0, 0)  # Transparent border
+        self.theme.widget_border_width = 0  # No border
+        
+        # Menu bar styling
+        self.theme.menubar_close_button = False
+        
+        # Custom colors for specific widgets - transparent backgrounds
+        self.button_color_normal = (0, 0, 0, 0)  # Transparent
+        self.button_color_hover = (30, 50, 80, 100)  # Subtle hover effect
+        self.button_color_pressed = (0, 0, 0, 0)  # Transparent
+        
+        # Text colors
+        self.text_color_normal = (255, 255, 255)  # White color for normal text
+        self.text_color_hover = (255, 18, 18)     # Red color for hover
+        self.text_color_selected = (255, 18, 18)  # Red color for selected
+    
+    def _customize_button_appearance(self, button):
+        """Apply custom styling to a button widget - remove backgrounds"""
+        try:
+            # Only set background color to transparent - this is the most important change
+            if hasattr(button, 'set_background_color'):
+                button.set_background_color((0, 0, 0, 0))
+            
+        except Exception as e:
+            # Silently ignore errors to avoid spam
+            pass
+    
+    def _customize_menu_widgets(self, menu):
+        """Apply custom styling to all widgets in a menu - remove backgrounds"""
+        try:
+            for widget in menu.get_widgets():
+                # Get widget type by checking the class name
+                widget_class_name = widget.__class__.__name__
+                
+                if widget_class_name == 'Button':
+                    # Check if this is a difficulty button (has background color set)
+                    if (hasattr(widget, '_background_color') and 
+                        widget._background_color and 
+                        widget._background_color != (0, 0, 0, 0)):
+                        # This is a difficulty button with custom background, keep it
+                        pass
+                    else:
+                        # This is a regular button, make it transparent
+                        self._customize_button_appearance(widget)
+                elif widget_class_name in ['DropSelect', 'ToggleSwitch', 'RangeSlider']:
+                    # Remove background squares from other interactive widgets
+                    if hasattr(widget, 'set_background_color'):
+                        widget.set_background_color((0, 0, 0, 0))  # Transparent
+                        
+        except Exception as e:
+            # Silently ignore errors to avoid spam
+            pass
     
     def _get_game_modes(self):
         """Get available game modes with their configurations.
@@ -86,6 +180,9 @@ class Menu:
     def _start_game(self, difficulty="normal"):
         """Start the game (close menu) with specified difficulty"""
         self.sound_manager.play("menu_select")
+        # Clear hover effects before starting game
+        self._clear_all_hover_effects()
+        
         # Store the selected difficulty for future use
         self.selected_difficulty = difficulty
         
@@ -103,16 +200,19 @@ class Menu:
     def _open_difficulty_select(self):
         """Open difficulty selection submenu"""
         self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.difficulty_menu
     
     def _open_settings(self):
         """Open settings submenu"""
         self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.settings_menu
     
     def _open_help(self):
         """Open help submenu"""
         self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.help_menu
     
     def _on_resolution_change(self, selected_tuple, index):
@@ -213,11 +313,16 @@ class Menu:
     def _back_to_main(self):
         """Return to the main menu"""
         self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.main_menu
     
     def toggle(self):
         """Toggle the menu visibility"""
         self.active = not self.active
+        
+        # Clear hover effects when toggling menu
+        if not self.active:
+            self._clear_all_hover_effects()
         
         # Play sound when opening menu
         if self.active:
@@ -259,14 +364,19 @@ class Menu:
         return self.selected_difficulty
     
     def handle_event(self, event):
-        """Handle events specific to the menu.
+        """Handle events specific to the menu with enhanced feedback.
         Returns True if the event was handled by the menu."""
         if not self.active or not self.current_menu:
             return False
             
-        # Update mouse cursor for menu
+        # Enhanced mouse motion handling for hover effects
         if event.type == pygame.MOUSEMOTION:
             self.update_cursor(event.pos)
+            self._update_hover_effects(event.pos)
+        
+        # Clear hover effects on mouse button clicks to prevent sticky hover
+        if event.type in [pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP]:
+            self._clear_all_hover_effects()
         
         # Handle menu navigation
         if self.current_menu and self.current_menu.is_enabled():
@@ -274,9 +384,11 @@ class Menu:
                 if event.key == pygame.K_ESCAPE:
                     if self.current_menu == self.main_menu:
                         self.active = False
+                        self._clear_all_hover_effects()  # Clear hover effects when closing menu
                         return True
                     else:
                         self.sound_manager.play("menu_select")
+                        self._clear_all_hover_effects()  # Clear hover effects when changing menu
                         self.current_menu = self.main_menu
                         return True
         
@@ -286,27 +398,123 @@ class Menu:
         # Check if we need to go back to main menu (after pygame-menu processes the event)
         return updated or self.active
     
+    def _clear_all_hover_effects(self):
+        """Clear hover effects from all widgets"""
+        for widget in self.hovered_widgets.copy():
+            self._apply_hover_effect(widget, False)
+        self.hovered_widgets.clear()
+    
+    def _update_hover_effects(self, mouse_pos):
+        """Update hover effects for widgets based on mouse position"""
+        if not self.current_menu:
+            return
+            
+        widgets = self.current_menu.get_widgets()
+        currently_hovered = set()
+        
+        for widget in widgets:
+            try:
+                widget_rect = widget.get_rect()
+                widget_class_name = widget.__class__.__name__
+                
+                # Check if this widget should have hover effects
+                if widget_class_name in ['Button', 'DropSelect', 'ToggleSwitch']:
+                    if widget_rect.collidepoint(mouse_pos):
+                        currently_hovered.add(widget)
+                        
+                        # If this is a new hover, apply hover effect
+                        if widget not in self.hovered_widgets:
+                            self._apply_hover_effect(widget, True)
+                            
+                            # Play subtle hover sound (with debouncing)
+                            if hasattr(self, 'sound_manager'):
+                                self.sound_manager.play_slider_sound("menu_select")
+                    
+                    elif widget in self.hovered_widgets:
+                        # Mouse left this widget, remove hover effect
+                        self._apply_hover_effect(widget, False)
+                        
+            except:
+                # If widget doesn't support get_rect(), skip it
+                continue
+        
+        # Update the tracked hovered widgets
+        self.hovered_widgets = currently_hovered
+    
+    def _apply_hover_effect(self, widget, is_hovered):
+        """Apply or remove hover effect from a widget"""
+        try:
+            widget_class_name = widget.__class__.__name__
+            
+            if widget_class_name == 'Button':
+                # For buttons, we'll change the font color through the widget's internal properties
+                if hasattr(widget, '_font_color'):
+                    if is_hovered:
+                        widget._font_color = self.text_color_hover
+                    else:
+                        widget._font_color = self.text_color_normal
+                        
+                # Also try to update the button's style if possible
+                if hasattr(widget, 'update_font'):
+                    widget.update_font({
+                        'color': self.text_color_hover if is_hovered else self.text_color_normal
+                    })
+                    
+        except Exception as e:
+            # Silently handle any errors
+            pass
+    
     def update_cursor(self, mouse_pos):
-        """Update cursor based on menu interaction"""
+        """Update cursor based on menu interaction with enhanced feedback"""
         if not self.active:
             return
         
         if self.current_menu:
-            # If mouse is over a widget, use pointer cursor
-            if self.current_menu.get_selected_widget():
-                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-            else:
+            # Check if mouse is over any interactive widget
+            selected_widget = self.current_menu.get_selected_widget()
+            
+            # Get the widget under mouse position
+            widgets = self.current_menu.get_widgets()
+            mouse_over_widget = False
+            
+            for widget in widgets:
+                try:
+                    widget_rect = widget.get_rect()
+                    if widget_rect.collidepoint(mouse_pos):
+                        mouse_over_widget = True
+                        # Check if it's an interactive widget by class name
+                        widget_class_name = widget.__class__.__name__
+                        if widget_class_name in ['Button', 'DropSelect', 'ToggleSwitch', 'RangeSlider']:
+                            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                            return
+                except:
+                    # If widget doesn't support get_rect(), skip it
+                    continue
+            
+            # If not over any interactive widget, use arrow cursor
+            if not mouse_over_widget:
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
     
     def draw(self, screen):
-        """Draw the menu on the screen"""
+        """Draw the menu on the screen with fancy effects and hover colors"""
         if not self.active:
             return
         
-        # Draw semi-transparent background for the full screen
+        # Draw animated background overlay
         overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
+        
+        # Create a subtle animated gradient effect
+        time_offset = time.time() * 2  # Animation speed
+        for y in range(0, screen.get_height(), 4):
+            alpha = int(140 + 40 * (0.5 + 0.5 * math.sin(time_offset + y * 0.01)))
+            alpha = max(100, min(200, alpha))  # Clamp alpha values
+            color = (5, 10, 20, alpha)
+            pygame.draw.rect(overlay, color, (0, y, screen.get_width(), 4))
+        
         screen.blit(overlay, (0, 0))
+        
+        # Add subtle particle effects or glow
+        self._draw_background_effects(screen)
         
         # Only check and recreate if there's a significant mismatch
         actual_width, actual_height = screen.get_size()
@@ -321,6 +529,37 @@ class Menu:
         # Draw the current menu
         if self.current_menu:
             self.current_menu.draw(screen)
+    
+    def _draw_background_effects(self, screen):
+        """Draw subtle background effects like glowing particles"""
+        try:
+            # Create a subtle glow effect around the menu area
+            center_x = screen.get_width() // 2
+            center_y = screen.get_height() // 2
+            time_offset = time.time()
+            
+            # Draw some floating particles
+            for i in range(8):
+                angle = (time_offset * 30 + i * 45) % 360
+                radius = 150 + 50 * math.sin(time_offset * 2 + i)
+                
+                x = center_x + radius * math.cos(math.radians(angle))
+                y = center_y + radius * math.sin(math.radians(angle))
+                
+                # Ensure particles stay on screen
+                if 0 <= x <= screen.get_width() and 0 <= y <= screen.get_height():
+                    size = int(3 + 2 * math.sin(time_offset * 3 + i))
+                    alpha = int(100 + 50 * math.sin(time_offset * 2 + i * 0.5))
+                    
+                    # Create a small glowing circle
+                    glow_surface = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
+                    pygame.draw.circle(glow_surface, (100, 150, 255, alpha), (size * 2, size * 2), size * 2)
+                    pygame.draw.circle(glow_surface, (150, 200, 255, alpha // 2), (size * 2, size * 2), size)
+                    
+                    screen.blit(glow_surface, (x - size * 2, y - size * 2))
+        except Exception as e:
+            # Silently ignore errors in visual effects
+            pass
 
     def update_dimensions(self, width, height):
         """Update menu dimensions when resolution changes"""
@@ -371,12 +610,8 @@ class Menu:
         if hasattr(self, 'debug_mode') and self.debug_mode:
             print(f"Creating menus with dimensions: {self.width}x{self.height}")
         
-        # Create custom theme
-        self.theme = pygame_menu.themes.THEME_DARK.copy()
-        self.theme.title_font_size = 50
-        self.theme.widget_font_size = 30
-        self.theme.widget_margin = (0, 10)
-        self.theme.background_color = (0, 0, 0, 180)
+        # Create custom fancy theme
+        self._create_custom_theme()
         
         # Create main menu with ACTUAL dimensions
         self.main_menu = pygame_menu.Menu(
@@ -387,10 +622,13 @@ class Menu:
         )
         
         # Add main menu buttons
-        self.main_menu.add.button("Play", self._open_difficulty_select)
-        self.main_menu.add.button("Settings", self._open_settings)
-        self.main_menu.add.button("Help", self._open_help)
-        self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
+        play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
+        settings_btn = self.main_menu.add.button("Settings", self._open_settings)
+        help_btn = self.main_menu.add.button("Help", self._open_help)
+        quit_btn = self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
+        
+        # Apply custom styling to main menu
+        self._customize_menu_widgets(self.main_menu)
         
         # Create difficulty selection menu with ACTUAL dimensions
         self.difficulty_menu = pygame_menu.Menu(
@@ -402,13 +640,33 @@ class Menu:
         
         # Dynamically add difficulty options from game modes configuration
         game_modes = self._get_game_modes()
-        for mode_key, mode_config in game_modes.items():
-            button_text = f"{mode_config['name']}"
-            # Create a lambda with default parameter to capture the current mode_key
-            button_action = lambda difficulty=mode_key: self._start_game(difficulty)
-            self.difficulty_menu.add.button(button_text, button_action)
+        difficulty_icons = {"easy", "medium", "hard"}
         
-        self.difficulty_menu.add.button("Back", self._back_to_main)
+        for mode_key, mode_config in game_modes.items():
+            # Add some spacing before each difficulty
+            self.difficulty_menu.add.vertical_margin(20)
+            
+            # Combine name and description in one button with proper spacing
+            button_text = f"{mode_config['name']} | {mode_config['description']}"
+            button_action = lambda difficulty=mode_key: self._start_game(difficulty)
+            
+            difficulty_button = self.difficulty_menu.add.button(
+                button_text, 
+                button_action,
+                font_size=28,
+                background_color=(40, 60, 90, 200),  # Colored background box
+                padding=(30, 25)  # More padding for a taller box
+            )
+            
+            # Add spacing after each difficulty
+            self.difficulty_menu.add.vertical_margin(10)
+        
+        # Add final spacing and back button
+        self.difficulty_menu.add.vertical_margin(20)
+        back_btn = self.difficulty_menu.add.button("Back", self._back_to_main)
+        
+        # Apply custom styling to difficulty menu
+        self._customize_menu_widgets(self.difficulty_menu)
         
         # Create settings menu with ACTUAL dimensions
         self.settings_menu = pygame_menu.Menu(
@@ -455,37 +713,56 @@ class Menu:
         )
         
         # Settings menu buttons
-        self.settings_menu.add.button("Apply Changes", self._apply_settings)
-        self.settings_menu.add.button("Back", self._back_to_main)
+        apply_btn = self.settings_menu.add.button("Apply Changes", self._apply_settings)
+        back_btn = self.settings_menu.add.button("Back", self._back_to_main)
+
+        # Apply custom styling to settings menu
+        self._customize_menu_widgets(self.settings_menu)
         
         # Help menu with ACTUAL dimensions
         self.help_menu = pygame_menu.Menu(
-            "Controls",
+            "Controls & Help",
             self.width,
             self.height,
             theme=self.theme
         )
         
-        # Add help text
-        help_text = [
-            "Controls:",
-            "",
-            "ESC: Toggle menu",
-            "F11: Toggle fullscreen",
-            "Space: Toggle auto-rotation",
-            "Left/Right arrows: Manual rotation",
-            "Up/Down arrows: Vertical rotation",
-            "Click and drag: Rotate with mouse",
-            "1 to W: Rotate cube faces",
-            "D: Toggle debug mode",
-            "",
-            "Mouse rotation disables auto-rotation"
+        # Add help text with better formatting
+        help_sections = [
+            ("Basic Controls:", [
+                "ESC - Toggle menu",
+                "F11 - Toggle fullscreen",
+                "Space - Toggle auto-rotation",
+                "Mouse - Click and drag to rotate view"
+            ]),
+            ("Keyboard Controls:", [
+                "Arrow Keys - Manual rotation",
+                "R/L/U/D/F/B - Cube face rotations",
+                "Shift + Letter - Reverse rotation",
+                "X - Scramble cube",
+                "Z - Undo last move",
+                "C - Check if solved"
+            ]),
+            ("Mouse Controls:", [
+                "Left Click + Drag - Rotate camera view",
+                "Right Click + Drag - Perform cube moves",
+                "Mouse rotation disables auto-rotation"
+            ])
         ]
         
-        for line in help_text:
-            self.help_menu.add.label(line)
+        for section_title, controls in help_sections:
+            self.help_menu.add.label(section_title, font_size=28)
+            self.help_menu.add.vertical_margin(5)
+            
+            for control in controls:
+                self.help_menu.add.label(f"  - {control}", font_size=22)
+            
+            self.help_menu.add.vertical_margin(15)
         
-        self.help_menu.add.button("Back", self._back_to_main)
+        back_btn = self.help_menu.add.button("Back", self._back_to_main)
+        
+        # Apply custom styling to help menu
+        self._customize_menu_widgets(self.help_menu)
         
         # Set current menu (preserve the current menu state)
         if hasattr(self, 'current_menu'):

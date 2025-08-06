@@ -18,7 +18,6 @@
 --- TO DO LIST ---
 - Reset stats when starting new game
 - Reread, simplify/remove unecessary lines
-- Possible alternative solution for loading animation
 - Different difficulties and gamemodes
 
 - (Different gamemodes)

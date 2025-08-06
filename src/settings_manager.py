@@ -17,6 +17,7 @@ class SettingsManager:
             "auto_rotate_speed": 0.2,
             "background": "skybox",
             "difficulty_skyboxes": {
+                "freeplay": "utils/skyboxes/skybox_easy.jpg",
                 "easy": "utils/skyboxes/skybox_easy.jpg",
                 "medium": "utils/skyboxes/skybox_medium.jpg", 
                 "hard": "utils/skyboxes/skybox_hard.jpg"

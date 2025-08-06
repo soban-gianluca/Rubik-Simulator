@@ -24,7 +24,7 @@ class Menu:
         self.active = False
         self.resolution_changed_flag = False
         self.settings_changed = False
-        self.selected_difficulty = "easy"  # Default difficulty - start in easy mode
+        self.selected_difficulty = "freeplay"  # Default difficulty - start in free play mode
         
         # Animation state for smooth transitions
         self.is_animating = False
@@ -160,10 +160,16 @@ class Menu:
         """Get available game modes with their configurations.
         This structure makes it easy to add new difficulties and game modes."""
         return {
+            "freeplay": {
+                "name": "Free Play",
+                "description": "Practice with an unscrambled cube",
+                "scramble_moves": 0,  # No scrambling - cube stays solved
+                "timer_enabled": False,  # No timer for free play
+            },
             "easy": {
                 "name": "Easy",
-                "description": "Perfect for beginners - solved cube",
-                "scramble_moves": 0,  # No scrambling - cube stays solved
+                "description": "Perfect for beginners - 5 moves scramble",
+                "scramble_moves": 5,  # Easy scramble
                 "timer_enabled": True,  # Future: enable/disable timer
             },
             "medium": {

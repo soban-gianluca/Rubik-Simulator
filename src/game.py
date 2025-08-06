@@ -763,7 +763,13 @@ class Game:
         # Get difficulty configuration from menu
         game_mode_config = self.menu.get_game_mode_config(difficulty)
         
-        if difficulty == "easy":
+        if difficulty == "freeplay":
+            # Free play: Keep cube solved (no scrambling)
+            # Reset to solved state by creating a new solved cube
+            from rubiks_cube import RubiksCube
+            self.renderer.rubiks_cube = RubiksCube()
+            self.debug_print("Free play mode: Cube ready for practice!")
+        elif difficulty == "easy":
             # Easy: Keep cube solved (no scrambling)
             # Reset to solved state by creating a new solved cube
             from rubiks_cube import RubiksCube

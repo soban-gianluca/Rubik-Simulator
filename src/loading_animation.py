@@ -181,13 +181,10 @@ class LoadingAnimation:
         # Draw current loading step on pygame surface
         if self.current_step < len(self.loading_steps):
             step_text = self.loading_steps[self.current_step]
-        else:
-            step_text = "Loading complete!"
-            
-        loading_text = self.font_medium.render(step_text, True, (200, 220, 255))
-        loading_text.set_alpha(self.alpha)
-        loading_rect = loading_text.get_rect(center=(self.width // 2, self.height // 2 + 80))
-        temp_surface.blit(loading_text, loading_rect)
+            loading_text = self.font_medium.render(step_text, True, (200, 220, 255))
+            loading_text.set_alpha(self.alpha)
+            loading_rect = loading_text.get_rect(center=(self.width // 2, self.height // 2 + 80))
+            temp_surface.blit(loading_text, loading_rect)
         
         # Draw progress percentage on pygame surface
         progress_percent = f"{int(self.loading_progress * 100)}%"
@@ -221,13 +218,6 @@ class LoadingAnimation:
                 
                 pygame.draw.line(temp_surface, (r, g, b), 
                                (bar_x + i, bar_y), (bar_x + i, bar_y + bar_height))
-        
-        # Draw completion message when ready
-        if self.loading_complete:
-            ready_text = self.font_medium.render("Press any key to continue...", True, (100, 255, 100))
-            ready_text.set_alpha(int(self.alpha * (math.sin(time.time() * 4) + 1) / 2 + 128))
-            ready_rect = ready_text.get_rect(center=(self.width // 2, self.height // 2 + 170))
-            temp_surface.blit(ready_text, ready_rect)
         
         # Convert pygame surface to OpenGL texture and render
         # Set up 2D orthographic projection

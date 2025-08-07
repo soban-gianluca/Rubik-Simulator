@@ -311,6 +311,10 @@ class Menu:
         # Apply volume immediately if we can
         if pygame.mixer.get_init() and self.game:
             pygame.mixer.music.set_volume(self.volume / 100)
+        
+        # Save to settings immediately
+        self.settings_manager.settings["volume"] = self.volume
+        self.settings_manager.save_settings()
             
         self.settings_changed = True
     
@@ -325,6 +329,11 @@ class Menu:
         
         # Apply volume immediately
         self.sound_manager.set_master_volume(self.master_volume / 100.0)
+        
+        # Save to settings immediately
+        self.settings_manager.set_audio_volume("master_volume", self.master_volume)
+        self.settings_manager.save_settings()
+        
         self.settings_changed = True
     
     def _on_music_volume_change(self, value):
@@ -338,6 +347,11 @@ class Menu:
         
         # Apply volume immediately
         self.sound_manager.set_music_volume(self.music_volume / 100.0)
+        
+        # Save to settings immediately
+        self.settings_manager.set_audio_volume("music_volume", self.music_volume)
+        self.settings_manager.save_settings()
+        
         self.settings_changed = True
     
     def _on_effects_volume_change(self, value):
@@ -351,6 +365,11 @@ class Menu:
         
         # Apply volume immediately
         self.sound_manager.set_effects_volume(self.effects_volume / 100.0)
+        
+        # Save to settings immediately
+        self.settings_manager.set_audio_volume("effects_volume", self.effects_volume)
+        self.settings_manager.save_settings()
+        
         self.settings_changed = True
     
     def _on_menu_volume_change(self, value):
@@ -364,6 +383,11 @@ class Menu:
         
         # Apply volume immediately
         self.sound_manager.set_menu_volume(self.menu_volume / 100.0)
+        
+        # Save to settings immediately
+        self.settings_manager.set_audio_volume("menu_volume", self.menu_volume)
+        self.settings_manager.save_settings()
+        
         self.settings_changed = True
     
     def _apply_settings(self):

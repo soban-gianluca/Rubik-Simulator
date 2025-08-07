@@ -315,6 +315,10 @@ class Menu:
         # Save to settings immediately
         self.settings_manager.settings["volume"] = self.volume
         self.settings_manager.save_settings()
+        
+        # Also update the game's settings manager if available
+        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
+            self.game.settings.settings["volume"] = self.volume
             
         self.settings_changed = True
     
@@ -334,6 +338,10 @@ class Menu:
         self.settings_manager.set_audio_volume("master_volume", self.master_volume)
         self.settings_manager.save_settings()
         
+        # Also update the game's settings manager if available
+        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
+            self.game.settings.set_audio_volume("master_volume", self.master_volume)
+        
         self.settings_changed = True
     
     def _on_music_volume_change(self, value):
@@ -351,6 +359,10 @@ class Menu:
         # Save to settings immediately
         self.settings_manager.set_audio_volume("music_volume", self.music_volume)
         self.settings_manager.save_settings()
+        
+        # Also update the game's settings manager if available
+        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
+            self.game.settings.set_audio_volume("music_volume", self.music_volume)
         
         self.settings_changed = True
     
@@ -370,6 +382,10 @@ class Menu:
         self.settings_manager.set_audio_volume("effects_volume", self.effects_volume)
         self.settings_manager.save_settings()
         
+        # Also update the game's settings manager if available
+        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
+            self.game.settings.set_audio_volume("effects_volume", self.effects_volume)
+        
         self.settings_changed = True
     
     def _on_menu_volume_change(self, value):
@@ -387,6 +403,10 @@ class Menu:
         # Save to settings immediately
         self.settings_manager.set_audio_volume("menu_volume", self.menu_volume)
         self.settings_manager.save_settings()
+        
+        # Also update the game's settings manager if available
+        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
+            self.game.settings.set_audio_volume("menu_volume", self.menu_volume)
         
         self.settings_changed = True
     

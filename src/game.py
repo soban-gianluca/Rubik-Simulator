@@ -654,14 +654,20 @@ class Game:
             # Add moves counter
             text_lines.append(f"Moves: {self.move_counter}")
             
-            # Add timer if game has started
-            if self.start_time is not None:
-                elapsed = time.time() - self.start_time
-                minutes = int(elapsed // 60)
-                seconds = int(elapsed % 60)
-                text_lines.append(f"Time: {minutes:02d}:{seconds:02d}")
-            else:
-                text_lines.append("Time: 00:00")
+            # Check if timer is enabled for current game mode
+            current_difficulty = self.menu.get_selected_difficulty()
+            game_mode_config = self.menu.get_game_mode_config(current_difficulty)
+            timer_enabled = game_mode_config.get("timer_enabled", True)  # Default to True for compatibility
+            
+            # Add timer only if enabled
+            if timer_enabled:
+                if self.start_time is not None:
+                    elapsed = time.time() - self.start_time
+                    minutes = int(elapsed // 60)
+                    seconds = int(elapsed % 60)
+                    text_lines.append(f"Time: {minutes:02d}:{seconds:02d}")
+                else:
+                    text_lines.append("Time: 00:00")
             
             # Calculate dimensions for background
             text_surfaces = []

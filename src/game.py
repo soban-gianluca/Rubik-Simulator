@@ -117,6 +117,7 @@ class Game:
         self.vertical_sensitivity = 0.5
         self.debug_mode = False
         self.auto_rotation_speed = 0.2
+        self.manual_rotation_speed = 180.0  # degrees per second for manual camera rotation
         
         # Movement system variables
         self.move_counter = 0
@@ -476,22 +477,6 @@ class Game:
         # Handle results window events
         if self.results_window.active:
             self.results_window.handle_events(events)
-    
-        # Keyboard controls for rotation
-        if not self.menu.is_active() and not self.results_window.active:
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT]:
-                self.renderer.rotate_camera(azimuth=-2)
-                self.auto_rotate = False
-            if keys[pygame.K_RIGHT]:
-                self.renderer.rotate_camera(azimuth=2)
-                self.auto_rotate = False
-            if keys[pygame.K_UP]:
-                self.renderer.rotate_camera(elevation=-2)
-                self.auto_rotate = False
-            if keys[pygame.K_DOWN]:
-                self.renderer.rotate_camera(elevation=2)
-                self.auto_rotate = False
 
     def update(self):
         """Update game state"""        
@@ -550,6 +535,25 @@ class Game:
             # Calculate delta time for smooth animations
             dt = self.clock.get_time() / 1000.0  # Convert to seconds
             self.mouse_interaction.update_visual_feedback(dt)
+        
+        # Frame-rate independent keyboard controls for camera rotation
+        if not self.menu.is_active() and not self.results_window.active:
+            dt = self.clock.get_time() / 1000.0  # Convert to seconds
+            keys = pygame.key.get_pressed()
+            rotation_amount = self.manual_rotation_speed * dt  # degrees per frame based on time
+            
+            if keys[pygame.K_LEFT]:
+                self.renderer.rotate_camera(azimuth=-rotation_amount)
+                self.auto_rotate = False
+            if keys[pygame.K_RIGHT]:
+                self.renderer.rotate_camera(azimuth=rotation_amount)
+                self.auto_rotate = False
+            if keys[pygame.K_UP]:
+                self.renderer.rotate_camera(elevation=-rotation_amount)
+                self.auto_rotate = False
+            if keys[pygame.K_DOWN]:
+                self.renderer.rotate_camera(elevation=rotation_amount)
+                self.auto_rotate = False
         
         # Update cube colors after animation completes
         if hasattr(self.renderer, 'is_animating'):

@@ -788,18 +788,15 @@ class Menu:
         if current_alpha <= 0.0:
             return
         
-        # Draw animated background overlay with alpha
+        # Draw smooth background overlay with alpha
         overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
         
-        # Create a subtle animated gradient effect
-        time_offset = time.time() * 2  # Animation speed
-        for y in range(0, screen.get_height(), 4):
-            base_alpha = int(140 + 40 * (0.5 + 0.5 * math.sin(time_offset + y * 0.01)))
-            base_alpha = max(100, min(200, base_alpha))  # Clamp alpha values
-            # Apply current animation alpha
-            final_alpha = int(base_alpha * current_alpha)
-            color = (5, 10, 20, final_alpha)
-            pygame.draw.rect(overlay, color, (0, y, screen.get_width(), 4))
+        # Create a smooth, clean background
+        base_alpha = 160  # Fixed alpha for consistent background
+        # Apply current animation alpha
+        final_alpha = int(base_alpha * current_alpha)
+        color = (5, 10, 20, final_alpha)
+        overlay.fill(color)
         
         screen.blit(overlay, (0, 0))
         
@@ -852,14 +849,14 @@ class Menu:
                 # Ensure particles stay on screen
                 if 0 <= x <= screen.get_width() and 0 <= y <= screen.get_height():
                     size = int(3 + 2 * math.sin(time_offset * 3 + i))
-                    base_alpha = int(100 + 50 * math.sin(time_offset * 2 + i * 0.5))
+                    base_alpha = int(180 + 75 * math.sin(time_offset * 2 + i * 0.5))
                     # Apply current animation alpha
                     final_alpha = int(base_alpha * alpha)
                     
                     # Create a small glowing circle
                     glow_surface = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
                     pygame.draw.circle(glow_surface, (100, 150, 255, final_alpha), (size * 2, size * 2), size * 2)
-                    pygame.draw.circle(glow_surface, (150, 200, 255, final_alpha // 2), (size * 2, size * 2), size)
+                    pygame.draw.circle(glow_surface, (150, 200, 255, int(final_alpha * 0.7)), (size * 2, size * 2), size)
                     
                     screen.blit(glow_surface, (x - size * 2, y - size * 2))
         except Exception as e:

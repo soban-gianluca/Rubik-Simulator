@@ -930,7 +930,7 @@ class Menu:
         # Add main menu buttons
         play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
         settings_btn = self.main_menu.add.button("Settings", self._open_settings)
-        help_btn = self.main_menu.add.button("Help", self._open_help)
+        help_btn = self.main_menu.add.button("Controls", self._open_help)
         quit_btn = self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
         
         # Apply custom styling to main menu
@@ -1105,7 +1105,7 @@ class Menu:
         
         # Help menu with ACTUAL dimensions
         self.help_menu = pygame_menu.Menu(
-            "Controls & Help",
+            "Controls",
             self.width,
             self.height,
             theme=self.theme
@@ -1114,22 +1114,31 @@ class Menu:
         # Add help text with better formatting
         help_sections = [
             ("Basic Controls:", [
-                "ESC - Toggle menu",
-                "F11 - Toggle fullscreen",
-                "Space - Toggle auto-rotation",
-                "Mouse - Click and drag to rotate view"
+                "[ESC] - Toggle menu",
+                "[Space] - Toggle auto-rotation",
+                "[Left Click + Drag] - Rotate camera view",
+                "[Arrow Keys] - Manual rotation",
+                "[X] - Scramble cube (freeplay mode only)",
+                "[Z] - Undo last move",
+                "[T] - Reset rotation",
+                "[F11] - Toggle fullscreen",
+                "[Ctrl+B] - Toggle debug mode"
             ]),
-            ("Keyboard Controls:", [
-                "Arrow Keys - Manual rotation",
-                "R/L/U/D/F/B - Cube face rotations",
-                "Shift + Letter - Reverse rotation",
-                "X - Scramble cube",
-                "Z - Undo last move",
-                "C - Check if solved"
+            ("Movement Controls:", [
+                "  [R]: R move       [Shift+R]: R' move (Right)",
+                "  [L]: L move       [Shift+L]: L' move (Left)",
+                "  [U]: U move       [Shift+U]: U' move (Up)",
+                "  [D]: D move       [Shift+D]: D' move (Down)",
+                "  [F]: F move       [Shift+F]: F' move (Front)",
+                "  [B]: B move       [Shift+B]: B' move (Back)"
+            ]),
+            ("Slice Moves:", [
+                "  [M]: M move       [Shift+M]: M' move (Middle)",
+                "  [E]: E move       [Shift+E]: E' move (Equatorial)",
+                "  [S]: S move       [Shift+S]: S' move (Standing)"
             ]),
             ("Mouse Controls:", [
-                "Left Click + Drag - Rotate camera view",
-                "Right Click + Drag - Perform cube moves",
+                "[Right Click + Drag] - Perform cube moves",
                 "Mouse rotation disables auto-rotation"
             ])
         ]

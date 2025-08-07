@@ -13,6 +13,12 @@ class SoundManager:
         self.last_play_time = {}  # Track last play time for each sound
         self.min_interval = 0.1  # Minimum interval between same sound plays (100ms)
         
+        # Volume settings (0.0 to 1.0)
+        self.master_volume = 1.0
+        self.music_volume = 1.0
+        self.effects_volume = 1.0
+        self.menu_volume = 1.0
+        
         # Check if pygame mixer is initialized
         if not pygame.mixer.get_init():
             try:
@@ -40,13 +46,13 @@ class SoundManager:
                 cube_sound_path = os.path.join(cube_sfx_dir, f"cube_sfx_{i}.mp3")
                 if os.path.exists(cube_sound_path):
                     cube_sound = pygame.mixer.Sound(cube_sound_path)
-                    cube_sound.set_volume(0.4)  # Set moderate volume for cube sounds
+                    cube_sound.set_volume(0.4 * self.effects_volume * self.master_volume)  # Set moderate volume for cube sounds
                     self.cube_sounds.append(cube_sound)
             
-            # Set default volumes
-            self.sounds["menu_open"].set_volume(0.5)
-            self.sounds["menu_select"].set_volume(0.3)
-            self.sounds["menu_apply"].set_volume(0.4)
+            # Set default volumes based on sound type
+            self.sounds["menu_open"].set_volume(0.5 * self.menu_volume * self.master_volume)
+            self.sounds["menu_select"].set_volume(0.3 * self.menu_volume * self.master_volume)
+            self.sounds["menu_apply"].set_volume(0.4 * self.menu_volume * self.master_volume)
             
             print(f"Sound effects loaded successfully ({len(self.cube_sounds)} cube sounds)")
         except Exception as e:
@@ -119,18 +125,67 @@ class SoundManager:
             return False
     
     def set_volume(self, volume):
-        """Set volume for all sound effects (0.0 to 1.0)"""
-        if self.is_enabled:
-            for sound in self.sounds.values():
-                sound.set_volume(volume)
-            # Also set volume for cube sounds
-            if hasattr(self, 'cube_sounds') and self.cube_sounds:
-                for cube_sound in self.cube_sounds:
-                    cube_sound.set_volume(volume * 0.4)  # Keep cube sounds slightly quieter
+        """Set volume for all sound effects (0.0 to 1.0) - for backward compatibility"""
+        self.set_master_volume(volume)
+    
+    def set_master_volume(self, volume):
+        """Set master volume for all sounds (0.0 to 1.0)"""
+        self.master_volume = max(0.0, min(1.0, volume))
+        self._update_all_volumes()
+    
+    def set_music_volume(self, volume):
+        """Set music volume (0.0 to 1.0)"""
+        self.music_volume = max(0.0, min(1.0, volume))
+        # Apply to pygame music
+        if pygame.mixer.get_init():
+            pygame.mixer.music.set_volume(self.music_volume * self.master_volume)
+    
+    def set_effects_volume(self, volume):
+        """Set effects volume (0.0 to 1.0)"""
+        self.effects_volume = max(0.0, min(1.0, volume))
+        self._update_cube_volumes()
+    
+    def set_menu_volume(self, volume):
+        """Set menu volume (0.0 to 1.0)"""
+        self.menu_volume = max(0.0, min(1.0, volume))
+        self._update_menu_volumes()
+    
+    def _update_all_volumes(self):
+        """Update all sound volumes based on current settings"""
+        self._update_menu_volumes()
+        self._update_cube_volumes()
+        if pygame.mixer.get_init():
+            pygame.mixer.music.set_volume(self.music_volume * self.master_volume)
+    
+    def _update_menu_volumes(self):
+        """Update menu sound volumes"""
+        if self.is_enabled and hasattr(self, 'sounds'):
+            menu_sounds = {
+                "menu_open": 0.5,
+                "menu_select": 0.3,
+                "menu_apply": 0.4
+            }
+            for sound_name, base_volume in menu_sounds.items():
+                if sound_name in self.sounds:
+                    self.sounds[sound_name].set_volume(base_volume * self.menu_volume * self.master_volume)
+    
+    def _update_cube_volumes(self):
+        """Update cube sound effects volumes"""
+        if self.is_enabled and hasattr(self, 'cube_sounds') and self.cube_sounds:
+            for cube_sound in self.cube_sounds:
+                cube_sound.set_volume(0.4 * self.effects_volume * self.master_volume)
     
     def enable(self, enabled=True):
         """Enable or disable sound effects"""
         self.is_enabled = enabled
+    
+    def load_volumes_from_settings(self, settings_manager):
+        """Load volume settings from settings manager"""
+        self.master_volume = settings_manager.get_master_volume() / 100.0
+        self.music_volume = settings_manager.get_music_volume() / 100.0
+        self.effects_volume = settings_manager.get_effects_volume() / 100.0
+        self.menu_volume = settings_manager.get_menu_volume() / 100.0
+        self._update_all_volumes()
         
     def test_sounds(self):
         """Test if sounds are working"""

@@ -20,6 +20,9 @@ class Menu:
         # Initialize sound manager for menu sounds
         self.sound_manager = SoundManager()
         
+        # Load audio settings from settings manager
+        self.sound_manager.load_volumes_from_settings(self.settings_manager)
+        
         # Menu state
         self.active = False
         self.resolution_changed_flag = False
@@ -51,6 +54,12 @@ class Menu:
         self.volume = int(self.settings_manager.settings.get("volume", 50))  # Ensure volume is integer
         self.show_fps = self.settings_manager.settings.get("show_fps", False)
         self.fullscreen = self.settings_manager.settings.get("fullscreen", False)
+        
+        # Load audio settings
+        self.master_volume = self.settings_manager.get_master_volume()
+        self.music_volume = self.settings_manager.get_music_volume()
+        self.effects_volume = self.settings_manager.get_effects_volume()
+        self.menu_volume = self.settings_manager.get_menu_volume()
         
         # Initialize hover tracking
         self.hovered_widgets = set()  # Track which widgets are currently hovered
@@ -235,6 +244,12 @@ class Menu:
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.help_menu
     
+    def _open_audio_settings(self):
+        """Open audio settings submenu"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
+        self.current_menu = self.audio_settings_menu
+    
     def _on_resolution_change(self, selected_tuple, index):
         """Handle resolution change from dropdown"""
         # Play selection sound
@@ -295,6 +310,58 @@ class Menu:
             
         self.settings_changed = True
     
+    def _on_master_volume_change(self, value):
+        """Handle master volume slider change"""
+        self.sound_manager.play_slider_sound("menu_select")
+        self.master_volume = int(value)
+        
+        # Update the slider title
+        if hasattr(self, 'master_volume_slider'):
+            self.master_volume_slider.set_title(f"Master Volume: {self.master_volume}%")
+        
+        # Apply volume immediately
+        self.sound_manager.set_master_volume(self.master_volume / 100.0)
+        self.settings_changed = True
+    
+    def _on_music_volume_change(self, value):
+        """Handle music volume slider change"""
+        self.sound_manager.play_slider_sound("menu_select")
+        self.music_volume = int(value)
+        
+        # Update the slider title
+        if hasattr(self, 'music_volume_slider'):
+            self.music_volume_slider.set_title(f"Music Volume: {self.music_volume}%")
+        
+        # Apply volume immediately
+        self.sound_manager.set_music_volume(self.music_volume / 100.0)
+        self.settings_changed = True
+    
+    def _on_effects_volume_change(self, value):
+        """Handle effects volume slider change"""
+        self.sound_manager.play_slider_sound("menu_select")
+        self.effects_volume = int(value)
+        
+        # Update the slider title
+        if hasattr(self, 'effects_volume_slider'):
+            self.effects_volume_slider.set_title(f"Effects Volume: {self.effects_volume}%")
+        
+        # Apply volume immediately
+        self.sound_manager.set_effects_volume(self.effects_volume / 100.0)
+        self.settings_changed = True
+    
+    def _on_menu_volume_change(self, value):
+        """Handle menu volume slider change"""
+        self.sound_manager.play_slider_sound("menu_select")
+        self.menu_volume = int(value)
+        
+        # Update the slider title
+        if hasattr(self, 'menu_volume_slider'):
+            self.menu_volume_slider.set_title(f"Menu Volume: {self.menu_volume}%")
+        
+        # Apply volume immediately
+        self.sound_manager.set_menu_volume(self.menu_volume / 100.0)
+        self.settings_changed = True
+    
     def _apply_settings(self):
         """Apply all settings changes"""
         try:
@@ -315,12 +382,17 @@ class Menu:
                 self.settings_manager.settings["resolution"]["height"] = new_height
                 self.settings_manager.settings["fullscreen"] = self.fullscreen
                 self.settings_manager.settings["show_fps"] = self.show_fps
-                self.settings_manager.settings["volume"] = self.volume
+                
+                # Update audio settings
+                self.settings_manager.set_audio_volume("master_volume", self.master_volume)
+                self.settings_manager.set_audio_volume("music_volume", self.music_volume)
+                self.settings_manager.set_audio_volume("effects_volume", self.effects_volume)
+                self.settings_manager.set_audio_volume("menu_volume", self.menu_volume)
                 
                 self.settings_manager.save_settings()
                 
-                # Update sound effects volume based on game volume setting
-                self.sound_manager.set_volume(self.volume / 100)
+                # Update sound effects volume based on new audio settings
+                self.sound_manager.load_volumes_from_settings(self.settings_manager)
                 
                 self.settings_changed = False
                 
@@ -335,6 +407,12 @@ class Menu:
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.main_menu
+    
+    def _back_to_settings(self):
+        """Return to the settings menu"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
+        self.current_menu = self.settings_menu
     
     def update(self):
         """Update animation state and alpha values"""
@@ -456,6 +534,11 @@ class Menu:
                         # Start closing animation instead of immediately setting active to False
                         if not self.is_animating:  # Prevent multiple toggle calls during animation
                             self.toggle()
+                        return True
+                    elif self.current_menu == self.audio_settings_menu:
+                        self.sound_manager.play("menu_select")
+                        self._clear_all_hover_effects()  # Clear hover effects when changing menu
+                        self.current_menu = self.settings_menu
                         return True
                     else:
                         self.sound_manager.play("menu_select")
@@ -790,17 +873,8 @@ class Menu:
             onchange=self._on_fps_toggle
         )
         
-        # Volume slider
-        self.volume_slider = self.settings_menu.add.range_slider(
-            f"Volume: {current_volume}%",
-            default=current_volume,
-            range_values=(0, 100),
-            increment=5,
-            value_format=lambda x: "",  # Completely hide the value display
-            rangeslider_id="volume_slider",
-            slider_text_value_enabled=False,  # Disable text value on slider
-            onchange=self._on_volume_change
-        )
+        # Audio Settings button
+        audio_settings_btn = self.settings_menu.add.button("Audio Settings", self._open_audio_settings)
         
         # Settings menu buttons
         apply_btn = self.settings_menu.add.button("Apply Changes", self._apply_settings)
@@ -808,6 +882,68 @@ class Menu:
 
         # Apply custom styling to settings menu
         self._customize_menu_widgets(self.settings_menu)
+        
+        # Create audio settings menu with ACTUAL dimensions
+        self.audio_settings_menu = pygame_menu.Menu(
+            "Audio Settings",
+            self.width,
+            self.height,
+            theme=self.theme
+        )
+        
+        # Master Volume slider
+        self.master_volume_slider = self.audio_settings_menu.add.range_slider(
+            f"Master Volume: {self.master_volume}%",
+            default=self.master_volume,
+            range_values=(0, 100),
+            increment=5,
+            value_format=lambda x: "",
+            rangeslider_id="master_volume_slider",
+            slider_text_value_enabled=False,
+            onchange=self._on_master_volume_change
+        )
+        
+        # Music Volume slider
+        self.music_volume_slider = self.audio_settings_menu.add.range_slider(
+            f"Music Volume: {self.music_volume}%",
+            default=self.music_volume,
+            range_values=(0, 100),
+            increment=5,
+            value_format=lambda x: "",
+            rangeslider_id="music_volume_slider",
+            slider_text_value_enabled=False,
+            onchange=self._on_music_volume_change
+        )
+        
+        # Effects Volume slider
+        self.effects_volume_slider = self.audio_settings_menu.add.range_slider(
+            f"Effects Volume: {self.effects_volume}%",
+            default=self.effects_volume,
+            range_values=(0, 100),
+            increment=5,
+            value_format=lambda x: "",
+            rangeslider_id="effects_volume_slider",
+            slider_text_value_enabled=False,
+            onchange=self._on_effects_volume_change
+        )
+        
+        # Menu Volume slider
+        self.menu_volume_slider = self.audio_settings_menu.add.range_slider(
+            f"Menu Volume: {self.menu_volume}%",
+            default=self.menu_volume,
+            range_values=(0, 100),
+            increment=5,
+            value_format=lambda x: "",
+            rangeslider_id="menu_volume_slider",
+            slider_text_value_enabled=False,
+            onchange=self._on_menu_volume_change
+        )
+        
+        # Audio settings menu buttons
+        audio_back_btn = self.audio_settings_menu.add.button("Back", self._back_to_settings)
+        
+        # Apply custom styling to audio settings menu
+        self._customize_menu_widgets(self.audio_settings_menu)
         
         # Help menu with ACTUAL dimensions
         self.help_menu = pygame_menu.Menu(
@@ -858,6 +994,8 @@ class Menu:
         if hasattr(self, 'current_menu'):
             if self.current_menu == self.settings_menu:
                 self.current_menu = self.settings_menu
+            elif self.current_menu == self.audio_settings_menu:
+                self.current_menu = self.audio_settings_menu
             elif self.current_menu == self.help_menu:
                 self.current_menu = self.help_menu
             elif self.current_menu == self.difficulty_menu:

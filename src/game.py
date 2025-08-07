@@ -80,12 +80,22 @@ class Game:
         # Initialize sound manager
         self.sound_manager = SoundManager()
         
+        # Load audio settings from settings manager
+        self.sound_manager.load_volumes_from_settings(self.settings)
+        
+        # Load audio settings into sound manager
+        self.sound_manager.load_volumes_from_settings(self.settings)
+        
         # Initialize mouse cube interaction system
         self.mouse_interaction = MouseCubeInteraction(self.renderer)
         
         # Initialize menu
         self.menu = Menu(self.width, self.height)
         self.menu.set_game_instance(self)
+        
+        # Load audio settings into menu's sound manager
+        self.menu.sound_manager.load_volumes_from_settings(self.settings)
+        
         self.menu.toggle()  # Start with menu active
         
         # Initialize results window

@@ -125,7 +125,7 @@ class Menu:
         
         # Text colors
         self.text_color_normal = (255, 255, 255)  # White color for normal text
-        self.text_color_hover = (255, 18, 18)     # Red color for hover
+        self.text_color_hover = (240, 198, 38)   # Hover color
         self.text_color_selected = (255, 18, 18)  # Red color for selected
     
     def _customize_button_appearance(self, button):

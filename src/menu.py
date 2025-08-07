@@ -64,6 +64,10 @@ class Menu:
         # Initialize hover tracking
         self.hovered_widgets = set()  # Track which widgets are currently hovered
         
+        # Initialize difficulty button animation tracking
+        self.difficulty_buttons = {}  # Store difficulty buttons with their metadata
+        self.button_animations = {}  # Track animation state for each button
+        
         # Create custom fancy theme with improved styling
         self._create_custom_theme()
         
@@ -416,6 +420,9 @@ class Menu:
     
     def update(self):
         """Update animation state and alpha values"""
+        # Always update button animations regardless of menu animation state
+        self._update_button_animations()
+        
         if not self.is_animating:
             return
             
@@ -601,18 +608,99 @@ class Menu:
             widget_class_name = widget.__class__.__name__
             
             if widget_class_name == 'Button':
-                # For buttons, we'll change the font color through the widget's internal properties
-                if hasattr(widget, '_font_color'):
-                    if is_hovered:
-                        widget._font_color = self.text_color_hover
-                    else:
-                        widget._font_color = self.text_color_normal
-                        
-                # Also try to update the button's style if possible
-                if hasattr(widget, 'update_font'):
-                    widget.update_font({
-                        'color': self.text_color_hover if is_hovered else self.text_color_normal
-                    })
+                # Check if this is a difficulty button
+                if widget in self.difficulty_buttons:
+                    self._animate_difficulty_button(widget, is_hovered)
+                else:
+                    # Regular button hover effect (text color change)
+                    if hasattr(widget, '_font_color'):
+                        if is_hovered:
+                            widget._font_color = self.text_color_hover
+                        else:
+                            widget._font_color = self.text_color_normal
+                            
+                    # Also try to update the button's style if possible
+                    if hasattr(widget, 'update_font'):
+                        widget.update_font({
+                            'color': self.text_color_hover if is_hovered else self.text_color_normal
+                        })
+                    
+        except Exception as e:
+            # Silently handle any errors
+            pass
+    
+    def _animate_difficulty_button(self, button, is_hovered):
+        """Apply animated hover effect to difficulty buttons"""
+        if button not in self.button_animations:
+            return
+            
+        animation_state = self.button_animations[button]
+        current_time = time.time()
+        
+        if is_hovered:
+            if not animation_state['is_hovering']:
+                # Start hover animation
+                animation_state['is_hovering'] = True
+                animation_state['animation_start_time'] = current_time
+        else:
+            if animation_state['is_hovering']:
+                # Start unhover animation
+                animation_state['is_hovering'] = False
+                animation_state['animation_start_time'] = current_time
+    
+    def _update_button_animations(self):
+        """Update all button animations"""
+        current_time = time.time()
+        animation_duration = 0.2  # 200ms animation
+        
+        for button, animation_state in self.button_animations.items():
+            if button not in self.difficulty_buttons:
+                continue
+                
+            # Calculate animation progress
+            elapsed_time = current_time - animation_state['animation_start_time']
+            progress = min(1.0, elapsed_time / animation_duration)
+            
+            # Smooth easing function (ease out)
+            eased_progress = 1 - (1 - progress) ** 3
+            
+            # Update glow intensity only
+            if animation_state['is_hovering']:
+                animation_state['glow_intensity'] = eased_progress * 0.3  # Max glow intensity
+            else:
+                animation_state['glow_intensity'] = (1 - eased_progress) * 0.3
+            
+            # Apply visual effects to the button
+            self._apply_button_visual_effects(button, animation_state)
+    
+    def _apply_button_visual_effects(self, button, animation_state):
+        """Apply visual effects to a difficulty button based on animation state"""
+        try:
+            if button not in self.difficulty_buttons:
+                return
+                
+            button_info = self.difficulty_buttons[button]
+            base_color = button_info['base_color']
+            
+            # Calculate enhanced color with glow effect
+            glow_intensity = animation_state['glow_intensity']
+            enhanced_color = (
+                min(255, int(base_color[0] + glow_intensity * 60)),  # Add red glow
+                min(255, int(base_color[1] + glow_intensity * 60)),  # Add green glow  
+                min(255, int(base_color[2] + glow_intensity * 60)),  # Add blue glow
+                min(255, int(base_color[3] + glow_intensity * 50))   # Add alpha glow
+            )
+            
+            # Apply the enhanced color to the button
+            if hasattr(button, 'set_background_color'):
+                button.set_background_color(enhanced_color)
+            
+            # Also change text color for extra effect
+            if hasattr(button, '_font_color'):
+                if animation_state['is_hovering']:
+                    button._font_color = self.text_color_hover
+                else:
+                    button._font_color = self.text_color_normal
                     
         except Exception as e:
             # Silently handle any errors
@@ -761,6 +849,10 @@ class Menu:
     
     def _create_menus(self):
         """Create or recreate menus with current dimensions"""
+        # Clear existing difficulty button tracking when recreating menus
+        self.difficulty_buttons.clear()
+        self.button_animations.clear()
+        
         # Store current settings before recreating
         current_resolution_index = self.current_resolution_index
         current_volume = self.volume
@@ -815,6 +907,14 @@ class Menu:
         game_modes = self._get_game_modes()
         difficulty_icons = {"easy", "medium", "hard"}
         
+        # Define background colors for each difficulty
+        difficulty_colors = {
+            "freeplay": (22, 57, 161, 200),  # Blue (original color)
+            "easy": (33, 148, 33, 200),      # Green
+            "medium": (199, 106, 26, 200),   # Orange
+            "hard": (176, 28, 28, 200)      # Red
+        }
+        
         for mode_key, mode_config in game_modes.items():
             # Add some spacing before each difficulty
             self.difficulty_menu.add.vertical_margin(20)
@@ -823,13 +923,30 @@ class Menu:
             button_text = f"{mode_config['name']} | {mode_config['description']}"
             button_action = lambda difficulty=mode_key: self._start_game(difficulty)
             
+            # Get the appropriate background color for this difficulty
+            bg_color = difficulty_colors.get(mode_key, (40, 60, 90, 200))
+            
             difficulty_button = self.difficulty_menu.add.button(
                 button_text, 
                 button_action,
                 font_size=28,
-                background_color=(40, 60, 90, 200),  # Colored background box
+                background_color=bg_color,  # Difficulty-specific colored background box
                 padding=(30, 25)  # More padding for a taller box
             )
+            
+            # Store difficulty button for animation tracking
+            self.difficulty_buttons[difficulty_button] = {
+                'difficulty': mode_key,
+                'original_color': bg_color,
+                'base_color': bg_color
+            }
+            
+            # Initialize animation state for this button
+            self.button_animations[difficulty_button] = {
+                'is_hovering': False,
+                'animation_start_time': 0,
+                'glow_intensity': 0.0
+            }
             
             # Add spacing after each difficulty
             self.difficulty_menu.add.vertical_margin(10)

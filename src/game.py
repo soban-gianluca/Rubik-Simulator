@@ -116,7 +116,6 @@ class Game:
         print("Controls:")
         print("  Space: Toggle auto-rotation")
         print("  Arrow keys: Manual rotation")
-        print("  A: Additional rotation control")
         print("  Left Mouse + Drag: Rotate cube view")
         print("  Right Mouse + Drag: Perform cube moves")
         print("  Ctrl+B: Toggle debug mode")
@@ -431,7 +430,7 @@ class Game:
         # Keyboard controls for rotation
         if not self.menu.is_active() and not self.results_window.active:
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            if keys[pygame.K_LEFT]:
                 self.renderer.rotate_camera(azimuth=-2)
                 self.auto_rotate = False
             if keys[pygame.K_RIGHT]:

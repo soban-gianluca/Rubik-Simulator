@@ -780,15 +780,13 @@ class Game:
             self.renderer.rubiks_cube = RubiksCube()
             self.debug_print("Free play mode: Cube ready for practice!")
         elif difficulty == "easy":
-            # Easy: Keep cube solved (no scrambling)
-            # Reset to solved state by creating a new solved cube
-            from rubiks_cube import RubiksCube
-            self.renderer.rubiks_cube = RubiksCube()
-            self.debug_print("Easy mode: Cube ready to solve!")
+            # Easy: 5 moves scramble
+            self.renderer.rubiks_cube.scramble(1)
+            self.debug_print("Easy mode: Cube scrambled with 5 moves!")
         elif difficulty == "medium":
-            # Medium: 30 moves scramble
-            self.renderer.rubiks_cube.scramble(30)
-            self.debug_print("Medium mode: Cube scrambled with 30 moves!")
+            # Medium: 10 moves scramble
+            self.renderer.rubiks_cube.scramble(10)
+            self.debug_print("Medium mode: Cube scrambled with 10 moves!")
         elif difficulty == "hard":
             # Hard: Full random scramble (completely randomize the cube state)
             self._total_random_scramble()
@@ -837,8 +835,9 @@ class Game:
     def handle_results_callback(self, action):
         """Handle callbacks from the results window"""
         if action == 'play_again':
-            # Scramble the cube for a new game
-            self.scramble_cube()
+            # Scramble the cube for a new game using the current difficulty
+            current_difficulty = self.menu.get_selected_difficulty()
+            self.scramble_cube_by_difficulty(current_difficulty)
         elif action == 'main_menu':
             # Show the main menu (ensure we're at main menu, not difficulty selection)
             self.menu.current_menu = self.menu.main_menu

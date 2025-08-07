@@ -113,6 +113,14 @@ class Game:
         self.start_time = None
         self.cube_solved = False
         
+        # Banner notification system
+        self.banner_active = False
+        self.banner_text = ""
+        self.banner_start_time = 0
+        self.banner_duration = 3.0  # 3 seconds total display time
+        self.banner_fade_duration = 0.5  # 0.5 seconds for fade in/out
+        self.banner_alpha = 0.0
+        
         print("Controls:")
         print("  Space: Toggle auto-rotation")
         print("  Arrow keys: Manual rotation")
@@ -134,8 +142,7 @@ class Game:
         print("  E: E move       Shift+E: E' move (Equatorial)")
         print("  S: S move       Shift+S: S' move (Standing)")
         print("  Z: Undo last move")
-        print("  X: Scramble cube")
-        print("  C: Check if solved")
+        print("  X: Scramble cube (freeplay mode only)")
         print("  Ctrl+B: Toggle debug mode")
 
     def request_new_game(self):
@@ -153,6 +160,36 @@ class Game:
     def debug_print(self, message):
         if self.debug_mode:
             print(message)
+
+    def show_banner(self, message):
+        """Show a notification banner with fade in/out animation"""
+        self.banner_text = message
+        self.banner_active = True
+        self.banner_start_time = time.time()
+        self.banner_alpha = 0.0
+
+    def update_banner(self):
+        """Update banner animation and visibility"""
+        if not self.banner_active:
+            return
+
+        current_time = time.time()
+        elapsed = current_time - self.banner_start_time
+
+        if elapsed < self.banner_fade_duration:
+            # Fade in
+            self.banner_alpha = elapsed / self.banner_fade_duration
+        elif elapsed < self.banner_duration - self.banner_fade_duration:
+            # Full visibility
+            self.banner_alpha = 1.0
+        elif elapsed < self.banner_duration:
+            # Fade out
+            fade_out_elapsed = elapsed - (self.banner_duration - self.banner_fade_duration)
+            self.banner_alpha = 1.0 - (fade_out_elapsed / self.banner_fade_duration)
+        else:
+            # Banner finished
+            self.banner_active = False
+            self.banner_alpha = 0.0
 
     def toggle_fullscreen(self):
         """Toggle between fullscreen and windowed mode with proper resolution handling"""
@@ -364,9 +401,12 @@ class Game:
                     elif event.key == pygame.K_z:
                         self.undo_move()
                     elif event.key == pygame.K_x:
-                        self.scramble_cube()
-                    elif event.key == pygame.K_c:
-                        self.check_solved()
+                        # Only allow scrambling in freeplay mode
+                        current_difficulty = self.menu.get_selected_difficulty()
+                        if current_difficulty == "freeplay":
+                            self.scramble_cube()
+                        else:
+                            self.show_banner(f"Scramble is only available in freeplay mode")
         
             elif self.menu.handle_event(event):
                 continue
@@ -449,6 +489,9 @@ class Game:
         if hasattr(self, 'menu'):
             self.menu.update()
         
+        # Update banner animation
+        self.update_banner()
+        
         # Check for game start (when menu becomes inactive for the first time OR new game is requested)
         if not self.menu.is_active():
             if not self.game_started or self.new_game_requested:
@@ -518,9 +561,6 @@ class Game:
                     if current_difficulty != "freeplay":
                         # Print to terminal for debug purposes
                         print(f"🎉 CUBE SOLVED! 🎉")
-                        print(f"Moves: {self.move_counter}")
-                        print(f"Time: {solve_time:.2f} seconds")
-                        print(f"TPS: {tps:.2f} moves/second")
                         
                         # Show results window
                         self.results_window.show_results(self.move_counter, solve_time, tps)
@@ -562,6 +602,11 @@ class Game:
         # Render game stats (timer and moves) if game is in progress
         if not self.menu.is_active() and not self.results_window.active:
             self._render_game_stats()
+        
+        # Render notification banner if active
+        if self.banner_active:
+            self._render_banner_opengl()
+        
         # Render menu overlay if active (including during animation)
         menu_alpha = self.menu.get_current_alpha()
         if menu_alpha > 0.0:
@@ -714,6 +759,63 @@ class Game:
             glDrawPixels(bg_width, bg_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
             
         except Exception as e:
+            if self.debug_mode:
+                print(f"Game stats rendering error: {e}")
+
+    def _render_banner_opengl(self):
+        """Render notification banner using OpenGL-compatible method"""
+        if not self.banner_active or self.banner_alpha <= 0:
+            return
+
+        try:
+            # Create font if not exists
+            if not hasattr(self, '_banner_font'):
+                self._banner_font = pygame.font.SysFont('Arial', 24, bold=True)
+
+            # Create text surface
+            text_surface = self._banner_font.render(self.banner_text, True, (255, 255, 255))
+            
+            # Calculate banner dimensions and position
+            text_width, text_height = text_surface.get_size()
+            banner_width = text_width + 40  # 20px padding on each side
+            banner_height = text_height + 20  # 10px padding top/bottom
+            banner_x = (self.width - banner_width) // 2
+            banner_y = 50  # Distance from top of screen
+
+            # Create banner surface with alpha
+            banner_surface = pygame.Surface((banner_width, banner_height), pygame.SRCALPHA)
+            
+            # Banner background (semi-transparent black)
+            background_alpha = int(180 * self.banner_alpha)  # 180 max alpha for background
+            banner_surface.fill((0, 0, 0, background_alpha))
+            
+            # Banner border (subtle white border)
+            border_alpha = int(100 * self.banner_alpha)
+            pygame.draw.rect(banner_surface, (255, 255, 255, border_alpha), 
+                           (0, 0, banner_width, banner_height), width=2)
+            
+            # Apply alpha to text
+            text_alpha = int(255 * self.banner_alpha)
+            text_surface_alpha = text_surface.copy()
+            text_surface_alpha.set_alpha(text_alpha)
+            
+            # Blit text to banner
+            text_x = (banner_width - text_width) // 2
+            text_y = (banner_height - text_height) // 2
+            banner_surface.blit(text_surface_alpha, (text_x, text_y))
+            
+            # Convert to OpenGL texture and render
+            texture_data = pygame.image.tostring(banner_surface, 'RGBA', True)
+            
+            glRasterPos2f(banner_x, banner_y + banner_height)
+            glPixelZoom(1, 1)
+            glDrawPixels(banner_width, banner_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+            
+        except Exception as e:
+            if self.debug_mode:
+                print(f"Banner rendering error: {e}")
+            
+        except Exception as e:
             # Fallback: if there's an error, just print to console
             if self.debug_mode:
                 print(f"Game stats rendering error: {e}")
@@ -781,7 +883,7 @@ class Game:
             self.debug_print("Free play mode: Cube ready for practice!")
         elif difficulty == "easy":
             # Easy: 5 moves scramble
-            self.renderer.rubiks_cube.scramble(1)
+            self.renderer.rubiks_cube.scramble(1)       # 1 move for testing purposes
             self.debug_print("Easy mode: Cube scrambled with 5 moves!")
         elif difficulty == "medium":
             # Medium: 10 moves scramble
@@ -824,14 +926,7 @@ class Game:
         # Assign the shuffled colors to all positions
         for idx, (face_name, i, j) in enumerate(all_positions):
             self.renderer.rubiks_cube.faces[face_name][i][j] = random_colors[idx]
-    
-    def check_solved(self):
-        """Check if the cube is solved"""
-        if self.renderer.rubiks_cube.is_solved():
-            print("✅ Cube is SOLVED!")
-        else:
-            print("❌ Cube is not solved yet")
-    
+        
     def handle_results_callback(self, action):
         """Handle callbacks from the results window"""
         if action == 'play_again':

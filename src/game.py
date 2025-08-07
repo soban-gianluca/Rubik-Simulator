@@ -511,14 +511,19 @@ class Game:
                     solve_time = time.time() - self.start_time
                     tps = self.move_counter / solve_time if solve_time > 0 else 0
                     
-                    # Still print to terminal for debug purposes
-                    print(f"🎉 CUBE SOLVED! 🎉")
-                    print(f"Moves: {self.move_counter}")
-                    print(f"Time: {solve_time:.2f} seconds")
-                    print(f"TPS: {tps:.2f} moves/second")
+                    # Get current difficulty to determine if we should show results
+                    current_difficulty = self.menu.get_selected_difficulty()
                     
-                    # Show results window
-                    self.results_window.show_results(self.move_counter, solve_time, tps)
+                    # Only show win messages and results window if not in freeplay mode
+                    if current_difficulty != "freeplay":
+                        # Print to terminal for debug purposes
+                        print(f"🎉 CUBE SOLVED! 🎉")
+                        print(f"Moves: {self.move_counter}")
+                        print(f"Time: {solve_time:.2f} seconds")
+                        print(f"TPS: {tps:.2f} moves/second")
+                        
+                        # Show results window
+                        self.results_window.show_results(self.move_counter, solve_time, tps)
             
             # Update animation state
             self.renderer._last_animation_state = self.renderer.is_animating

@@ -1,6 +1,7 @@
 import pygame
 import pygame_menu
 from pygame_menu import themes
+from pygame_menu.locals import *  # Import all constants including alignment
 import os
 import time
 import math
@@ -94,6 +95,10 @@ class Menu:
         self.theme.title_font_shadow_offset = 3
         self.theme.title_background_color = (10, 15, 25, 0)  # Transparent background
         self.theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_NONE
+        # Try different title properties to center it
+        self.theme.title_alignment = ALIGN_CENTER
+        self.theme.title_position = (50, 50)  # Try positioning the title
+        self.theme.title_offset = (0, 0)
         
         # Widget styling
         self.theme.widget_font = pygame_menu.font.FONT_FRANCHISE
@@ -918,16 +923,50 @@ class Menu:
         if hasattr(self, 'debug_mode') and self.debug_mode:
             print(f"Creating menus with dimensions: {self.width}x{self.height}")
         
-        # Create custom fancy theme
+        # Create custom fancy theme for main menu (centered title)
         self._create_custom_theme()
         
-        # Create main menu with ACTUAL dimensions
+        # Create theme for other menus (left-aligned titles)
+        self.sub_theme = self.theme.copy()
+        self.sub_theme.title_alignment = ALIGN_LEFT
+        
+        # Create main menu with ACTUAL dimensions and no title (we'll add custom centered title)
         self.main_menu = pygame_menu.Menu(
-            "Rubik's Cube Simulator",
+            "",  # Empty title - we'll add a custom centered one
             self.width,
             self.height,
-            theme=self.theme
+            theme=self.theme,
+            columns=1,
+            rows=None
         )
+        
+        # Add custom centered title as a label
+        self.main_menu.add.label(
+            "Rubik's Cube Simulator",
+            font_size=65,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            font_color=(255, 255, 255),
+            font_shadow=True,
+            font_shadow_color=(0, 0, 0),
+            font_shadow_offset=3,
+            align=ALIGN_CENTER
+        )
+        
+        # Add some spacing after the title
+        self.main_menu.add.vertical_margin(30)
+        
+        # Try to center the title after menu creation
+        try:
+            # Method 1: Set title alignment directly on menu
+            if hasattr(self.main_menu, 'set_title_alignment'):
+                self.main_menu.set_title_alignment(ALIGN_CENTER)
+            elif hasattr(self.main_menu, '_theme'):
+                self.main_menu._theme.title_alignment = ALIGN_CENTER
+            # Method 2: Try setting column alignment
+            if hasattr(self.main_menu, 'set_alignment'):
+                self.main_menu.set_alignment(ALIGN_CENTER)
+        except:
+            pass
         
         # Add main menu buttons
         play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
@@ -943,7 +982,7 @@ class Menu:
             "Select Difficulty",
             self.width,
             self.height,
-            theme=self.theme
+            theme=self.sub_theme
         )
         
         # Dynamically add difficulty options from game modes configuration
@@ -1007,7 +1046,7 @@ class Menu:
             "Settings",
             self.width,
             self.height,
-            theme=self.theme
+            theme=self.sub_theme
         )
         
         # Resolution dropdown
@@ -1049,7 +1088,7 @@ class Menu:
             "Audio Settings",
             self.width,
             self.height,
-            theme=self.theme
+            theme=self.sub_theme
         )
         
         # Master Volume slider
@@ -1111,7 +1150,7 @@ class Menu:
             "Controls",
             self.width,
             self.height,
-            theme=self.theme
+            theme=self.sub_theme
         )
         
         # Add help text with better formatting to match the interface

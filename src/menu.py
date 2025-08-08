@@ -1111,46 +1111,51 @@ class Menu:
             theme=self.theme
         )
         
-        # Add help text with better formatting
+        # Add help text with better formatting to match the interface
         help_sections = [
-            ("Basic Controls:", [
-                "[ESC] - Toggle menu",
-                "[Space] - Toggle auto-rotation",
-                "[Left Click + Drag] - Rotate camera view",
-                "[Arrow Keys] - Manual rotation",
-                "[X] - Scramble cube (freeplay mode only)",
-                "[Z] - Undo last move",
-                "[T] - Reset rotation",
-                "[F11] - Toggle fullscreen",
-                "[Ctrl+B] - Toggle debug mode"
+            ("BASIC CONTROLS", [
+                ("Toggle menu", "[ESC]"),
+                ("Manual rotation", "[Arrow Keys]"),
+                ("Toggle auto-rotation", "[Space]"),
+                ("Scramble cube", "[X]"),
+                ("Undo last move", "[Z]"),
+                ("Reset rotation", "[T]"),
+                ("Toggle fullscreen", "[F11]"),
+                ("Toggle debug mode", "[Ctrl+B]")
+
             ]),
-            ("Moves Controls:", [
-                "  [R]: R move       [Shift+R]: R' move (Right)",
-                "  [L]: L move       [Shift+L]: L' move (Left)",
-                "  [U]: U move       [Shift+U]: U' move (Up)",
-                "  [D]: D move       [Shift+D]: D' move (Down)",
-                "  [F]: F move       [Shift+F]: F' move (Front)",
-                "  [B]: B move       [Shift+B]: B' move (Back)"
+            ("MOUSE CONTROLS", [
+                ("Rotate camera view", "[Left Click + Drag]"),
+                ("Perform cube moves", "[Right click + Drag]"),
+                ("Disable auto-rotation", "[Space / Left Click / Right Click]")
             ]),
-            ("Slice Moves Controls:", [
-                "  [M]: M move       [Shift+M]: M' move (Middle)",
-                "  [E]: E move       [Shift+E]: E' move (Equatorial)",
-                "  [S]: S move       [Shift+S]: S' move (Standing)"
+            ("CUBE MOVES", [
+                ("R Move / R' Move", "[R / Shift+R]"),
+                ("L Move / L' Move", "[L / Shift+L]"),
+                ("U Move / U' Move", "[U / Shift+U]"),
+                ("D Move / D' Move", "[D / Shift+D]"),
+                ("F Move / F' Move", "[F / Shift+F]"),
+                ("B Move / B' Move", "[B / Shift+B]")
             ]),
-            ("Mouse Controls:", [
-                "[Right Click + Drag] - Perform cube moves",
-                "Mouse rotation disables auto-rotation"
+            ("SLICE MOVES", [
+                ("M Move / M' Move", "[M / Shift+M]"),
+                ("E Move / E' Move", "[E / Shift+E]"),
+                ("S Move / S' Move", "[S / Shift+S]")
             ])
         ]
         
         for section_title, controls in help_sections:
-            self.help_menu.add.label(section_title, font_size=28)
-            self.help_menu.add.vertical_margin(5)
+            # Add section header
+            self.help_menu.add.label(section_title, font_size=50, font_color=(235, 38, 38), font_name=pygame_menu.font.FONT_FRANCHISE)
+            self.help_menu.add.vertical_margin(10)
             
-            for control in controls:
-                self.help_menu.add.label(f"{control}", font_size=22)
+            # Add controls with right-aligned key bindings
+            for control_desc, key_binding in controls:
+                # Create a formatted string with proper spacing
+                formatted_control = f"{control_desc:<30} {key_binding:>15}"
+                self.help_menu.add.label(formatted_control, font_size=20, font_color=(255, 255, 255))
             
-            self.help_menu.add.vertical_margin(15)
+            self.help_menu.add.vertical_margin(20)
         
         back_btn = self.help_menu.add.button("Back", self._back_to_main)
         

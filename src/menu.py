@@ -1124,7 +1124,7 @@ class Menu:
                 "[F11] - Toggle fullscreen",
                 "[Ctrl+B] - Toggle debug mode"
             ]),
-            ("Movement Controls:", [
+            ("Moves Controls:", [
                 "  [R]: R move       [Shift+R]: R' move (Right)",
                 "  [L]: L move       [Shift+L]: L' move (Left)",
                 "  [U]: U move       [Shift+U]: U' move (Up)",
@@ -1132,7 +1132,7 @@ class Menu:
                 "  [F]: F move       [Shift+F]: F' move (Front)",
                 "  [B]: B move       [Shift+B]: B' move (Back)"
             ]),
-            ("Slice Moves:", [
+            ("Slice Moves Controls:", [
                 "  [M]: M move       [Shift+M]: M' move (Middle)",
                 "  [E]: E move       [Shift+E]: E' move (Equatorial)",
                 "  [S]: S move       [Shift+S]: S' move (Standing)"
@@ -1148,7 +1148,7 @@ class Menu:
             self.help_menu.add.vertical_margin(5)
             
             for control in controls:
-                self.help_menu.add.label(f"  - {control}", font_size=22)
+                self.help_menu.add.label(f"{control}", font_size=22)
             
             self.help_menu.add.vertical_margin(15)
         

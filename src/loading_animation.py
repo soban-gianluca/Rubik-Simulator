@@ -1,4 +1,5 @@
 import pygame
+import pygame_menu
 import math
 import time
 import threading
@@ -33,9 +34,19 @@ class LoadingAnimation:
         glDisable(GL_DEPTH_TEST)
         
         self.clock = pygame.time.Clock()
-        self.font_large = pygame.font.SysFont('Arial', 48, bold=True)
-        self.font_medium = pygame.font.SysFont('Arial', 24)
-        self.font_small = pygame.font.SysFont('Arial', 18)
+        
+        # Use the same font as the menu (FONT_FRANCHISE)
+        franchise_font_path = pygame_menu.font.FONT_FRANCHISE
+        try:
+            self.font_large = pygame.font.Font(franchise_font_path, 70)
+            self.font_medium = pygame.font.Font(franchise_font_path, 40)
+            self.font_small = pygame.font.Font(franchise_font_path, 30)
+        except:
+            # Fallback to system font if franchise font fails to load
+            print("Could not load franchise font, using Arial fallback")
+            self.font_large = pygame.font.SysFont('Arial', 70, bold=True)
+            self.font_medium = pygame.font.SysFont('Arial', 40)
+            self.font_small = pygame.font.SysFont('Arial', 30)
         
         # Loading state
         self.loading_complete = False
@@ -190,14 +201,14 @@ class LoadingAnimation:
         progress_percent = f"{int(self.loading_progress * 100)}%"
         percent_text = self.font_small.render(progress_percent, True, (150, 200, 150))
         percent_text.set_alpha(self.alpha)
-        percent_rect = percent_text.get_rect(center=(self.width // 2, self.height // 2 + 105))
+        percent_rect = percent_text.get_rect(center=(self.width // 2, self.height // 2 + 115))
         temp_surface.blit(percent_text, percent_rect)
         
         # Draw enhanced progress bar on pygame surface
         bar_width = 400
         bar_height = 16
         bar_x = (self.width - bar_width) // 2
-        bar_y = self.height // 2 + 125
+        bar_y = self.height // 2 + 135
         
         # Draw progress bar background with border
         border_color = (80, 80, 100)

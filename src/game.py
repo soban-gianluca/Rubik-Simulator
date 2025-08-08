@@ -673,12 +673,15 @@ class Game:
     def _render_fps_counter(self):
         """Render FPS counter in the top-left corner"""
         try:
+            # Import pygame_menu to access the font
+            import pygame_menu
+            
             # Get current FPS
             fps = self.clock.get_fps()
             
-            # Create font if not exists
+            # Create font if not exists - use same font as menu
             if not hasattr(self, '_fps_font'):
-                self._fps_font = pygame.font.SysFont('Arial', 24, bold=True)
+                self._fps_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 30)
             
             # Create FPS text surface
             fps_text = f"FPS: {fps:.1f}"
@@ -708,9 +711,12 @@ class Game:
     def _render_game_stats(self):
         """Render timer and moves counter in the bottom-left corner"""
         try:
-            # Create font if not exists
+            # Import pygame_menu to access the font
+            import pygame_menu
+            
+            # Create font if not exists - use same font as menu
             if not hasattr(self, '_stats_font'):
-                self._stats_font = pygame.font.SysFont('Arial', 24, bold=True)
+                self._stats_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 35)
             
             # Prepare text lines
             text_lines = []
@@ -782,9 +788,12 @@ class Game:
             return
 
         try:
-            # Create font if not exists
+            # Import pygame_menu to access the font
+            import pygame_menu
+            
+            # Create font if not exists - use same font as menu
             if not hasattr(self, '_banner_font'):
-                self._banner_font = pygame.font.SysFont('Arial', 24, bold=True)
+                self._banner_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 35)
 
             # Create text surface
             text_surface = self._banner_font.render(self.banner_text, True, (255, 255, 255))
@@ -958,9 +967,12 @@ class Game:
     def _render_game_info(self):
         """Render game information (FPS, moves, time)"""
         try:
-            # Create font if not exists
+            # Import pygame_menu to access the font
+            import pygame_menu
+            
+            # Create font if not exists - use same font as menu
             if not hasattr(self, '_info_font'):
-                self._info_font = pygame.font.SysFont('Arial', 20, bold=True)
+                self._info_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 35)
             
             info_lines = []
             

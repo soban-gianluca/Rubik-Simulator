@@ -86,6 +86,7 @@ class Menu:
         self.theme.background_color = (10, 15, 25, 220)  # Dark blue with transparency
         
         # Title styling
+        self.theme.title_font = pygame_menu.font.FONT_FRANCHISE
         self.theme.title_font_size = 65
         self.theme.title_font_color = (255, 255, 255)
         self.theme.title_font_shadow = True
@@ -95,7 +96,8 @@ class Menu:
         self.theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_NONE
         
         # Widget styling
-        self.theme.widget_font_size = 32
+        self.theme.widget_font = pygame_menu.font.FONT_FRANCHISE
+        self.theme.widget_font_size = 50
         self.theme.widget_font_color = (255, 255, 255)  # White text
         self.theme.widget_font_shadow = True
         self.theme.widget_font_shadow_color = (0, 0, 0)
@@ -970,7 +972,8 @@ class Menu:
             difficulty_button = self.difficulty_menu.add.button(
                 button_text, 
                 button_action,
-                font_size=28,
+                font_size=40,
+                font_name=pygame_menu.font.FONT_FRANCHISE,
                 background_color=bg_color,  # Difficulty-specific colored background box
                 padding=(30, 25)  # More padding for a taller box
             )
@@ -1153,7 +1156,7 @@ class Menu:
             for control_desc, key_binding in controls:
                 # Create a formatted string with proper spacing
                 formatted_control = f"{control_desc:<30} {key_binding:>15}"
-                self.help_menu.add.label(formatted_control, font_size=20, font_color=(255, 255, 255))
+                self.help_menu.add.label(formatted_control, font_size=30, font_color=(255, 255, 255), font_name=pygame_menu.font.FONT_FRANCHISE)
             
             self.help_menu.add.vertical_margin(20)
         

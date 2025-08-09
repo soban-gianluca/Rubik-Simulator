@@ -128,8 +128,8 @@ class Game:
         self.banner_active = False
         self.banner_text = ""
         self.banner_start_time = 0
-        self.banner_duration = 3.0  # 3 seconds total display time
-        self.banner_fade_duration = 0.5  # 0.5 seconds for fade in/out
+        self.banner_duration = 5.0  # 3 seconds total display time
+        self.banner_fade_duration = 0.2  # 0.5 seconds for fade in/out
         self.banner_alpha = 0.0
         
         print("Controls:")

@@ -117,7 +117,7 @@ class Menu:
         self.theme.widget_background_color = (0, 0, 0, 0)  # Completely transparent
         self.theme.widget_background_color_disabled = (0, 0, 0, 0)  # Completely transparent
         
-        # Scrollbar styling (for help menu)
+        # Scrollbar styling (for controls menu)
         self.theme.scrollbar_color = (50, 70, 100)
         self.theme.scrollbar_slider_color = (100, 130, 180)
         self.theme.scrollbar_slider_hover_color = (120, 150, 200)
@@ -249,11 +249,11 @@ class Menu:
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.settings_menu
     
-    def _open_help(self):
-        """Open help submenu"""
+    def _open_controls(self):
+        """Open controls submenu"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self.current_menu = self.help_menu
+        self.current_menu = self.controls_menu
     
     def _open_audio_settings(self):
         """Open audio settings submenu"""
@@ -971,7 +971,7 @@ class Menu:
         # Add main menu buttons
         play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
         settings_btn = self.main_menu.add.button("Settings", self._open_settings)
-        help_btn = self.main_menu.add.button("Controls", self._open_help)
+        controls_btn = self.main_menu.add.button("Controls", self._open_controls)
         quit_btn = self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
         
         # Apply custom styling to main menu
@@ -1145,16 +1145,16 @@ class Menu:
         # Apply custom styling to audio settings menu
         self._customize_menu_widgets(self.audio_settings_menu)
         
-        # Help menu with ACTUAL dimensions
-        self.help_menu = pygame_menu.Menu(
+        # Controls menu with ACTUAL dimensions
+        self.controls_menu = pygame_menu.Menu(
             "Controls",
             self.width,
             self.height,
             theme=self.sub_theme
         )
         
-        # Add help text with better formatting to match the interface
-        help_sections = [
+        # Add controls text with better formatting to match the interface
+        controls_sections = [
             ("BASIC CONTROLS", [
                 ("Toggle menu", "[ESC]"),
                 ("Manual rotation", "[Arrow Keys]"),
@@ -1186,23 +1186,23 @@ class Menu:
             ])
         ]
         
-        for section_title, controls in help_sections:
+        for section_title, controls in controls_sections:
             # Add section header
-            self.help_menu.add.label(section_title, font_size=50, font_color=(235, 38, 38), font_name=pygame_menu.font.FONT_FRANCHISE)
-            self.help_menu.add.vertical_margin(10)
+            self.controls_menu.add.label(section_title, font_size=50, font_color=(235, 38, 38), font_name=pygame_menu.font.FONT_FRANCHISE)
+            self.controls_menu.add.vertical_margin(10)
             
             # Add controls with right-aligned key bindings
             for control_desc, key_binding in controls:
                 # Create a formatted string with proper spacing
                 formatted_control = f"{control_desc:<30} {key_binding:>15}"
-                self.help_menu.add.label(formatted_control, font_size=30, font_color=(255, 255, 255), font_name=pygame_menu.font.FONT_FRANCHISE)
+                self.controls_menu.add.label(formatted_control, font_size=30, font_color=(255, 255, 255), font_name=pygame_menu.font.FONT_FRANCHISE)
             
-            self.help_menu.add.vertical_margin(20)
+            self.controls_menu.add.vertical_margin(20)
         
-        back_btn = self.help_menu.add.button("Back", self._back_to_main)
+        back_btn = self.controls_menu.add.button("Back", self._back_to_main)
         
-        # Apply custom styling to help menu
-        self._customize_menu_widgets(self.help_menu)
+        # Apply custom styling to controls menu
+        self._customize_menu_widgets(self.controls_menu)
         
         # Set current menu (preserve the current menu state)
         if hasattr(self, 'current_menu'):
@@ -1210,8 +1210,8 @@ class Menu:
                 self.current_menu = self.settings_menu
             elif self.current_menu == self.audio_settings_menu:
                 self.current_menu = self.audio_settings_menu
-            elif self.current_menu == self.help_menu:
-                self.current_menu = self.help_menu
+            elif self.current_menu == self.controls_menu:
+                self.current_menu = self.controls_menu
             elif self.current_menu == self.difficulty_menu:
                 self.current_menu = self.difficulty_menu
             else:

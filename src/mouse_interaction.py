@@ -31,9 +31,9 @@ class MouseCubeInteraction:
         self.move_executed = False
         
         # Mouse sensitivity settings
-        self.move_sensitivity = 20  # Pixels to move before executing a move (reduced for easier triggering)
+        self.move_sensitivity = 18  # Slightly reduced for easier triggering
         self.last_move_time = 0
-        self.move_cooldown = 0.2  # Cooldown between moves (reduced for more responsive feel)
+        self.move_cooldown = 0.18  # Slightly faster response
         
         # Visual feedback
         self.hovered_face = None
@@ -220,9 +220,9 @@ class MouseCubeInteraction:
     
     def point_in_cube_face(self, point, cube_center, face_name):
         """Check if a point lies within a specific face of a cube"""
-        # Define the bounds of the cube face
+        # Define the bounds of the cube face - slightly increased for better detection
         half_size = self.cube_size
-        tolerance = 0.1  # Increased tolerance for better detection
+        tolerance = 0.2  # Increased tolerance for better detection (was 0.1)
         
         # Adjust point relative to cube center
         rel_point = [
@@ -260,7 +260,7 @@ class MouseCubeInteraction:
         return False
     
     def detect_face_from_mouse(self, mouse_pos):
-        """Detect which face the mouse is over using 3D ray casting to actual cube geometry"""
+        """Detect which face the mouse is over using enhanced screen region method"""
         x, y = mouse_pos
         
         # Calculate offset from screen center
@@ -277,19 +277,19 @@ class MouseCubeInteraction:
         rx = self.renderer.rotation_x % 360
         ry = self.renderer.rotation_y % 360
         
-        # Get visible faces from current camera angle (more generous now)
+        # Get visible faces from current camera angle
         visible_faces = self.get_visible_faces_from_camera(rx, ry)
         
         if not visible_faces:
             # Fallback - allow all faces if visibility detection fails
             visible_faces = ['front', 'back', 'left', 'right', 'top', 'bottom']
         
-        # Determine which face based on mouse position (balanced thresholds)
+        # Determine which face based on mouse position (slightly more generous thresholds)
         face = None
         
-        # Determine primary direction - what has the largest offset
-        primary_horizontal = abs(norm_dx) > abs(norm_dy) and abs(norm_dx) > 0.15
-        primary_vertical = abs(norm_dy) > abs(norm_dx) and abs(norm_dy) > 0.15
+        # Determine primary direction - slightly reduced thresholds for easier detection
+        primary_horizontal = abs(norm_dx) > abs(norm_dy) and abs(norm_dx) > 0.12  # was 0.15
+        primary_vertical = abs(norm_dy) > abs(norm_dx) and abs(norm_dy) > 0.12   # was 0.15
         
         # Check for primary direction first
         if primary_vertical:  # Vertical movement dominates
@@ -311,12 +311,12 @@ class MouseCubeInteraction:
         
         # If no primary direction, check for any significant movement (secondary detection)
         if not face:
-            if abs(norm_dy) > 0.25:  # Only very clear top/bottom movements
+            if abs(norm_dy) > 0.2:  # Reduced from 0.25 for easier top/bottom detection
                 if norm_dy < 0 and 'top' in visible_faces:
                     face = 'top'
                 elif norm_dy > 0 and 'bottom' in visible_faces:
                     face = 'bottom'
-            elif abs(norm_dx) > 0.1:  # More generous for left/right
+            elif abs(norm_dx) > 0.08:  # Reduced from 0.1 for easier left/right detection
                 if norm_dx > 0:  # Right side of screen
                     candidate_face = self.get_face_for_screen_side('right', ry)
                     if candidate_face in visible_faces:
@@ -349,74 +349,6 @@ class MouseCubeInteraction:
         
         cube_pos = self._get_cube_pos_for_face(face) if face else None
         
-        return face, cube_pos
-    
-    def _fallback_face_detection(self, mouse_pos):
-        """Fallback face detection using simplified screen region method"""
-        x, y = mouse_pos
-        width = self.renderer.width
-        height = self.renderer.height
-        
-        # Convert to percentages
-        x_pct = x / width
-        y_pct = y / height
-        
-        # Get camera rotation values
-        rx = self.renderer.rotation_x
-        ry = self.renderer.rotation_y
-        
-        # Define regions - more generous boundaries
-        top_region = y_pct < 0.25
-        bottom_region = y_pct > 0.75
-        left_region = x_pct < 0.25
-        right_region = x_pct > 0.75
-        center_region = not (top_region or bottom_region or left_region or right_region)
-        
-        # Primary face determination based on Y rotation (horizontal camera movement)
-        # We'll use much simpler logic - just map rotation ranges to faces
-        ry_normalized = ry % 360
-        
-        # Determine which face is most directly facing camera
-        if ry_normalized <= 45 or ry_normalized > 315:
-            primary_face = 'front'
-            left_adjacent = 'left'
-            right_adjacent = 'right'
-        elif 45 < ry_normalized <= 135:
-            primary_face = 'right'
-            left_adjacent = 'front'  
-            right_adjacent = 'back'
-        elif 135 < ry_normalized <= 225:
-            primary_face = 'back'
-            left_adjacent = 'right'
-            right_adjacent = 'left'
-        else:  # 225 < ry_normalized <= 315
-            primary_face = 'left'
-            left_adjacent = 'back'
-            right_adjacent = 'front'
-        
-        # Determine the face based on screen position
-        face = None
-        cube_pos = None
-        
-        # Check top/bottom first (these override side logic)
-        if top_region:
-            face = 'top'
-            cube_pos = (0, 1, 0)
-        elif bottom_region:
-            face = 'bottom'
-            cube_pos = (0, -1, 0)
-        # Then check left/right sides (inverted to match visual appearance)
-        elif left_region:  # Left side of screen shows right face visually
-            face = right_adjacent
-            cube_pos = self._get_cube_pos_for_face(right_adjacent)
-        elif right_region:  # Right side of screen shows left face visually  
-            face = left_adjacent
-            cube_pos = self._get_cube_pos_for_face(left_adjacent)
-        else:  # center region
-            face = primary_face
-            cube_pos = self._get_cube_pos_for_face(primary_face)
-        
-        print(f"Face detection: mouse=({x_pct:.2f}, {y_pct:.2f}), cam=(rx={rx:.0f}, ry={ry:.0f}) -> {face}")
         return face, cube_pos
     
     def get_visible_faces_from_camera(self, rx, ry):
@@ -612,7 +544,7 @@ class MouseCubeInteraction:
             self.hovered_face = face
             self.hovered_cube_pos = cube_pos
             if face:
-                self.highlight_intensity = 0.3  # Gentle hover effect
+                self.highlight_intensity = 0.4  # Slightly more prominent hover effect
             else:
                 self.highlight_intensity = 0.0
     
@@ -679,7 +611,7 @@ class MouseCubeInteraction:
         }
         
         color = face_colors.get(face_name, (1.0, 1.0, 1.0))
-        alpha = self.highlight_intensity * 0.7  # Increased alpha for better visibility
+        alpha = self.highlight_intensity * 0.7
         
         glColor4f(color[0], color[1], color[2], alpha)
         
@@ -688,10 +620,10 @@ class MouseCubeInteraction:
         glTranslatef(cube_center[0], cube_center[1], cube_center[2])
         
         # Scale slightly larger than the cube
-        glScalef(0.9, 0.9, 0.9)  # Made slightly larger for better visibility
+        glScalef(0.9, 0.9, 0.9)
         
-        # Draw highlight based on face
-        size = self.cube_size * 1.15  # Increased size for better visibility
+        # Draw highlight based on face - slightly larger size for better visibility
+        size = self.cube_size * 1.25  # Increased size for better visibility
         
         glBegin(GL_QUADS)
         

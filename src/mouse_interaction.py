@@ -81,42 +81,78 @@ class MouseCubeInteraction:
         return positions
     
     def screen_to_world_ray(self, mouse_x, mouse_y):
-        """Convert screen coordinates to a 3D ray in world space"""
-        try:
-            # Get current matrices
-            model_matrix = glGetDoublev(GL_MODELVIEW_MATRIX)
-            proj_matrix = glGetDoublev(GL_PROJECTION_MATRIX)
-            viewport = glGetIntegerv(GL_VIEWPORT)
-            
-            # Convert mouse coordinates to OpenGL screen coordinates
-            # (origin at bottom-left)
-            opengl_y = viewport[3] - mouse_y
-            
-            # Get the ray in world coordinates
-            # Near plane point
-            near_point = gluUnProject(mouse_x, opengl_y, 0.0, 
-                                    model_matrix, proj_matrix, viewport)
-            # Far plane point
-            far_point = gluUnProject(mouse_x, opengl_y, 1.0, 
-                                   model_matrix, proj_matrix, viewport)
-            
-            # Calculate ray direction
-            ray_dir = [
-                far_point[0] - near_point[0],
-                far_point[1] - near_point[1],
-                far_point[2] - near_point[2]
-            ]
-            
-            # Normalize ray direction
-            length = math.sqrt(ray_dir[0]**2 + ray_dir[1]**2 + ray_dir[2]**2)
-            if length > 0:
-                ray_dir = [ray_dir[0]/length, ray_dir[1]/length, ray_dir[2]/length]
-            
-            return near_point, ray_dir
+        """Convert screen coordinates to a 3D ray in world space - improved version"""
+        # Get viewport dimensions
+        viewport = [0, 0, self.renderer.width, self.renderer.height]
         
-        except Exception as e:
-            # Fallback if unprojection fails - use manual calculation
-            return self._manual_screen_to_world_ray(mouse_x, mouse_y)
+        # Normalize mouse coordinates to [-1, 1] range
+        ndc_x = (2.0 * mouse_x) / viewport[2] - 1.0
+        ndc_y = 1.0 - (2.0 * mouse_y) / viewport[3]  # Flip Y axis
+        
+        # Camera setup parameters (must match the renderer's camera setup)
+        fov = 45.0  # Field of view in degrees
+        aspect = viewport[2] / viewport[3]
+        near_plane = 0.1
+        far_plane = 50.0
+        
+        # Calculate the ray direction in camera space
+        fov_rad = math.radians(fov)
+        tan_half_fov = math.tan(fov_rad / 2.0)
+        
+        # Ray direction in camera coordinates
+        ray_x = ndc_x * tan_half_fov * aspect
+        ray_y = ndc_y * tan_half_fov
+        ray_z = -1.0  # Point into the screen (negative Z in camera space)
+        
+        # Camera position in world space (matching renderer setup)
+        # The renderer translates by (0, 0, -4) and then applies rotations
+        camera_distance = 4.0
+        
+        # Get current camera rotations
+        rot_x = math.radians(self.renderer.rotation_x)
+        rot_y = math.radians(self.renderer.rotation_y)
+        
+        # Create rotation matrices
+        cos_x, sin_x = math.cos(rot_x), math.sin(rot_x)
+        cos_y, sin_y = math.cos(rot_y), math.sin(rot_y)
+        
+        # Transform ray direction from camera space to world space
+        # Apply Y rotation first, then X rotation (reverse order of renderer)
+        
+        # Y rotation matrix applied to ray direction
+        ray_x_rot = ray_x * cos_y + ray_z * sin_y
+        ray_z_rot = -ray_x * sin_y + ray_z * cos_y
+        ray_x, ray_z = ray_x_rot, ray_z_rot
+        
+        # X rotation matrix applied to ray direction
+        ray_y_rot = ray_y * cos_x - ray_z * sin_x
+        ray_z_rot = ray_y * sin_x + ray_z * cos_x
+        ray_y, ray_z = ray_y_rot, ray_z_rot
+        
+        # Normalize the ray direction
+        ray_length = math.sqrt(ray_x**2 + ray_y**2 + ray_z**2)
+        if ray_length > 0:
+            ray_dir = [ray_x / ray_length, ray_y / ray_length, ray_z / ray_length]
+        else:
+            ray_dir = [0, 0, -1]
+        
+        # Calculate camera position in world space
+        # Start with camera at (0, 0, camera_distance) and apply rotations
+        cam_x, cam_y, cam_z = 0.0, 0.0, camera_distance
+        
+        # Apply Y rotation to camera position
+        cam_x_rot = cam_x * cos_y - cam_z * sin_y
+        cam_z_rot = cam_x * sin_y + cam_z * cos_y
+        cam_x, cam_z = cam_x_rot, cam_z_rot
+        
+        # Apply X rotation to camera position
+        cam_y_rot = cam_y * cos_x + cam_z * sin_x
+        cam_z_rot = -cam_y * sin_x + cam_z * cos_x
+        cam_y, cam_z = cam_y_rot, cam_z_rot
+        
+        ray_origin = [cam_x, cam_y, cam_z]
+        
+        return ray_origin, ray_dir
     
     def _manual_screen_to_world_ray(self, mouse_x, mouse_y):
         """Manual ray calculation when gluUnProject fails"""
@@ -218,6 +254,24 @@ class MouseCubeInteraction:
         
         return intersection
     
+    def debug_camera_info(self):
+        """Get current camera info for debugging"""
+        try:
+            model_matrix = glGetDoublev(GL_MODELVIEW_MATRIX)
+            proj_matrix = glGetDoublev(GL_PROJECTION_MATRIX)
+            viewport = glGetIntegerv(GL_VIEWPORT)
+            
+            print("Camera Debug Info:")
+            print(f"  Viewport: {viewport}")
+            print(f"  Model matrix first row: {model_matrix[0:4]}")
+            print(f"  Projection matrix first row: {proj_matrix[0:4]}")
+            
+            # Also get renderer camera info
+            if hasattr(self.renderer, 'rotation_x') and hasattr(self.renderer, 'rotation_y'):
+                print(f"  Renderer rotation: x={self.renderer.rotation_x}, y={self.renderer.rotation_y}")
+        except Exception as e:
+            print(f"Camera debug error: {e}")
+    
     def point_in_cube_face(self, point, cube_center, face_name):
         """Check if a point lies within a specific face of a cube - with larger detection area"""
         # Make detection area bigger but keep it simple
@@ -260,58 +314,205 @@ class MouseCubeInteraction:
         return False
     
     def detect_face_from_mouse(self, mouse_pos):
-        """BULLETPROOF simple detection that WILL work"""
+        """REAL 3D face detection - detect actual cube faces, not screen regions"""
         x, y = mouse_pos
+        
+        try:
+            # Get the accurate ray from the mouse position
+            ray_origin, ray_dir = self.get_accurate_ray(x, y)
+            
+            # The cube is positioned at (0, 0, -4) and has a total size of about 3.6
+            cube_center = [0, 0, -4]
+            face_size = 1.5  # MUCH smaller face size - only the actual cube faces
+            
+            # Define the 6 faces of the actual cube (not huge screen regions)
+            faces = [
+                ('front', [0, 0, -2.5], [0, 0, 1]),     # Front face at z = -2.5
+                ('back', [0, 0, -5.5], [0, 0, -1]),     # Back face at z = -5.5  
+                ('right', [1.5, 0, -4], [1, 0, 0]),     # Right face at x = 1.5
+                ('left', [-1.5, 0, -4], [-1, 0, 0]),    # Left face at x = -1.5
+                ('top', [0, 1.5, -4], [0, 1, 0]),       # Top face at y = 1.5
+                ('bottom', [0, -1.5, -4], [0, -1, 0])   # Bottom face at y = -1.5
+            ]
+            
+            valid_intersections = []
+            
+            for face_name, face_center, face_normal in faces:
+                intersection = self.ray_plane_intersection(ray_origin, ray_dir, face_center, face_normal)
+                
+                if intersection:
+                    # Check if intersection is within the ACTUAL face bounds (much tighter)
+                    rel_x = intersection[0] - face_center[0]
+                    rel_y = intersection[1] - face_center[1] 
+                    rel_z = intersection[2] - face_center[2]
+                    
+                    # Tight bounds - only the actual cube face
+                    within_bounds = False
+                    
+                    if face_name in ['front', 'back']:
+                        # For front/back faces, check X and Y coordinates
+                        within_bounds = abs(rel_x) <= face_size and abs(rel_y) <= face_size
+                    elif face_name in ['left', 'right']:
+                        # For left/right faces, check Y and Z coordinates  
+                        within_bounds = abs(rel_y) <= face_size and abs(rel_z) <= face_size
+                    elif face_name in ['top', 'bottom']:
+                        # For top/bottom faces, check X and Z coordinates
+                        within_bounds = abs(rel_x) <= face_size and abs(rel_z) <= face_size
+                    
+                    if within_bounds:
+                        # Calculate distance from ray origin
+                        distance = math.sqrt(
+                            (intersection[0] - ray_origin[0])**2 + 
+                            (intersection[1] - ray_origin[1])**2 + 
+                            (intersection[2] - ray_origin[2])**2
+                        )
+                        
+                        # Check if face is visible (not facing completely away from camera)
+                        dot_product = (ray_dir[0] * face_normal[0] + 
+                                     ray_dir[1] * face_normal[1] + 
+                                     ray_dir[2] * face_normal[2])
+                        
+                        # Only include faces that are actually visible from the camera
+                        is_visible = dot_product <= 0.1  # Much stricter visibility 
+                        
+                        if is_visible:
+                            valid_intersections.append((face_name, distance, intersection, dot_product))
+                        else:
+                            pass  # Face is hidden
+            
+            # Choose the closest valid face (no complex scoring - just pick what's actually hit)
+            if valid_intersections:
+                # Sort by distance and pick the closest face that was actually hit
+                valid_intersections.sort(key=lambda x: x[1])
+                best_face = valid_intersections[0][0]
+                best_distance = valid_intersections[0][1]
+                best_dot_value = valid_intersections[0][3]
+                
+                cube_pos = self._get_cube_pos_for_face(best_face)
+                return best_face, cube_pos
+            else:
+                pass  # No face hit
+                
+        except Exception as e:
+            pass  # Detection error - silent fail
+        
+        return None, None
+    
+    def get_accurate_ray(self, mouse_x, mouse_y):
+        """Get the most accurate ray possible using OpenGL matrices"""
+        try:
+            # Method 1: Use OpenGL's matrices directly
+            model_matrix = glGetDoublev(GL_MODELVIEW_MATRIX)
+            proj_matrix = glGetDoublev(GL_PROJECTION_MATRIX)
+            viewport = glGetIntegerv(GL_VIEWPORT)
+            
+            # Convert mouse coordinates (flip Y coordinate)
+            opengl_y = viewport[3] - mouse_y
+            
+            # Get near and far points
+            near_point = gluUnProject(mouse_x, opengl_y, 0.0, model_matrix, proj_matrix, viewport)
+            far_point = gluUnProject(mouse_x, opengl_y, 1.0, model_matrix, proj_matrix, viewport)
+            
+            # Calculate ray direction
+            ray_dir = [
+                far_point[0] - near_point[0],
+                far_point[1] - near_point[1],
+                far_point[2] - near_point[2]
+            ]
+            
+            # Normalize
+            length = math.sqrt(ray_dir[0]**2 + ray_dir[1]**2 + ray_dir[2]**2)
+            if length > 0:
+                ray_dir = [ray_dir[0]/length, ray_dir[1]/length, ray_dir[2]/length]
+            
+            ray_origin = list(near_point)
+            
+            return ray_origin, ray_dir
+            
+        except Exception as e:
+            # Fallback to manual calculation
+            return self.manual_ray_calculation(mouse_x, mouse_y)
+    
+    def manual_ray_calculation(self, mouse_x, mouse_y):
+        """Manual ray calculation when gluUnProject fails"""
+        # Get current camera parameters
         width = self.renderer.width
         height = self.renderer.height
         
-        # Convert to percentages
-        x_pct = x / width  # 0.0 to 1.0
-        y_pct = y / height  # 0.0 to 1.0
+        # Normalize mouse coordinates
+        ndc_x = (2.0 * mouse_x) / width - 1.0
+        ndc_y = 1.0 - (2.0 * mouse_y) / height
         
-        # Get camera Y rotation (simplified)
-        ry = (self.renderer.rotation_y % 360)
+        # Camera parameters
+        fov = 45.0
+        aspect = width / height
         
-        # SIMPLE 6-zone system - no complex math, just works
-        # Divide screen into 6 clear zones
+        # Calculate ray in camera space
+        fov_rad = math.radians(fov)
+        tan_half_fov = math.tan(fov_rad / 2.0)
         
-        # Determine face mapping based on camera rotation
-        if ry < 60 or ry >= 300:  # Looking at front (0° ± 60°)
-            center_face = 'front'
-            left_face = 'left'
-            right_face = 'right'
-        elif 60 <= ry < 120:  # Looking at right (90° ± 30°)
-            center_face = 'right'
-            left_face = 'front'
-            right_face = 'back'
-        elif 120 <= ry < 240:  # Looking at back (180° ± 60°)
-            center_face = 'back'
-            left_face = 'right'
-            right_face = 'left'
-        else:  # Looking at left (270° ± 30°)
-            center_face = 'left'
-            left_face = 'back'
-            right_face = 'front'
+        ray_x = ndc_x * tan_half_fov * aspect
+        ray_y = ndc_y * tan_half_fov
+        ray_z = -1.0
         
-        # DEAD SIMPLE zone detection
-        # Top 20% = top face
-        if y_pct < 0.2:
-            face = 'top'
-        # Bottom 20% = bottom face
-        elif y_pct > 0.8:
-            face = 'bottom'
-        # Left 20% = left face
-        elif x_pct < 0.2:
-            face = left_face
-        # Right 20% = right face
-        elif x_pct > 0.8:
-            face = right_face
-        # Everything else = center face
+        # Apply camera transformations
+        rot_x = math.radians(self.renderer.rotation_x)
+        rot_y = math.radians(self.renderer.rotation_y)
+        
+        # Rotate ray direction
+        cos_x, sin_x = math.cos(rot_x), math.sin(rot_x)
+        cos_y, sin_y = math.cos(rot_y), math.sin(rot_y)
+        
+        # Y rotation
+        ray_x_new = ray_x * cos_y + ray_z * sin_y
+        ray_z_new = -ray_x * sin_y + ray_z * cos_y
+        ray_x, ray_z = ray_x_new, ray_z_new
+        
+        # X rotation
+        ray_y_new = ray_y * cos_x - ray_z * sin_x
+        ray_z_new = ray_y * sin_x + ray_z * cos_x
+        ray_y, ray_z = ray_y_new, ray_z_new
+        
+        # Normalize
+        length = math.sqrt(ray_x**2 + ray_y**2 + ray_z**2)
+        if length > 0:
+            ray_dir = [ray_x/length, ray_y/length, ray_z/length]
         else:
-            face = center_face
+            ray_dir = [0, 0, -1]
         
-        cube_pos = self._get_cube_pos_for_face(face)
-        return face, cube_pos
+        # Camera position
+        cam_x, cam_y, cam_z = 0.0, 0.0, 4.0
+        
+        # Apply rotations to camera position
+        cam_x_new = cam_x * cos_y - cam_z * sin_y
+        cam_z_new = cam_x * sin_y + cam_z * cos_y
+        cam_x, cam_z = cam_x_new, cam_z_new
+        
+        cam_y_new = cam_y * cos_x + cam_z * sin_x
+        cam_z_new = -cam_y * sin_x + cam_z * cos_x
+        cam_y, cam_z = cam_y_new, cam_z_new
+        
+        return [cam_x, cam_y, cam_z], ray_dir
+    
+    def point_in_cube_face_bounds(self, point, face_center, face_normal, face_size):
+        """Check if a 3D point lies within the bounds of a cube face - more generous bounds"""
+        # Calculate the point relative to the face center
+        rel_x = point[0] - face_center[0]
+        rel_y = point[1] - face_center[1]
+        rel_z = point[2] - face_center[2]
+        
+        # Use more generous bounds - 80% of face_size to allow for better detection
+        tolerance = face_size * 0.8
+        
+        # Check bounds based on face orientation
+        if abs(face_normal[0]) > 0.5:  # Face perpendicular to X-axis (left/right faces)
+            return abs(rel_y) <= tolerance and abs(rel_z) <= tolerance
+        elif abs(face_normal[1]) > 0.5:  # Face perpendicular to Y-axis (top/bottom faces)  
+            return abs(rel_x) <= tolerance and abs(rel_z) <= tolerance
+        elif abs(face_normal[2]) > 0.5:  # Face perpendicular to Z-axis (front/back faces)
+            return abs(rel_x) <= tolerance and abs(rel_y) <= tolerance
+        
+        return False
     
     def point_in_main_face(self, point, face_center, face_name):
         """Check if point is within the main 3x3 face bounds - PRECISE detection"""
@@ -355,27 +556,28 @@ class MouseCubeInteraction:
     
     def test_cube_face_intersection(self, ray_origin, ray_dir, cube_center, face_name):
         """Test if ray intersects a specific face of a cube"""
-        # Define face properties
-        face_size = self.cube_size * 1.2  # Make detection area slightly larger
+        # For face detection, we want to detect the entire 3x3 face, not just individual cubes
+        # Use larger face size to represent the entire cube face
+        face_size = self.cube_spacing * 1.5  # Large enough to cover the entire 3x3 face
         
         # Calculate face center and normal based on face name
         if face_name == 'front':  # +Z face
-            face_center = [cube_center[0], cube_center[1], cube_center[2] + self.cube_size]
+            face_center = [cube_center[0], cube_center[1], cube_center[2] + self.cube_spacing]
             face_normal = [0, 0, 1]
         elif face_name == 'back':  # -Z face
-            face_center = [cube_center[0], cube_center[1], cube_center[2] - self.cube_size]
+            face_center = [cube_center[0], cube_center[1], cube_center[2] - self.cube_spacing]
             face_normal = [0, 0, -1]
         elif face_name == 'right':  # +X face
-            face_center = [cube_center[0] + self.cube_size, cube_center[1], cube_center[2]]
+            face_center = [cube_center[0] + self.cube_spacing, cube_center[1], cube_center[2]]
             face_normal = [1, 0, 0]
         elif face_name == 'left':  # -X face
-            face_center = [cube_center[0] - self.cube_size, cube_center[1], cube_center[2]]
+            face_center = [cube_center[0] - self.cube_spacing, cube_center[1], cube_center[2]]
             face_normal = [-1, 0, 0]
         elif face_name == 'top':  # +Y face
-            face_center = [cube_center[0], cube_center[1] + self.cube_size, cube_center[2]]
+            face_center = [cube_center[0], cube_center[1] + self.cube_spacing, cube_center[2]]
             face_normal = [0, 1, 0]
         elif face_name == 'bottom':  # -Y face
-            face_center = [cube_center[0], cube_center[1] - self.cube_size, cube_center[2]]
+            face_center = [cube_center[0], cube_center[1] - self.cube_spacing, cube_center[2]]
             face_normal = [0, -1, 0]
         else:
             return None
@@ -513,22 +715,28 @@ class MouseCubeInteraction:
         return visible_faces
     
     def start_drag(self, mouse_pos):
-        """Start dragging - detect face using enhanced detection"""
+        """Start dragging - detect face using 3D ray-casting"""
         import time
         current_time = time.time()
         if current_time - self.last_move_time < self.move_cooldown:
             return
+        
+        # Debug camera info on first click
+        # self.debug_camera_info()
         
         self.is_dragging = True
         self.drag_start_pos = mouse_pos
         self.drag_current_pos = mouse_pos
         self.move_executed = False
         
-        # Use enhanced face detection
+        # Use 3D face detection
         self.detected_face, self.detected_cube_pos = self.detect_face_from_mouse(mouse_pos)
         
         if self.detected_face:
             self.highlight_intensity = 1.0
+        else:
+            # Reset dragging if no face detected
+            self.is_dragging = False
     
     def update_drag(self, mouse_pos):
         """Update drag and generate moves based on detected face"""
@@ -554,7 +762,7 @@ class MouseCubeInteraction:
         return None
     
     def get_move_from_face_and_direction(self, face_name, dx, dy):
-        """Generate Rubik's cube move based on face and drag direction"""
+        """Generate Rubik's cube move based on the actual 3D face and drag direction"""
         # Determine primary drag direction
         if abs(dx) > abs(dy):
             # Horizontal drag
@@ -563,54 +771,117 @@ class MouseCubeInteraction:
             # Vertical drag
             direction = 'down' if dy > 0 else 'up'
         
-        # Map face and direction to moves
-        move_mapping = {
-            'front': {
-                'right': 'F',
-                'left': "F'",
-                'down': 'F',
-                'up': "F'"
-            },
-            'back': {
-                'right': "B'",
-                'left': 'B',
-                'down': "B'",
-                'up': 'B'
-            },
-            'right': {
-                'right': 'R',
-                'left': "R'",
-                'down': 'R',
-                'up': "R'"
-            },
-            'left': {
-                'right': "L'",
-                'left': 'L',
-                'down': "L'",
-                'up': 'L'
-            },
-            'top': {
-                'right': 'U',
-                'left': "U'",
-                'down': 'U',
-                'up': "U'"
-            },
-            'bottom': {
-                'right': "D'",
-                'left': 'D',
-                'down': "D'",
-                'up': 'D'
-            }
-        }
+        # For 3D face detection, we need to consider the actual orientation of each face
+        # relative to the camera view when determining what a drag direction means
         
-        return move_mapping.get(face_name, {}).get(direction)
+        # Get camera rotation to understand the current view
+        ry = (self.renderer.rotation_y % 360)
+        
+        # Face-specific movement logic based on 3D orientation
+        if face_name == 'front':
+            # Front face: standard mappings work well
+            if direction == 'right': return 'F'
+            elif direction == 'left': return "F'"
+            elif direction == 'down': return 'F'
+            elif direction == 'up': return "F'"
+            
+        elif face_name == 'back':
+            # Back face: movements are mirrored
+            if direction == 'right': return "B'"
+            elif direction == 'left': return 'B'
+            elif direction == 'down': return "B'"
+            elif direction == 'up': return 'B'
+            
+        elif face_name == 'right':
+            # Right face: consider viewing angle
+            if 315 <= ry or ry < 45:  # Viewing from front
+                if direction == 'right': return 'R'
+                elif direction == 'left': return "R'"
+                elif direction == 'down': return 'R'
+                elif direction == 'up': return "R'"
+            elif 135 <= ry < 225:  # Viewing from back
+                if direction == 'right': return "R'"
+                elif direction == 'left': return 'R'
+                elif direction == 'down': return "R'"
+                elif direction == 'up': return 'R'
+            else:  # Viewing from side
+                if direction == 'right': return 'R'
+                elif direction == 'left': return "R'"
+                elif direction == 'down': return 'R'
+                elif direction == 'up': return "R'"
+                
+        elif face_name == 'left':
+            # Left face: consider viewing angle
+            if 315 <= ry or ry < 45:  # Viewing from front
+                if direction == 'right': return "L'"
+                elif direction == 'left': return 'L'
+                elif direction == 'down': return "L'"
+                elif direction == 'up': return 'L'
+            elif 135 <= ry < 225:  # Viewing from back
+                if direction == 'right': return 'L'
+                elif direction == 'left': return "L'"
+                elif direction == 'down': return 'L'
+                elif direction == 'up': return "L'"
+            else:  # Viewing from side
+                if direction == 'right': return "L'"
+                elif direction == 'left': return 'L'
+                elif direction == 'down': return "L'"
+                elif direction == 'up': return 'L'
+                
+        elif face_name == 'top':
+            # Top face: adjust based on viewing angle
+            if 315 <= ry or ry < 45:  # Viewing from front
+                if direction == 'right': return 'U'
+                elif direction == 'left': return "U'"
+                elif direction == 'down': return 'U'
+                elif direction == 'up': return "U'"
+            elif 45 <= ry < 135:  # Viewing from right
+                if direction == 'right': return 'U'
+                elif direction == 'left': return "U'"
+                elif direction == 'down': return "U'"
+                elif direction == 'up': return 'U'
+            elif 135 <= ry < 225:  # Viewing from back
+                if direction == 'right': return "U'"
+                elif direction == 'left': return 'U'
+                elif direction == 'down': return "U'"
+                elif direction == 'up': return 'U'
+            else:  # Viewing from left
+                if direction == 'right': return "U'"
+                elif direction == 'left': return 'U'
+                elif direction == 'down': return 'U'
+                elif direction == 'up': return "U'"
+                
+        elif face_name == 'bottom':
+            # Bottom face: adjust based on viewing angle
+            if 315 <= ry or ry < 45:  # Viewing from front
+                if direction == 'right': return "D'"
+                elif direction == 'left': return 'D'
+                elif direction == 'down': return "D'"
+                elif direction == 'up': return 'D'
+            elif 45 <= ry < 135:  # Viewing from right
+                if direction == 'right': return "D'"
+                elif direction == 'left': return 'D'
+                elif direction == 'down': return 'D'
+                elif direction == 'up': return "D'"
+            elif 135 <= ry < 225:  # Viewing from back
+                if direction == 'right': return 'D'
+                elif direction == 'left': return "D'"
+                elif direction == 'down': return 'D'
+                elif direction == 'up': return "D'"
+            else:  # Viewing from left
+                if direction == 'right': return 'D'
+                elif direction == 'left': return "D'"
+                elif direction == 'down': return "D'"
+                elif direction == 'up': return 'D'
+        
+        return None
     
     def update_hover(self, mouse_pos):
-        """Update hover detection with revolutionary system"""
+        """Update hover detection with 3D ray-casting"""
         if self.is_dragging:
             return
         
-        # Use the same revolutionary detection for hover
+        # Use 3D detection for hover as well
         face, cube_pos = self.detect_face_from_mouse(mouse_pos)
         
         # Update hover state

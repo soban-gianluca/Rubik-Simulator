@@ -411,3 +411,17 @@ class RubiksCube:
             if not np.all(face_array == face_array[0, 0]):
                 return False
         return True
+    
+    def get_state(self):
+        """Get the current cube state for saving"""
+        return {
+            'faces': {face_name: face_array.copy() for face_name, face_array in self.faces.items()},
+            'move_history': self.move_history.copy()
+        }
+    
+    def set_state(self, state):
+        """Restore the cube state from a saved state"""
+        if 'faces' in state:
+            self.faces = {face_name: face_array.copy() for face_name, face_array in state['faces'].items()}
+        if 'move_history' in state:
+            self.move_history = state['move_history'].copy()

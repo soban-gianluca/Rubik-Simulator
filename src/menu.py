@@ -38,6 +38,12 @@ class Menu:
         self.target_alpha = 1.0  # Target alpha value (0.0 to 1.0)
         self.current_alpha = 0.0  # Current alpha value for animation
         
+        # Blur effect properties
+        self.background_capture = None
+        self.blurred_background = None
+        self.game_rendered = False  # Track if game has rendered at least once
+        self.frames_rendered = 0  # Count frames to ensure proper initialization
+        
         # Available resolutions
         self.available_resolutions = [
             (1024, 768),
@@ -534,6 +540,84 @@ class Menu:
             self.sound_manager.play("menu_open")
             # Always reset to main menu when opening from in-game
             self.current_menu = self.main_menu
+            
+            # Capture and blur the background when opening the menu (if game has rendered)
+            # Always try to recapture to ensure we have the current resolution
+            if self.game_rendered:
+                self._capture_and_blur_background()
+    
+    def _capture_and_blur_background(self):
+        """Capture the current screen and create a blurred version for the background"""
+        # Only capture if the game has rendered at least once
+        if not self.game_rendered:
+            self.background_capture = None
+            self.blurred_background = None
+            return
+            
+        try:
+            # Get the current framebuffer data
+            screen_width = self.width
+            screen_height = self.height
+            
+            # Read the current OpenGL framebuffer
+            from OpenGL.GL import glReadPixels, GL_RGB, GL_UNSIGNED_BYTE
+            
+            # Capture the screen buffer
+            glPixels = glReadPixels(0, 0, screen_width, screen_height, GL_RGB, GL_UNSIGNED_BYTE)
+            
+            # Convert to pygame surface (much simpler approach)
+            self.background_capture = pygame.image.fromstring(glPixels, (screen_width, screen_height), 'RGB')
+            
+            # Flip vertically (OpenGL coordinates are flipped)
+            self.background_capture = pygame.transform.flip(self.background_capture, False, True)
+            
+            # Apply fast blur effect
+            self._apply_fast_blur_effect()
+            
+        except Exception as e:
+            print(f"Error capturing background: {e}")
+            # Fallback to None - will use solid background
+            self.background_capture = None
+            self.blurred_background = None
+            self.blurred_background = None
+    
+    def _apply_fast_blur_effect(self):
+        """Apply a fast blur effect using pygame's built-in scaling and smoothing"""
+        if self.background_capture is None:
+            return
+            
+        try:
+            original_size = self.background_capture.get_size()
+            
+            # Use enhanced scaling method for fast, smooth blur (no scipy dependency)
+            blurred_surface = self.background_capture.copy()
+            
+            # First pass: Scale down more aggressively for stronger blur
+            small_size = (original_size[0] // 8, original_size[1] // 8)  # Strong downscaling for blur effect
+            
+            # Multiple downscale-upscale passes for smoother blur
+            for _ in range(3):  # Multiple passes for smoother blur
+                # Scale down with smoothing
+                small_surface = pygame.transform.smoothscale(blurred_surface, small_size)
+                # Scale back up with smoothing
+                blurred_surface = pygame.transform.smoothscale(small_surface, original_size)
+            
+            # Additional blur pass with intermediate scaling for even smoother result
+            medium_size = (original_size[0] // 3, original_size[1] // 3)
+            medium_surface = pygame.transform.smoothscale(blurred_surface, medium_size)
+            blurred_surface = pygame.transform.smoothscale(medium_surface, original_size)
+            
+            self.blurred_background = blurred_surface
+            
+            # Add subtle darkening for better contrast with menu text
+            dark_overlay = pygame.Surface(original_size, pygame.SRCALPHA)
+            dark_overlay.fill((0, 0, 0, 80))  # Darkening for better readability
+            self.blurred_background.blit(dark_overlay, (0, 0))
+            
+        except Exception as e:
+            print(f"Error applying blur: {e}")
+            # Fallback to original capture
+            self.blurred_background = self.background_capture
     
     def is_active(self):
         """Check if menu is active"""
@@ -789,83 +873,103 @@ class Menu:
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
     
     def draw(self, screen):
-        """Draw the menu on the screen with fancy effects and alpha animation"""
+        """Draw the menu on the screen with blur effect and alpha animation"""
         # Don't draw if completely invisible
         current_alpha = self.get_current_alpha()
         if current_alpha <= 0.0:
             return
         
-        # Draw smooth background overlay with alpha
-        overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
+        # Use blurred background if available, otherwise fallback to solid overlay
+        if self.blurred_background is not None:
+            # Check if blurred background size matches current screen size
+            bg_size = self.blurred_background.get_size()
+            screen_size = (screen.get_width(), screen.get_height())
+            
+            if bg_size != screen_size:
+                # Size mismatch - scale the background or clear it
+                if hasattr(self, 'debug_mode') and self.debug_mode:
+                    print(f"Background size mismatch: {bg_size} vs {screen_size}, clearing background")
+                self.blurred_background = None
+                self.background_capture = None
+                # Try to recapture with correct size if game has rendered
+                if self.game_rendered:
+                    self._capture_and_blur_background()
+            
+            # Draw blurred background with alpha if still available
+            if self.blurred_background is not None:
+                if current_alpha < 1.0:
+                    # Create a copy for alpha blending
+                    background_surface = self.blurred_background.copy()
+                    background_surface.set_alpha(int(255 * current_alpha))
+                    screen.blit(background_surface, (0, 0))
+                else:
+                    screen.blit(self.blurred_background, (0, 0))
         
-        # Create a smooth, clean background
-        base_alpha = 160  # Fixed alpha for consistent background
-        # Apply current animation alpha
-        final_alpha = int(base_alpha * current_alpha)
-        color = (5, 10, 20, final_alpha)
-        overlay.fill(color)
+        # Fallback to modern solid background if no blur available
+        if self.blurred_background is None:
+            # Fallback to modern solid background with gradient effect
+            overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
+            base_alpha = 200  # Slightly more opaque for better readability
+            final_alpha = int(base_alpha * current_alpha)
+            
+            # Create a subtle gradient effect
+            for y in range(screen.get_height()):
+                alpha_variation = final_alpha + int(20 * math.sin(y * 0.01))
+                alpha_variation = max(0, min(255, alpha_variation))
+                color = (8, 12, 28, alpha_variation)  # Dark blue-grey
+                pygame.draw.line(overlay, color, (0, y), (screen.get_width(), y))
+            
+            screen.blit(overlay, (0, 0))
         
-        screen.blit(overlay, (0, 0))
+        # Add subtle particle effects with reduced intensity for performance
+        if current_alpha > 0.5:  # Only draw particles when menu is mostly visible
+            self._draw_background_effects(screen, current_alpha)
         
-        # Add subtle particle effects or glow with alpha
-        self._draw_background_effects(screen, current_alpha)
-        
-        # Only check and recreate if there's a significant mismatch
+        # Handle dimension mismatch
         actual_width, actual_height = screen.get_size()
         if abs(self.width - actual_width) > 10 or abs(self.height - actual_height) > 10:
-            # Only print in debug mode
             if hasattr(self, 'debug_mode') and self.debug_mode:
                 print(f"Menu dimension mismatch: stored {self.width}x{self.height}, actual {actual_width}x{actual_height}")
             self.width = actual_width
             self.height = actual_height
             self._create_menus()
         
-        # Draw the current menu with alpha applied
+        # Draw the current menu
         if self.current_menu:
-            # Create a temporary surface for the menu
             menu_surface = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
-            
-            # Draw the menu to the temporary surface
             self.current_menu.draw(menu_surface)
             
-            # Apply alpha to the entire menu surface
             if current_alpha < 1.0:
-                alpha_surface = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
-                alpha_surface.fill((255, 255, 255, int(255 * current_alpha)))
-                menu_surface.blit(alpha_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                menu_surface.set_alpha(int(255 * current_alpha))
             
-            # Blit the menu surface to the screen
             screen.blit(menu_surface, (0, 0))
     
     def _draw_background_effects(self, screen, alpha=1.0):
-        """Draw subtle background effects like glowing particles with alpha"""
+        """Draw simplified background effects for better performance"""
         try:
-            # Create a subtle glow effect around the menu area
+            # Create a subtle glow effect around the menu area (reduced particles)
             center_x = screen.get_width() // 2
             center_y = screen.get_height() // 2
             time_offset = time.time()
             
-            # Draw some floating particles
-            for i in range(8):
-                angle = (time_offset * 30 + i * 45) % 360
-                radius = 150 + 50 * math.sin(time_offset * 2 + i)
+            # Reduced number of particles for better performance
+            for i in range(4):  # Reduced from 8 to 4 particles
+                angle = (time_offset * 20 + i * 90) % 360  # Slower animation
+                radius = 120 + 30 * math.sin(time_offset + i)  # Smaller radius
                 
                 x = center_x + radius * math.cos(math.radians(angle))
                 y = center_y + radius * math.sin(math.radians(angle))
                 
                 # Ensure particles stay on screen
                 if 0 <= x <= screen.get_width() and 0 <= y <= screen.get_height():
-                    size = int(3 + 2 * math.sin(time_offset * 3 + i))
-                    base_alpha = int(180 + 75 * math.sin(time_offset * 2 + i * 0.5))
-                    # Apply current animation alpha
+                    size = int(2 + math.sin(time_offset * 2 + i))  # Smaller particles
+                    base_alpha = int(120 + 60 * math.sin(time_offset + i * 0.5))  # Lower alpha
                     final_alpha = int(base_alpha * alpha)
                     
-                    # Create a small glowing circle
-                    glow_surface = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
-                    pygame.draw.circle(glow_surface, (100, 150, 255, final_alpha), (size * 2, size * 2), size * 2)
-                    pygame.draw.circle(glow_surface, (150, 200, 255, int(final_alpha * 0.7)), (size * 2, size * 2), size)
+                    # Simple circle instead of complex glow
+                    pygame.draw.circle(screen, (100, 150, 255, min(255, final_alpha)), 
+                                     (int(x), int(y)), max(1, size))
                     
-                    screen.blit(glow_surface, (x - size * 2, y - size * 2))
         except Exception as e:
             # Silently ignore errors in visual effects
             pass
@@ -885,6 +989,10 @@ class Menu:
         self.width = width
         self.height = height
         
+        # Clear cached background images since resolution changed
+        self.background_capture = None
+        self.blurred_background = None
+        
         # Force recreate menus with new dimensions
         self._create_menus()
         
@@ -894,6 +1002,17 @@ class Menu:
     def set_game_instance(self, game):
         """Set the game instance reference"""
         self.game = game
+    
+    def notify_game_rendered(self):
+        """Notify the menu that the game has rendered at least one frame"""
+        self.frames_rendered += 1
+        if self.frames_rendered >= 3:  # Wait for a few frames to ensure proper initialization
+            self.game_rendered = True
+    
+    def force_background_recapture(self):
+        """Force recapture of the background (useful after resolution changes)"""
+        if self.game_rendered:
+            self._capture_and_blur_background()
     
     def _create_menus(self):
         """Create or recreate menus with current dimensions"""

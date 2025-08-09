@@ -246,6 +246,40 @@ class Game:
             # Store current fullscreen state
             fullscreen = self.menu.fullscreen if hasattr(self, 'menu') else self.is_fullscreen
             
+            # Save the current cube state before recreating renderer
+            cube_state = None
+            camera_rotation = (0, 0)
+            animation_state = None
+            game_state = None
+            if hasattr(self, 'renderer') and self.renderer:
+                try:
+                    # Save the cube state
+                    cube_state = self.renderer.rubiks_cube.get_state()
+                    # Save camera rotation
+                    camera_rotation = (self.renderer.rotation_x, self.renderer.rotation_y)
+                    # Save animation state
+                    animation_state = {
+                        'is_animating': self.renderer.is_animating,
+                        'animation_start_time': self.renderer.animation_start_time,
+                        'animating_face': self.renderer.animating_face,
+                        'animation_axis': self.renderer.animation_axis,
+                        'animation_angle_total': self.renderer.animation_angle_total,
+                        'animation_clockwise': self.renderer.animation_clockwise,
+                        'pending_move': self.renderer.pending_move
+                    }
+                    # Save game state to prevent unwanted scrambling
+                    game_state = {
+                        'game_started': self.game_started,
+                        'new_game_requested': self.new_game_requested,
+                        'move_counter': self.move_counter,
+                        'start_time': self.start_time,
+                        'cube_solved': self.cube_solved,
+                        '_ever_started': getattr(self, '_ever_started', False)
+                    }
+                    self.debug_print("Saved cube, animation, and game state during resolution change")
+                except Exception as e:
+                    self.debug_print(f"Could not save cube state: {e}")
+            
             # First completely recreate the pygame display without OpenGL
             pygame.display.quit()
             pygame.display.init()
@@ -277,6 +311,36 @@ class Game:
     
             # Now recreate the OpenGL context with correct dimensions
             self.renderer = Renderer(self.width, self.height)
+            
+            # Restore the saved cube state
+            if cube_state is not None:
+                try:
+                    self.renderer.rubiks_cube.set_state(cube_state)
+                    # Update the renderer's visual representation to match the restored state
+                    self.renderer.update_cube_colors()
+                    # Restore camera rotation
+                    self.renderer.rotation_x, self.renderer.rotation_y = camera_rotation
+                    # Restore animation state
+                    if animation_state is not None:
+                        self.renderer.is_animating = animation_state['is_animating']
+                        self.renderer.animation_start_time = animation_state['animation_start_time']
+                        self.renderer.animating_face = animation_state['animating_face']
+                        self.renderer.animation_axis = animation_state['animation_axis']
+                        self.renderer.animation_angle_total = animation_state['animation_angle_total']
+                        self.renderer.animation_clockwise = animation_state['animation_clockwise']
+                        self.renderer.pending_move = animation_state['pending_move']
+                        # Note: animation_cubes will be recreated when needed
+                    # Restore game state
+                    if game_state is not None:
+                        self.game_started = game_state['game_started']
+                        self.new_game_requested = game_state['new_game_requested']
+                        self.move_counter = game_state['move_counter']
+                        self.start_time = game_state['start_time']
+                        self.cube_solved = game_state['cube_solved']
+                        self._ever_started = game_state['_ever_started']
+                    self.debug_print("Restored cube, animation, and game state after resolution change")
+                except Exception as e:
+                    self.debug_print(f"Could not restore cube state: {e}")
     
             # Update menu with the actual dimensions
             if hasattr(self, 'menu'):
@@ -586,6 +650,10 @@ class Game:
         # Render 3D cube
         self.renderer.render_frame()
         
+        # Notify menu that game has rendered (for blur background capture)
+        if hasattr(self, 'menu') and not self.menu.game_rendered:
+            self.menu.notify_game_rendered()
+        
         # Render mouse interaction visual feedback
         if hasattr(self, 'mouse_interaction'):
             self.mouse_interaction.render_visual_feedback()
@@ -614,8 +682,11 @@ class Game:
             self._render_fps_counter()
         
         # Render game stats (timer and moves) if game is in progress
-        if not self.menu.is_active() and not self.results_window.active:
-            self._render_game_stats()
+        # Show stats even when menu is active, but with reduced opacity
+        if not self.results_window.active:
+            menu_alpha = self.menu.get_current_alpha()
+            stats_alpha = 1.0 - (menu_alpha * 0.7)  # Reduce opacity when menu is visible
+            self._render_game_stats(stats_alpha)
         
         # Render notification banner if active
         if self.banner_active:
@@ -708,7 +779,7 @@ class Game:
             if self.debug_mode:
                 print(f"FPS counter rendering error: {e}")
 
-    def _render_game_stats(self):
+    def _render_game_stats(self, alpha=1.0):
         """Render timer and moves counter in the bottom-left corner"""
         try:
             # Import pygame_menu to access the font
@@ -759,13 +830,18 @@ class Game:
             bg_width = max_width + (padding * 2)
             bg_height = total_height + (padding * 2) + (line_spacing * (len(text_lines) - 1))
             
-            # Create background surface
+            # Create background surface with alpha
             bg_surface = pygame.Surface((bg_width, bg_height), pygame.SRCALPHA)
-            bg_surface.fill((0, 0, 0, 128))  # Semi-transparent black background
+            bg_alpha = int(128 * alpha)  # Apply alpha to background
+            bg_surface.fill((0, 0, 0, bg_alpha))  # Semi-transparent black background
             
-            # Blit text lines onto background
+            # Blit text lines onto background with alpha
             y_offset = padding
             for text_surface in text_surfaces:
+                if alpha < 1.0:
+                    # Apply alpha to text surface
+                    text_surface = text_surface.copy()
+                    text_surface.set_alpha(int(255 * alpha))
                 bg_surface.blit(text_surface, (padding, y_offset))
                 y_offset += line_height + line_spacing
             

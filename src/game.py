@@ -86,7 +86,7 @@ class Game:
         # Load audio settings into sound manager
         self.sound_manager.load_volumes_from_settings(self.settings)
         
-        # Initialize mouse cube interaction system
+        # Initialize enhanced mouse cube interaction system
         self.mouse_interaction = MouseCubeInteraction(self.renderer)
         
         # Initialize menu

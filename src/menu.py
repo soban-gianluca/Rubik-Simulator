@@ -173,6 +173,10 @@ class Menu:
                     if button_title in ["Apply Changes", "Back"]:
                         # Skip styling for these buttons - they will be styled separately
                         pass
+                    # Also skip if this is the stored apply button reference
+                    elif hasattr(self, 'apply_button') and widget == self.apply_button:
+                        # Skip styling for apply button - handled separately
+                        pass
                     # Check if this is a difficulty button (has background color set)
                     elif (hasattr(widget, '_background_color') and 
                         widget._background_color and 
@@ -194,17 +198,55 @@ class Menu:
     def _style_settings_buttons(self, apply_btn, back_btn):
         """Apply specific colors to the settings buttons"""
         try:
-            # Style the Apply Changes button with green background
+            # Style the Apply Changes button based on whether there are changes
             if hasattr(apply_btn, 'set_background_color'):
-                apply_btn.set_background_color((46, 125, 50, 200))  # Green color similar to results window
+                if self.settings_changed:
+                    # Enabled state - green background
+                    apply_btn.set_background_color((46, 125, 50, 200))  # Green color
+                    # Enable the button
+                    if hasattr(apply_btn, 'is_enabled'):
+                        apply_btn.is_enabled = True
+                    # Set normal text color
+                    if hasattr(apply_btn, '_font_color'):
+                        apply_btn._font_color = (255, 255, 255)  # White text
+                else:
+                    # Disabled state - lighter/grayed out background
+                    apply_btn.set_background_color((80, 80, 80, 150))  # Light gray color
+                    # Disable the button
+                    if hasattr(apply_btn, 'is_enabled'):
+                        apply_btn.is_enabled = False
+                    # Set gray text color
+                    if hasattr(apply_btn, '_font_color'):
+                        apply_btn._font_color = (150, 150, 150)  # Gray text
             
-            # Style the Back button with gray background  
+            # Style the Back button with gray background (always enabled)
             if hasattr(back_btn, 'set_background_color'):
                 back_btn.set_background_color((66, 66, 66, 200))  # Gray color similar to results window
                 
         except Exception as e:
             # Silently ignore errors
             pass
+    
+    def _update_apply_button_state(self):
+        """Update the apply button's appearance based on settings_changed state"""
+        if hasattr(self, 'apply_button') and self.apply_button:
+            try:
+                if hasattr(self.apply_button, 'set_background_color'):
+                    if self.settings_changed:
+                        # Enabled state - green background
+                        self.apply_button.set_background_color((46, 125, 50, 200))  # Green color
+                        # Set normal text color
+                        if hasattr(self.apply_button, '_font_color'):
+                            self.apply_button._font_color = (255, 255, 255)  # White text
+                    else:
+                        # Disabled state - lighter/grayed out background
+                        self.apply_button.set_background_color((80, 80, 80, 150))  # Light gray color
+                        # Set gray text color
+                        if hasattr(self.apply_button, '_font_color'):
+                            self.apply_button._font_color = (150, 150, 150)  # Gray text
+            except Exception as e:
+                # Silently ignore errors
+                pass
     
     def _get_game_modes(self):
         """Get available game modes with their configurations.
@@ -312,6 +354,7 @@ class Menu:
             print(f"New resolution index: {self.current_resolution_index}")
         
         self.settings_changed = True
+        self._update_apply_button_state()
     
     def _on_fullscreen_change(self, selected_tuple, index):
         """Handle fullscreen toggle from dropdown"""
@@ -325,6 +368,7 @@ class Menu:
             self.fullscreen = bool(index)  # Convert index to boolean
         
         self.settings_changed = True
+        self._update_apply_button_state()
     
     def _on_fps_toggle(self, value):
         """Handle FPS toggle"""
@@ -333,6 +377,7 @@ class Menu:
         
         self.show_fps = value
         self.settings_changed = True
+        self._update_apply_button_state()
     
     def _on_volume_change(self, value):
         """Handle volume slider change"""
@@ -357,7 +402,7 @@ class Menu:
         if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
             self.game.settings.settings["volume"] = self.volume
             
-        self.settings_changed = True
+        # Note: Volume changes are applied immediately, no need to set settings_changed
     
     def _on_master_volume_change(self, value):
         """Handle master volume slider change"""
@@ -379,7 +424,7 @@ class Menu:
         if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
             self.game.settings.set_audio_volume("master_volume", self.master_volume)
         
-        self.settings_changed = True
+        # Note: Volume changes are applied immediately, no need to set settings_changed
     
     def _on_music_volume_change(self, value):
         """Handle music volume slider change"""
@@ -401,7 +446,7 @@ class Menu:
         if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
             self.game.settings.set_audio_volume("music_volume", self.music_volume)
         
-        self.settings_changed = True
+        # Note: Volume changes are applied immediately, no need to set settings_changed
     
     def _on_effects_volume_change(self, value):
         """Handle effects volume slider change"""
@@ -423,7 +468,7 @@ class Menu:
         if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
             self.game.settings.set_audio_volume("effects_volume", self.effects_volume)
         
-        self.settings_changed = True
+        # Note: Volume changes are applied immediately, no need to set settings_changed
     
     def _on_menu_volume_change(self, value):
         """Handle menu volume slider change"""
@@ -445,11 +490,15 @@ class Menu:
         if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
             self.game.settings.set_audio_volume("menu_volume", self.menu_volume)
         
-        self.settings_changed = True
+        # Note: Volume changes are applied immediately, no need to set settings_changed
     
     def _apply_settings(self):
         """Apply all settings changes"""
         try:
+            # Don't apply if no changes have been made
+            if not self.settings_changed:
+                return
+            
             # Play apply settings sound
             self.sound_manager.play("menu_apply")
             
@@ -468,11 +517,7 @@ class Menu:
                 self.settings_manager.settings["fullscreen"] = self.fullscreen
                 self.settings_manager.settings["show_fps"] = self.show_fps
                 
-                # Update audio settings
-                self.settings_manager.set_audio_volume("master_volume", self.master_volume)
-                self.settings_manager.set_audio_volume("music_volume", self.music_volume)
-                self.settings_manager.set_audio_volume("effects_volume", self.effects_volume)
-                self.settings_manager.set_audio_volume("menu_volume", self.menu_volume)
+                # Note: Audio settings are handled immediately in their change handlers, no need to update here
                 
                 self.settings_manager.save_settings()
                 
@@ -480,6 +525,7 @@ class Menu:
                 self.sound_manager.load_volumes_from_settings(self.settings_manager)
                 
                 self.settings_changed = False
+                self._update_apply_button_state()
                 
             # Return to main menu after applying settings
             self._back_to_main()
@@ -767,6 +813,12 @@ class Menu:
             widget_class_name = widget.__class__.__name__
             
             if widget_class_name == 'Button':
+                # Check if this is the disabled apply button
+                if (hasattr(self, 'apply_button') and widget == self.apply_button and 
+                    not self.settings_changed):
+                    # Skip hover effects for disabled apply button
+                    return
+                
                 # Check if this is a difficulty button
                 if widget in self.difficulty_buttons:
                     self._animate_difficulty_button(widget, is_hovered)
@@ -886,7 +938,14 @@ class Menu:
                         # Check if it's an interactive widget by class name
                         widget_class_name = widget.__class__.__name__
                         if widget_class_name in ['Button', 'DropSelect', 'ToggleSwitch', 'RangeSlider']:
-                            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                            # Check if this is the disabled apply button
+                            if (hasattr(self, 'apply_button') and widget == self.apply_button and 
+                                not self.settings_changed):
+                                # Show regular arrow cursor for disabled button
+                                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                            else:
+                                # Show hand cursor for enabled interactive widgets
+                                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
                             return
                 except:
                     # If widget doesn't support get_rect(), skip it
@@ -1223,11 +1282,17 @@ class Menu:
         apply_btn = self.settings_menu.add.button("Apply Changes", self._apply_settings)
         back_btn = self.settings_menu.add.button("Back", self._back_to_main)
 
+        # Store reference to apply button for dynamic updates
+        self.apply_button = apply_btn
+
         # Apply custom styling to settings menu
         self._customize_menu_widgets(self.settings_menu)
         
         # Apply specific colors to the settings buttons
         self._style_settings_buttons(apply_btn, back_btn)
+        
+        # Ensure apply button starts in correct state
+        self._update_apply_button_state()
         
         # Create audio settings menu with ACTUAL dimensions
         self.audio_settings_menu = pygame_menu.Menu(

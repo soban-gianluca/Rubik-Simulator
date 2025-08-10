@@ -552,6 +552,16 @@ class Game:
         if hasattr(self, 'results_window'):
             self.results_window.update()
         
+        # Update cursor based on menu/results window state
+        mouse_pos = pygame.mouse.get_pos()
+        if hasattr(self, 'menu') and self.menu.is_active():
+            self.menu.update_cursor(mouse_pos)
+        elif hasattr(self, 'results_window') and self.results_window.active:
+            self.results_window.update_cursor(mouse_pos)
+        else:
+            # Default cursor when in game
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+        
         # Update banner animation
         self.update_banner()
         
@@ -761,7 +771,7 @@ class Game:
                 self._fps_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 30)
             
             # Create FPS text surface
-            fps_text = f"FPS: {fps:.1f}"
+            fps_text = f"FPS: {fps:.0f}"
             text_surface = self._fps_font.render(fps_text, True, (255, 255, 255))
             
             # Add a semi-transparent background for better readability

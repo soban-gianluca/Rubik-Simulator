@@ -39,6 +39,17 @@ class ResultsWindow:
             "COMPLETED!": (169, 169, 169)   # Dark gray
         }
         
+        # Initialize hover tracking
+        self.hovered_widgets = set()  # Track which widgets are currently hovered
+        
+        # Hover effect colors
+        self.text_color_normal = (255, 255, 255)  # White
+        self.text_color_hover = (240, 198, 38)    # Golden hover color
+        self.button_color_normal_play = (46, 125, 50, 200)   # Green
+        self.button_color_hover_play = (66, 165, 70, 220)    # Lighter green
+        self.button_color_normal_menu = (66, 66, 66, 200)    # Gray
+        self.button_color_hover_menu = (96, 96, 96, 220)     # Lighter gray
+        
         # Create modern custom theme
         self._create_modern_theme()
         
@@ -355,6 +366,7 @@ class ResultsWindow:
 
     def play_again(self):
         """Reset the cube for a new game - immediate action"""
+        self._clear_all_hover_effects()  # Clear hover effects
         self.active = False
         self.celebration_active = False  # Stop celebration
         if hasattr(self, 'game_callback'):
@@ -362,6 +374,7 @@ class ResultsWindow:
     
     def to_main_menu(self):
         """Return to main menu - immediate action"""
+        self._clear_all_hover_effects()  # Clear hover effects
         self.active = False
         self.celebration_active = False  # Stop celebration
         if hasattr(self, 'game_callback'):
@@ -375,6 +388,7 @@ class ResultsWindow:
     
     def close_results(self):
         """Close the results window immediately"""
+        self._clear_all_hover_effects()  # Clear hover effects
         self.active = False
         self.is_animating = False
         self.celebration_active = False
@@ -395,6 +409,10 @@ class ResultsWindow:
     def handle_events(self, events):
         """Handle pygame events for the results window"""
         if self.active and self.menu:
+            # Update hover effects based on mouse position
+            mouse_pos = pygame.mouse.get_pos()
+            self._update_button_hover_effects(mouse_pos)
+            
             # Handle basic events
             for event in events:
                 if event.type == pygame.KEYDOWN:
@@ -408,10 +426,105 @@ class ResultsWindow:
             self.menu.update(events)
     
     def _update_button_hover_effects(self, mouse_pos):
-        """Update hover effects for buttons based on mouse position - DISABLED for stability"""
-        # Temporarily disabled to avoid pygame_menu callback issues
-        # The buttons will still work, just without custom hover effects
-        pass
+        """Update hover effects for buttons based on mouse position"""
+        if not self.active or not self.menu:
+            return
+            
+        widgets = self.menu.get_widgets()
+        currently_hovered = set()
+        
+        for widget in widgets:
+            try:
+                widget_rect = widget.get_rect()
+                widget_class_name = widget.__class__.__name__
+                
+                # Check if this widget should have hover effects (only buttons)
+                if widget_class_name == 'Button':
+                    if widget_rect.collidepoint(mouse_pos):
+                        currently_hovered.add(widget)
+                        
+                        # If this is a new hover, apply hover effect
+                        if widget not in self.hovered_widgets:
+                            self._apply_hover_effect(widget, True)
+                    
+                    elif widget in self.hovered_widgets:
+                        # Mouse left this widget, remove hover effect
+                        self._apply_hover_effect(widget, False)
+                        
+            except:
+                # If widget doesn't support get_rect(), skip it
+                continue
+        
+        # Update the tracked hovered widgets
+        self.hovered_widgets = currently_hovered
+    
+    def _apply_hover_effect(self, widget, is_hovered):
+        """Apply or remove hover effect from a widget"""
+        try:
+            widget_class_name = widget.__class__.__name__
+            
+            if widget_class_name == 'Button':
+                # Apply different hover effects for different buttons
+                if widget == self.play_again_btn:
+                    if is_hovered:
+                        widget.set_background_color(self.button_color_hover_play)
+                        if hasattr(widget, '_font_color'):
+                            widget._font_color = self.text_color_hover
+                    else:
+                        widget.set_background_color(self.button_color_normal_play)
+                        if hasattr(widget, '_font_color'):
+                            widget._font_color = self.text_color_normal
+                            
+                elif widget == self.main_menu_btn:
+                    if is_hovered:
+                        widget.set_background_color(self.button_color_hover_menu)
+                        if hasattr(widget, '_font_color'):
+                            widget._font_color = self.text_color_hover
+                    else:
+                        widget.set_background_color(self.button_color_normal_menu)
+                        if hasattr(widget, '_font_color'):
+                            widget._font_color = self.text_color_normal
+                    
+                # Try to update the font color if possible
+                if hasattr(widget, 'update_font'):
+                    widget.update_font({
+                        'color': self.text_color_hover if is_hovered else self.text_color_normal
+                    })
+                    
+        except Exception as e:
+            # Silently handle any errors
+            pass
+    
+    def _clear_all_hover_effects(self):
+        """Clear hover effects from all widgets"""
+        for widget in self.hovered_widgets.copy():
+            self._apply_hover_effect(widget, False)
+        self.hovered_widgets.clear()
+    
+    def update_cursor(self, mouse_pos):
+        """Update cursor based on hover state"""
+        if not self.active:
+            return
+            
+        # Check if mouse is over any button
+        mouse_over_button = False
+        if self.menu:
+            widgets = self.menu.get_widgets()
+            for widget in widgets:
+                try:
+                    if widget.__class__.__name__ == 'Button':
+                        widget_rect = widget.get_rect()
+                        if widget_rect.collidepoint(mouse_pos):
+                            mouse_over_button = True
+                            break
+                except:
+                    continue
+        
+        # Set cursor based on hover state
+        if mouse_over_button:
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+        else:
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
     
     def render_to_surface(self, surface):
         """Render the results window with modern effects to a pygame surface"""
@@ -469,6 +582,7 @@ class ResultsWindow:
     def toggle(self):
         """Toggle the results window visibility - immediate"""
         if self.active:
+            self._clear_all_hover_effects()  # Clear hover effects when closing
             self.active = False
             self.celebration_active = False
         else:

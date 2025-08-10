@@ -65,8 +65,6 @@ class MouseCubeInteraction:
             'back': 5
         }
         
-
-    
     def get_renderer_cube_geometry(self):
         """Get the exact cube geometry from the renderer for perfect alignment"""
         cube_spacing = self.renderer.cube_spacing
@@ -170,8 +168,6 @@ class MouseCubeInteraction:
         
         return ray_origin, ray_dir
     
-
-    
     def ray_plane_intersection(self, ray_origin, ray_dir, plane_point, plane_normal):
         """Calculate intersection point of ray with plane"""
         # Ray equation: P = ray_origin + t * ray_dir
@@ -206,8 +202,6 @@ class MouseCubeInteraction:
         ]
         
         return intersection
-    
-
     
     def point_in_cube_face(self, point, cube_center, face_name):
         """Check if a point lies within a specific face of a cube"""
@@ -345,8 +339,6 @@ class MouseCubeInteraction:
         except:
             return None
     
-
-    
     def method_screen_mapping(self, mouse_x, mouse_y):
         """Screen region mapping based on camera angle"""
         ry = self.renderer.rotation_y % 360
@@ -399,10 +391,6 @@ class MouseCubeInteraction:
             return ('back', (0, 0, -1))
         
         return ('front', (0, 0, 1))
-    
-
-    
-
     
     def is_face_currently_visible(self, face_name):
         """Check if face is visible from current camera angle"""
@@ -468,18 +456,6 @@ class MouseCubeInteraction:
             return (0, -1, 0)
         return (0, 0, 1)
     
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
     def is_face_visible_from_camera(self, face_name):
         """Determine if a face type is visible from current camera angle"""
         # Get current camera rotations
@@ -512,22 +488,6 @@ class MouseCubeInteraction:
             return rx > -45  # Bottom faces visible when looking from below or level
             
         return False
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     
     def _get_cube_pos_for_face(self, face):
         """Get cube position for a given face"""

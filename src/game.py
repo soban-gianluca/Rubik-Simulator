@@ -548,6 +548,10 @@ class Game:
         if hasattr(self, 'menu'):
             self.menu.update()
         
+        # Update results window animation and effects
+        if hasattr(self, 'results_window'):
+            self.results_window.update()
+        
         # Update banner animation
         self.update_banner()
         
@@ -715,9 +719,11 @@ class Game:
         
         # Render results window overlay if active
         elif self.results_window.active:
-            # Create results surface and render to it
+            # Create results surface and render the modern effects to it
             results_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            self.results_window.menu.draw(results_surface)
+            
+            # Let the results window render its modern effects to the surface
+            self.results_window.render_to_surface(results_surface)
             
             # Convert pygame surface to OpenGL texture
             texture_data = pygame.image.tostring(results_surface, 'RGBA', True)

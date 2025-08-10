@@ -164,8 +164,17 @@ class Menu:
                 widget_class_name = widget.__class__.__name__
                 
                 if widget_class_name == 'Button':
+                    # Get button title to check if it's a special button
+                    button_title = ""
+                    if hasattr(widget, 'get_title'):
+                        button_title = widget.get_title()
+                    
+                    # Check if this is a settings button that should keep its color
+                    if button_title in ["Apply Changes", "Back"]:
+                        # Skip styling for these buttons - they will be styled separately
+                        pass
                     # Check if this is a difficulty button (has background color set)
-                    if (hasattr(widget, '_background_color') and 
+                    elif (hasattr(widget, '_background_color') and 
                         widget._background_color and 
                         widget._background_color != (0, 0, 0, 0)):
                         # This is a difficulty button with custom background, keep it
@@ -180,6 +189,21 @@ class Menu:
                         
         except Exception as e:
             # Silently ignore errors to avoid spam
+            pass
+    
+    def _style_settings_buttons(self, apply_btn, back_btn):
+        """Apply specific colors to the settings buttons"""
+        try:
+            # Style the Apply Changes button with green background
+            if hasattr(apply_btn, 'set_background_color'):
+                apply_btn.set_background_color((46, 125, 50, 200))  # Green color similar to results window
+            
+            # Style the Back button with gray background  
+            if hasattr(back_btn, 'set_background_color'):
+                back_btn.set_background_color((66, 66, 66, 200))  # Gray color similar to results window
+                
+        except Exception as e:
+            # Silently ignore errors
             pass
     
     def _get_game_modes(self):
@@ -1201,6 +1225,9 @@ class Menu:
 
         # Apply custom styling to settings menu
         self._customize_menu_widgets(self.settings_menu)
+        
+        # Apply specific colors to the settings buttons
+        self._style_settings_buttons(apply_btn, back_btn)
         
         # Create audio settings menu with ACTUAL dimensions
         self.audio_settings_menu = pygame_menu.Menu(

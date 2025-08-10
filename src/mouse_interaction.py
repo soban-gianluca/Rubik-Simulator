@@ -314,89 +314,165 @@ class MouseCubeInteraction:
         return False
     
     def detect_face_from_mouse(self, mouse_pos):
-        """REAL 3D face detection - detect actual cube faces, not screen regions"""
+        """Complete 3D face detection system - detects ALL visible cube faces accurately"""
         x, y = mouse_pos
         
         try:
             # Get the accurate ray from the mouse position
             ray_origin, ray_dir = self.get_accurate_ray(x, y)
             
-            # The cube is positioned at (0, 0, -4) and has a total size of about 3.6
-            cube_center = [0, 0, -4]
-            face_size = 1.5  # MUCH smaller face size - only the actual cube faces
+            # Get the actual cube geometry from renderer - make bounds more generous
+            cube_spacing = 0.52
+            scale_factor = 0.85
+            actual_spacing = cube_spacing * scale_factor
             
-            # Define the 6 faces of the actual cube (not huge screen regions)
-            faces = [
-                ('front', [0, 0, -2.5], [0, 0, 1]),     # Front face at z = -2.5
-                ('back', [0, 0, -5.5], [0, 0, -1]),     # Back face at z = -5.5  
-                ('right', [1.5, 0, -4], [1, 0, 0]),     # Right face at x = 1.5
-                ('left', [-1.5, 0, -4], [-1, 0, 0]),    # Left face at x = -1.5
-                ('top', [0, 1.5, -4], [0, 1, 0]),       # Top face at y = 1.5
-                ('bottom', [0, -1.5, -4], [0, -1, 0])   # Bottom face at y = -1.5
+            # The cube is positioned at (0, 0, -4) in world space
+            cube_center = [0, 0, -4]
+            half_cube_size = actual_spacing
+            
+            # Make face bounds more generous for better detection
+            face_tolerance = actual_spacing * 1.4  # 40% larger detection area
+            
+            # Define the 6 faces of the actual 3x3x3 cube
+            all_faces = [
+                ('front', [0, 0, cube_center[2] + half_cube_size], [0, 0, 1]),
+                ('back', [0, 0, cube_center[2] - half_cube_size], [0, 0, -1]),
+                ('right', [cube_center[0] + half_cube_size, 0, cube_center[2]], [1, 0, 0]),
+                ('left', [cube_center[0] - half_cube_size, 0, cube_center[2]], [-1, 0, 0]),
+                ('top', [0, cube_center[1] + half_cube_size, cube_center[2]], [0, 1, 0]),
+                ('bottom', [0, cube_center[1] - half_cube_size, cube_center[2]], [0, -1, 0])
             ]
             
+            # Filter to only visible faces from current camera angle
+            visible_faces = []
+            for face_name, face_center, face_normal in all_faces:
+                if self.is_face_visible_from_camera(face_name):
+                    visible_faces.append((face_name, face_center, face_normal))
+            
+            # Test ray intersection with each visible face
             valid_intersections = []
             
-            for face_name, face_center, face_normal in faces:
+            for face_name, face_center, face_normal in visible_faces:
                 intersection = self.ray_plane_intersection(ray_origin, ray_dir, face_center, face_normal)
                 
                 if intersection:
-                    # Check if intersection is within the ACTUAL face bounds (much tighter)
-                    rel_x = intersection[0] - face_center[0]
-                    rel_y = intersection[1] - face_center[1] 
-                    rel_z = intersection[2] - face_center[2]
-                    
-                    # Tight bounds - only the actual cube face
-                    within_bounds = False
-                    
-                    if face_name in ['front', 'back']:
-                        # For front/back faces, check X and Y coordinates
-                        within_bounds = abs(rel_x) <= face_size and abs(rel_y) <= face_size
-                    elif face_name in ['left', 'right']:
-                        # For left/right faces, check Y and Z coordinates  
-                        within_bounds = abs(rel_y) <= face_size and abs(rel_z) <= face_size
-                    elif face_name in ['top', 'bottom']:
-                        # For top/bottom faces, check X and Z coordinates
-                        within_bounds = abs(rel_x) <= face_size and abs(rel_z) <= face_size
+                    # Use a more sophisticated bounds check that works better with rotated cubes
+                    within_bounds = self.is_point_on_cube_face(intersection, face_name, cube_center, face_tolerance)
                     
                     if within_bounds:
-                        # Calculate distance from ray origin
+                        # Calculate distance from camera
                         distance = math.sqrt(
                             (intersection[0] - ray_origin[0])**2 + 
                             (intersection[1] - ray_origin[1])**2 + 
                             (intersection[2] - ray_origin[2])**2
                         )
-                        
-                        # Check if face is visible (not facing completely away from camera)
-                        dot_product = (ray_dir[0] * face_normal[0] + 
-                                     ray_dir[1] * face_normal[1] + 
-                                     ray_dir[2] * face_normal[2])
-                        
-                        # Only include faces that are actually visible from the camera
-                        is_visible = dot_product <= 0.1  # Much stricter visibility 
-                        
-                        if is_visible:
-                            valid_intersections.append((face_name, distance, intersection, dot_product))
-                        else:
-                            pass  # Face is hidden
+                        valid_intersections.append((face_name, distance, intersection))
             
-            # Choose the closest valid face (no complex scoring - just pick what's actually hit)
+            # Return the closest intersected face
             if valid_intersections:
-                # Sort by distance and pick the closest face that was actually hit
-                valid_intersections.sort(key=lambda x: x[1])
+                valid_intersections.sort(key=lambda x: x[1])  # Sort by distance
                 best_face = valid_intersections[0][0]
-                best_distance = valid_intersections[0][1]
-                best_dot_value = valid_intersections[0][3]
-                
+                print(f"Selected face: {best_face}")  # Clean feedback
                 cube_pos = self._get_cube_pos_for_face(best_face)
                 return best_face, cube_pos
-            else:
-                pass  # No face hit
                 
         except Exception as e:
-            pass  # Detection error - silent fail
+            pass  # Silent fail
         
         return None, None
+    
+    def is_point_on_cube_face(self, point, face_name, cube_center, tolerance):
+        """Improved bounds checking that works better with rotated cubes"""
+        # Convert point to cube-relative coordinates
+        rel_x = point[0] - cube_center[0]
+        rel_y = point[1] - cube_center[1] 
+        rel_z = point[2] - cube_center[2]
+        
+        # Use more generous bounds for better edge detection
+        # The actual cube half-size
+        half_size = 0.52 * 0.85  # cube_spacing * scale_factor
+        
+        # Extend the bounds significantly for better selection
+        extended_tolerance = tolerance * 1.2  # Even more generous
+        
+        if face_name == 'front':
+            # Front face: Z should be near +half_size, X and Y within bounds
+            z_on_face = abs(rel_z - half_size) < 0.1  # Close to front face
+            within_xy = abs(rel_x) <= extended_tolerance and abs(rel_y) <= extended_tolerance
+            return z_on_face and within_xy
+            
+        elif face_name == 'back':
+            # Back face: Z should be near -half_size, X and Y within bounds  
+            z_on_face = abs(rel_z + half_size) < 0.1  # Close to back face
+            within_xy = abs(rel_x) <= extended_tolerance and abs(rel_y) <= extended_tolerance
+            return z_on_face and within_xy
+            
+        elif face_name == 'right':
+            # Right face: X should be near +half_size, Y and Z within bounds
+            x_on_face = abs(rel_x - half_size) < 0.1  # Close to right face
+            within_yz = abs(rel_y) <= extended_tolerance and abs(rel_z) <= extended_tolerance
+            return x_on_face and within_yz
+            
+        elif face_name == 'left':
+            # Left face: X should be near -half_size, Y and Z within bounds
+            x_on_face = abs(rel_x + half_size) < 0.1  # Close to left face
+            within_yz = abs(rel_y) <= extended_tolerance and abs(rel_z) <= extended_tolerance
+            return x_on_face and within_yz
+            
+        elif face_name == 'top':
+            # Top face: Y should be near +half_size, X and Z within bounds
+            y_on_face = abs(rel_y - half_size) < 0.1  # Close to top face
+            within_xz = abs(rel_x) <= extended_tolerance and abs(rel_z) <= extended_tolerance
+            return y_on_face and within_xz
+            
+        elif face_name == 'bottom':
+            # Bottom face: Y should be near -half_size, X and Z within bounds
+            y_on_face = abs(rel_y + half_size) < 0.1  # Close to bottom face
+            within_xz = abs(rel_x) <= extended_tolerance and abs(rel_z) <= extended_tolerance
+            return y_on_face and within_xz
+            
+        return False
+    
+    def is_face_visible_from_camera(self, face_name):
+        """Determine if a face is visible from the current camera angle - optimized for responsiveness"""
+        # Get current camera rotations
+        rx = self.renderer.rotation_x % 360
+        ry = self.renderer.rotation_y % 360
+        
+        # Normalize angles to [-180, 180] range for easier calculation
+        if rx > 180:
+            rx -= 360
+        if ry > 180:
+            ry -= 360
+        
+        # More generous visibility ranges for better user experience
+        # A face is visible if the camera is within ~90-100 degrees of facing it
+        
+        if face_name == 'front':
+            # Front face is visible when looking mostly forward
+            return -80 < ry < 80
+            
+        elif face_name == 'back':
+            # Back face is visible when looking mostly backward
+            return ry > 100 or ry < -100
+            
+        elif face_name == 'right':
+            # Right face is visible when looking mostly right
+            return -170 < ry < -10
+            
+        elif face_name == 'left':
+            # Left face is visible when looking mostly left
+            return 10 < ry < 170
+            
+        elif face_name == 'top':
+            # Top face is visible when looking from above or at level
+            return rx < 30
+            
+        elif face_name == 'bottom':
+            # Bottom face is visible when looking from below or at level
+            return rx > -30
+            
+        return False
     
     def get_accurate_ray(self, mouse_x, mouse_y):
         """Get the most accurate ray possible using OpenGL matrices"""

@@ -428,12 +428,33 @@ class MouseCubeInteraction:
         return 'front', (0, 0, 1)
     
     def method_opengl_picking(self, mouse_x, mouse_y):
-        """Method 1: Enhanced OpenGL matrix picking"""
+        """Method 1: Enhanced OpenGL matrix picking - PRIORITIZES face you're looking at directly"""
         try:
             # Get current matrices
             model_matrix = glGetDoublev(GL_MODELVIEW_MATRIX)
             proj_matrix = glGetDoublev(GL_PROJECTION_MATRIX) 
             viewport = glGetIntegerv(GL_VIEWPORT)
+            
+            # Get camera rotation for special handling
+            ry = self.renderer.rotation_y % 360
+            if ry > 180:
+                ry -= 360
+            rx = self.renderer.rotation_x % 360
+            if rx > 180:
+                rx -= 360
+            
+            # PRIORITY: If looking directly at a face, strongly prefer that face
+            if self.is_direct_face_view(ry, rx):
+                primary_face = self.get_primary_face_from_rotation(ry)
+                # For direct views, use simple center-based detection
+                center_x = viewport[2] / 2
+                center_y = viewport[3] / 2
+                distance_from_center = math.sqrt((mouse_x - center_x)**2 + (mouse_y - center_y)**2)
+                
+                # If clicking anywhere near center while looking directly at a face, 
+                # prioritize that face
+                if distance_from_center < 200:  # Very generous center area
+                    return (primary_face, self._get_cube_pos_for_face(primary_face))
             
             # Calculate exact cube geometry
             spacing = self.renderer.cube_spacing * 0.85
@@ -466,7 +487,7 @@ class MouseCubeInteraction:
             min_distance = float('inf')
             
             for face_name, world_pos, grid_pos in face_positions:
-                if not self.is_face_currently_visible(face_name):
+                if not self.is_face_currently_visible_enhanced(face_name):
                     continue
                     
                 try:
@@ -485,8 +506,13 @@ class MouseCubeInteraction:
                         dy = mouse_y - sy
                         screen_dist = math.sqrt(dx*dx + dy*dy)
                         
-                        # Use VERY generous hit radius
-                        hit_radius = 100  # Large radius for all faces
+                        # ENHANCED: Much larger radius for direct face views
+                        if self.is_direct_face_view(ry, rx) and face_name in ['left', 'right']:
+                            hit_radius = 150  # Extra large for direct L/R views
+                        elif face_name in ['left', 'right']:
+                            hit_radius = 120  # Large radius for side faces
+                        else:
+                            hit_radius = 100  # Standard for other faces
                         
                         if screen_dist < hit_radius and screen_dist < min_distance:
                             min_distance = screen_dist
@@ -500,8 +526,32 @@ class MouseCubeInteraction:
         except:
             return None
     
+    def get_primary_face_from_rotation(self, ry):
+        """Get the primary face you're looking at based on rotation"""
+        # Get both rotations for complete detection
+        rx = self.renderer.rotation_x % 360
+        if rx > 180:
+            rx -= 360
+            
+        # Check X rotation first for top/bottom
+        if abs(rx - 90) < 15:
+            return 'top'
+        elif abs(rx + 90) < 15:
+            return 'bottom'
+        
+        # Then check Y rotation for front/back/left/right
+        if abs(ry) < 15:
+            return 'front'
+        elif abs(ry - 90) < 15:
+            return 'left'  # FIXED
+        elif abs(ry + 90) < 15:
+            return 'right'  # FIXED
+        elif abs(ry - 180) < 15 or abs(ry + 180) < 15:
+            return 'back'
+        return 'front'  # Default fallback
+    
     def method_screen_mapping(self, mouse_x, mouse_y):
-        """Method 2: Reliable screen region mapping"""
+        """Method 2: ENHANCED screen region mapping - especially for direct face views"""
         width = self.renderer.width
         height = self.renderer.height
         
@@ -517,7 +567,12 @@ class MouseCubeInteraction:
         nx = (mouse_x / width) * 2 - 1    # -1 to 1
         ny = (mouse_y / height) * 2 - 1   # -1 to 1
         
-        # Define screen regions with rotation compensation
+        # ENHANCED: Special handling for direct face-on views
+        # Check if we're looking directly at R or L faces
+        if self.is_direct_face_view(ry, rx):
+            return self.handle_direct_face_view(nx, ny, ry, rx)
+        
+        # Standard mapping for rotated views
         face_result = None
         
         # Determine primary face based on screen position and rotation
@@ -533,6 +588,43 @@ class MouseCubeInteraction:
                 face_result = ('bottom', (0, -1, 0))
         
         return face_result
+    
+    def is_direct_face_view(self, ry, rx):
+        """Check if we're looking directly at a face (minimal rotation)"""
+        # Direct views: minimal rotation around main axes
+        return ((abs(ry) < 15 or abs(ry - 90) < 15 or abs(ry + 90) < 15 or 
+                abs(ry - 180) < 15 or abs(ry + 180) < 15) and abs(rx) < 30) or \
+               (abs(rx - 90) < 15 or abs(rx + 90) < 15)  # Added top/bottom direct views
+    
+    def handle_direct_face_view(self, nx, ny, ry, rx):
+        """Handle direct face-on views - FIXED to work like front/back faces"""
+        # Check for top/bottom direct views first (based on X rotation)
+        if abs(rx - 90) < 15:  # Looking at TOP face directly
+            # When looking at top, anywhere you click should move the TOP face
+            return ('top', (0, 1, 0))
+        elif abs(rx + 90) < 15:  # Looking at BOTTOM face directly
+            # When looking at bottom, anywhere you click should move the BOTTOM face
+            return ('bottom', (0, -1, 0))
+        
+        # Then check for front/back/left/right direct views (based on Y rotation)
+        elif abs(ry) < 15:  # Looking at FRONT face directly
+            # When looking at front, anywhere you click should move the FRONT face
+            return ('front', (0, 0, 1))
+                    
+        elif abs(ry - 90) < 15:  # Looking at LEFT face directly (FIXED)
+            # When looking at left face, anywhere you click should move the LEFT face
+            return ('left', (-1, 0, 0))
+                    
+        elif abs(ry + 90) < 15:  # Looking at RIGHT face directly (FIXED)  
+            # When looking at right face, anywhere you click should move the RIGHT face
+            return ('right', (1, 0, 0))
+                    
+        elif abs(ry - 180) < 15 or abs(ry + 180) < 15:  # Looking at BACK face directly
+            # When looking at back, anywhere you click should move the BACK face
+            return ('back', (0, 0, -1))
+        
+        # Fallback for edge cases
+        return ('front', (0, 0, 1))
     
     def get_face_for_screen_right(self, ry):
         """Determine which face appears on right side of screen"""
@@ -634,6 +726,33 @@ class MouseCubeInteraction:
             return rx < 100
         elif face_name == 'bottom':
             return rx > -100
+        
+        return True
+    
+    def is_face_currently_visible_enhanced(self, face_name):
+        """Enhanced visibility check - especially for direct face views"""
+        ry = self.renderer.rotation_y % 360
+        if ry > 180:
+            ry -= 360
+        rx = self.renderer.rotation_x % 360
+        if rx > 180:
+            rx -= 360
+        
+        # MUCH MORE generous visibility for direct views
+        if face_name == 'front':
+            return -110 < ry < 110
+        elif face_name == 'back':
+            return ry > 70 or ry < -70
+        elif face_name == 'right':
+            # EXTRA generous for right face, especially around 90 degrees
+            return -170 < ry < 170  # Almost always visible
+        elif face_name == 'left':
+            # EXTRA generous for left face, especially around -90 degrees  
+            return -170 < ry < 170  # Almost always visible
+        elif face_name == 'top':
+            return rx < 130  # Very generous upward view
+        elif face_name == 'bottom':
+            return rx > -130  # Very generous downward view
         
         return True
     

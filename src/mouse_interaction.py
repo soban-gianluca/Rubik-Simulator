@@ -330,8 +330,8 @@ class MouseCubeInteraction:
             cube_center = [0, 0, -4]
             half_cube_size = actual_spacing
             
-            # Make face bounds more generous for better detection
-            face_tolerance = actual_spacing * 1.4  # 40% larger detection area
+            # Make face bounds EXTREMELY generous for better detection
+            face_tolerance = actual_spacing * 2.0  # Much larger detection area (was 1.4)
             
             # Define the 6 faces of the actual 3x3x3 cube
             all_faces = [
@@ -368,13 +368,16 @@ class MouseCubeInteraction:
                         )
                         valid_intersections.append((face_name, distance, intersection))
             
-            # Return the closest intersected face
+            # Return the best face based on both distance and how directly it's facing the camera
             if valid_intersections:
-                valid_intersections.sort(key=lambda x: x[1])  # Sort by distance
-                best_face = valid_intersections[0][0]
-                print(f"Selected face: {best_face}")  # Clean feedback
-                cube_pos = self._get_cube_pos_for_face(best_face)
-                return best_face, cube_pos
+                # Sort by distance first
+                valid_intersections.sort(key=lambda x: x[1])
+                
+                # But give priority to faces that are more directly facing the camera
+                best_face_with_priority = self.select_best_face_by_angle(valid_intersections)
+                print(f"Selected face: {best_face_with_priority}")  # Clean feedback
+                cube_pos = self._get_cube_pos_for_face(best_face_with_priority)
+                return best_face_with_priority, cube_pos
                 
         except Exception as e:
             pass  # Silent fail
@@ -382,59 +385,117 @@ class MouseCubeInteraction:
         return None, None
     
     def is_point_on_cube_face(self, point, face_name, cube_center, tolerance):
-        """Improved bounds checking that works better with rotated cubes"""
+        """Much more generous bounds checking - make entire visible face clickable"""
         # Convert point to cube-relative coordinates
         rel_x = point[0] - cube_center[0]
         rel_y = point[1] - cube_center[1] 
         rel_z = point[2] - cube_center[2]
         
-        # Use more generous bounds for better edge detection
         # The actual cube half-size
         half_size = 0.52 * 0.85  # cube_spacing * scale_factor
         
-        # Extend the bounds significantly for better selection
-        extended_tolerance = tolerance * 1.2  # Even more generous
+        # Make ALL faces much more generous - entire visible area should be clickable
+        if face_name in ['left', 'right']:
+            # EXTREMELY generous for side faces - make entire visible area clickable
+            extended_tolerance = tolerance * 2.5  # Much larger area
+            face_plane_tolerance = 0.3  # Much more lenient plane detection
+        else:
+            extended_tolerance = tolerance * 1.5  # Also more generous for other faces
+            face_plane_tolerance = 0.2
         
         if face_name == 'front':
             # Front face: Z should be near +half_size, X and Y within bounds
-            z_on_face = abs(rel_z - half_size) < 0.1  # Close to front face
+            z_on_face = abs(rel_z - half_size) < face_plane_tolerance
             within_xy = abs(rel_x) <= extended_tolerance and abs(rel_y) <= extended_tolerance
             return z_on_face and within_xy
             
         elif face_name == 'back':
             # Back face: Z should be near -half_size, X and Y within bounds  
-            z_on_face = abs(rel_z + half_size) < 0.1  # Close to back face
+            z_on_face = abs(rel_z + half_size) < face_plane_tolerance
             within_xy = abs(rel_x) <= extended_tolerance and abs(rel_y) <= extended_tolerance
             return z_on_face and within_xy
             
         elif face_name == 'right':
             # Right face: X should be near +half_size, Y and Z within bounds
-            x_on_face = abs(rel_x - half_size) < 0.1  # Close to right face
+            # MUCH more lenient - should cover entire visible right face area
+            x_on_face = abs(rel_x - half_size) < face_plane_tolerance
             within_yz = abs(rel_y) <= extended_tolerance and abs(rel_z) <= extended_tolerance
             return x_on_face and within_yz
             
         elif face_name == 'left':
             # Left face: X should be near -half_size, Y and Z within bounds
-            x_on_face = abs(rel_x + half_size) < 0.1  # Close to left face
+            # MUCH more lenient - should cover entire visible left face area
+            x_on_face = abs(rel_x + half_size) < face_plane_tolerance
             within_yz = abs(rel_y) <= extended_tolerance and abs(rel_z) <= extended_tolerance
             return x_on_face and within_yz
             
         elif face_name == 'top':
             # Top face: Y should be near +half_size, X and Z within bounds
-            y_on_face = abs(rel_y - half_size) < 0.1  # Close to top face
+            y_on_face = abs(rel_y - half_size) < face_plane_tolerance
             within_xz = abs(rel_x) <= extended_tolerance and abs(rel_z) <= extended_tolerance
             return y_on_face and within_xz
             
         elif face_name == 'bottom':
             # Bottom face: Y should be near -half_size, X and Z within bounds
-            y_on_face = abs(rel_y + half_size) < 0.1  # Close to bottom face
+            y_on_face = abs(rel_y + half_size) < face_plane_tolerance
             within_xz = abs(rel_x) <= extended_tolerance and abs(rel_z) <= extended_tolerance
             return y_on_face and within_xz
             
         return False
     
+    def select_best_face_by_angle(self, valid_intersections):
+        """Select the best face with aggressive priority for side faces"""
+        if len(valid_intersections) == 1:
+            return valid_intersections[0][0]
+        
+        # Get current camera rotations
+        ry = self.renderer.rotation_y % 360
+        if ry > 180:
+            ry -= 360
+        
+        # Much more aggressive priority system for side faces
+        face_priorities = []
+        
+        for face_name, distance, intersection in valid_intersections:
+            priority_score = distance  # Start with distance as base score
+            
+            # AGGRESSIVE PRIORITY for side faces when they're visible
+            if face_name == 'right' and -160 < ry < -20:
+                # If right face is visible, give it EXTREMELY high priority
+                if -140 < ry < -40:
+                    priority_score *= 0.1  # Extremely high priority in main range
+                else:
+                    priority_score *= 0.3  # Very high priority in extended range
+                    
+            elif face_name == 'left' and 20 < ry < 160:
+                # If left face is visible, give it EXTREMELY high priority
+                if 40 < ry < 140:
+                    priority_score *= 0.1  # Extremely high priority in main range
+                else:
+                    priority_score *= 0.3  # Very high priority in extended range
+                    
+            elif face_name == 'front' and -50 < ry < 50:
+                # Front gets priority only when looking directly forward
+                if -25 < ry < 25:
+                    priority_score *= 0.8  # Normal priority when looking directly forward
+                else:
+                    priority_score *= 1.2  # Lower priority when at side angles
+                    
+            elif face_name == 'back' and (ry > 130 or ry < -130):
+                # Back gets priority only when looking directly backward
+                if ry > 155 or ry < -155:
+                    priority_score *= 0.8  # Normal priority when looking directly backward
+                else:
+                    priority_score *= 1.2  # Lower priority when at side angles
+            
+            face_priorities.append((face_name, priority_score))
+        
+        # Return the face with the best (lowest) priority score
+        best_face = min(face_priorities, key=lambda x: x[1])[0]
+        return best_face
+    
     def is_face_visible_from_camera(self, face_name):
-        """Determine if a face is visible from the current camera angle - optimized for responsiveness"""
+        """Determine if a face is visible from the current camera angle - much more generous for sides"""
         # Get current camera rotations
         rx = self.renderer.rotation_x % 360
         ry = self.renderer.rotation_y % 360
@@ -445,32 +506,31 @@ class MouseCubeInteraction:
         if ry > 180:
             ry -= 360
         
-        # More generous visibility ranges for better user experience
-        # A face is visible if the camera is within ~90-100 degrees of facing it
+        # Much more generous ranges, especially for side faces
         
         if face_name == 'front':
-            # Front face is visible when looking mostly forward
-            return -80 < ry < 80
+            # Front face visible when looking forward-ish
+            return -50 < ry < 50
             
         elif face_name == 'back':
-            # Back face is visible when looking mostly backward
-            return ry > 100 or ry < -100
+            # Back face visible when looking backward-ish
+            return ry > 130 or ry < -130
             
         elif face_name == 'right':
-            # Right face is visible when looking mostly right
-            return -170 < ry < -10
+            # RIGHT FACE: Much more generous range - visible from many angles
+            return -160 < ry < -20
             
         elif face_name == 'left':
-            # Left face is visible when looking mostly left
-            return 10 < ry < 170
+            # LEFT FACE: Much more generous range - visible from many angles  
+            return 20 < ry < 160
             
         elif face_name == 'top':
-            # Top face is visible when looking from above or at level
-            return rx < 30
+            # Top face visible when looking from above or level
+            return rx < 40
             
         elif face_name == 'bottom':
-            # Bottom face is visible when looking from below or at level
-            return rx > -30
+            # Bottom face visible when looking from below or level
+            return rx > -40
             
         return False
     

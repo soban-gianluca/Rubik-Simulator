@@ -634,11 +634,11 @@ class MouseCubeInteraction:
             elif direction == 'up': return "F'"
             
         elif face_name == 'back':
-            # Back face: movements are mirrored
-            if direction == 'right': return "B'"
-            elif direction == 'left': return 'B'
-            elif direction == 'down': return "B'"
-            elif direction == 'up': return 'B'
+            # Back face: fix inverted movements
+            if direction == 'right': return 'B'
+            elif direction == 'left': return "B'"
+            elif direction == 'down': return 'B'
+            elif direction == 'up': return "B'"
             
         elif face_name == 'right':
             # Right face: consider viewing angle
@@ -659,25 +659,25 @@ class MouseCubeInteraction:
                 elif direction == 'up': return "R'"
                 
         elif face_name == 'left':
-            # Left face: consider viewing angle
+            # Left face: fix inverted movements
             if 315 <= ry or ry < 45:  # Viewing from front
-                if direction == 'right': return "L'"
-                elif direction == 'left': return 'L'
-                elif direction == 'down': return "L'"
-                elif direction == 'up': return 'L'
-            elif 135 <= ry < 225:  # Viewing from back
                 if direction == 'right': return 'L'
                 elif direction == 'left': return "L'"
                 elif direction == 'down': return 'L'
                 elif direction == 'up': return "L'"
-            else:  # Viewing from side
+            elif 135 <= ry < 225:  # Viewing from back
                 if direction == 'right': return "L'"
                 elif direction == 'left': return 'L'
                 elif direction == 'down': return "L'"
                 elif direction == 'up': return 'L'
+            else:  # Viewing from side
+                if direction == 'right': return 'L'
+                elif direction == 'left': return "L'"
+                elif direction == 'down': return 'L'
+                elif direction == 'up': return "L'"
                 
         elif face_name == 'top':
-            # Top face: adjust based on viewing angle
+            # Top face: fix inverted movements for all viewing angles
             if 315 <= ry or ry < 45:  # Viewing from front
                 if direction == 'right': return 'U'
                 elif direction == 'left': return "U'"
@@ -686,29 +686,29 @@ class MouseCubeInteraction:
             elif 45 <= ry < 135:  # Viewing from right
                 if direction == 'right': return 'U'
                 elif direction == 'left': return "U'"
-                elif direction == 'down': return "U'"
-                elif direction == 'up': return 'U'
+                elif direction == 'down': return 'U'
+                elif direction == 'up': return "U'"
             elif 135 <= ry < 225:  # Viewing from back
-                if direction == 'right': return "U'"
-                elif direction == 'left': return 'U'
-                elif direction == 'down': return "U'"
-                elif direction == 'up': return 'U'
+                if direction == 'right': return 'U'
+                elif direction == 'left': return "U'"
+                elif direction == 'down': return 'U'
+                elif direction == 'up': return "U'"
             else:  # Viewing from left
-                if direction == 'right': return "U'"
-                elif direction == 'left': return 'U'
+                if direction == 'right': return 'U'
+                elif direction == 'left': return "U'"
                 elif direction == 'down': return 'U'
                 elif direction == 'up': return "U'"
                 
         elif face_name == 'bottom':
-            # Bottom face: adjust based on viewing angle
+            # Bottom face: fix flipped movements - make consistent with other faces
             if 315 <= ry or ry < 45:  # Viewing from front
-                if direction == 'right': return "D'"
-                elif direction == 'left': return 'D'
-                elif direction == 'down': return "D'"
-                elif direction == 'up': return 'D'
+                if direction == 'right': return 'D'
+                elif direction == 'left': return "D'"
+                elif direction == 'down': return 'D'
+                elif direction == 'up': return "D'"
             elif 45 <= ry < 135:  # Viewing from right
-                if direction == 'right': return "D'"
-                elif direction == 'left': return 'D'
+                if direction == 'right': return 'D'
+                elif direction == 'left': return "D'"
                 elif direction == 'down': return 'D'
                 elif direction == 'up': return "D'"
             elif 135 <= ry < 225:  # Viewing from back
@@ -718,6 +718,9 @@ class MouseCubeInteraction:
                 elif direction == 'up': return "D'"
             else:  # Viewing from left
                 if direction == 'right': return 'D'
+                elif direction == 'left': return "D'"
+                elif direction == 'down': return 'D'
+                elif direction == 'up': return "D'"
                 elif direction == 'left': return "D'"
                 elif direction == 'down': return "D'"
                 elif direction == 'up': return 'D'

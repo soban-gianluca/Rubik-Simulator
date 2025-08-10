@@ -331,7 +331,7 @@ class MouseCubeInteraction:
             half_cube_size = actual_spacing
             
             # Make face bounds EXTREMELY generous for better detection
-            face_tolerance = actual_spacing * 2.0  # Much larger detection area (was 1.4)
+            face_tolerance = actual_spacing * 3.0  # MASSIVE detection area (was 2.0)
             
             # Define the 6 faces of the actual 3x3x3 cube
             all_faces = [
@@ -385,7 +385,7 @@ class MouseCubeInteraction:
         return None, None
     
     def is_point_on_cube_face(self, point, face_name, cube_center, tolerance):
-        """Much more generous bounds checking - make entire visible face clickable"""
+        """Ultra-generous bounds checking - make entire visible face area clickable like front/back"""
         # Convert point to cube-relative coordinates
         rel_x = point[0] - cube_center[0]
         rel_y = point[1] - cube_center[1] 
@@ -394,14 +394,14 @@ class MouseCubeInteraction:
         # The actual cube half-size
         half_size = 0.52 * 0.85  # cube_spacing * scale_factor
         
-        # Make ALL faces much more generous - entire visible area should be clickable
+        # ULTRA-GENEROUS detection for ALL faces - make them as easy to click as front/back
         if face_name in ['left', 'right']:
-            # EXTREMELY generous for side faces - make entire visible area clickable
-            extended_tolerance = tolerance * 2.5  # Much larger area
-            face_plane_tolerance = 0.3  # Much more lenient plane detection
+            # MAXIMUM generosity for side faces - make them work like front/back
+            extended_tolerance = tolerance * 4.0  # 4x larger detection area
+            face_plane_tolerance = 0.5  # Very lenient plane detection
         else:
-            extended_tolerance = tolerance * 1.5  # Also more generous for other faces
-            face_plane_tolerance = 0.2
+            extended_tolerance = tolerance * 2.0  # Also very generous for other faces
+            face_plane_tolerance = 0.3
         
         if face_name == 'front':
             # Front face: Z should be near +half_size, X and Y within bounds
@@ -417,14 +417,14 @@ class MouseCubeInteraction:
             
         elif face_name == 'right':
             # Right face: X should be near +half_size, Y and Z within bounds
-            # MUCH more lenient - should cover entire visible right face area
+            # MAXIMUM GENEROSITY - entire visible right area should be clickable
             x_on_face = abs(rel_x - half_size) < face_plane_tolerance
             within_yz = abs(rel_y) <= extended_tolerance and abs(rel_z) <= extended_tolerance
             return x_on_face and within_yz
             
         elif face_name == 'left':
             # Left face: X should be near -half_size, Y and Z within bounds
-            # MUCH more lenient - should cover entire visible left face area
+            # MAXIMUM GENEROSITY - entire visible left area should be clickable
             x_on_face = abs(rel_x + half_size) < face_plane_tolerance
             within_yz = abs(rel_y) <= extended_tolerance and abs(rel_z) <= extended_tolerance
             return x_on_face and within_yz
@@ -444,7 +444,7 @@ class MouseCubeInteraction:
         return False
     
     def select_best_face_by_angle(self, valid_intersections):
-        """Select the best face with aggressive priority for side faces"""
+        """Select the best face with MAXIMUM priority for side faces"""
         if len(valid_intersections) == 1:
             return valid_intersections[0][0]
         
@@ -453,40 +453,40 @@ class MouseCubeInteraction:
         if ry > 180:
             ry -= 360
         
-        # Much more aggressive priority system for side faces
+        # MAXIMUM PRIORITY system for side faces - make them win almost always when visible
         face_priorities = []
         
         for face_name, distance, intersection in valid_intersections:
             priority_score = distance  # Start with distance as base score
             
-            # AGGRESSIVE PRIORITY for side faces when they're visible
+            # ULTIMATE PRIORITY for side faces when they're visible
             if face_name == 'right' and -160 < ry < -20:
-                # If right face is visible, give it EXTREMELY high priority
+                # If right face is visible, give it MAXIMUM priority
                 if -140 < ry < -40:
-                    priority_score *= 0.1  # Extremely high priority in main range
+                    priority_score *= 0.05  # MAXIMUM priority in main range
                 else:
-                    priority_score *= 0.3  # Very high priority in extended range
+                    priority_score *= 0.15  # Very high priority in extended range
                     
             elif face_name == 'left' and 20 < ry < 160:
-                # If left face is visible, give it EXTREMELY high priority
+                # If left face is visible, give it MAXIMUM priority
                 if 40 < ry < 140:
-                    priority_score *= 0.1  # Extremely high priority in main range
+                    priority_score *= 0.05  # MAXIMUM priority in main range
                 else:
-                    priority_score *= 0.3  # Very high priority in extended range
+                    priority_score *= 0.15  # Very high priority in extended range
                     
             elif face_name == 'front' and -50 < ry < 50:
-                # Front gets priority only when looking directly forward
+                # Front gets normal priority only when looking directly forward
                 if -25 < ry < 25:
-                    priority_score *= 0.8  # Normal priority when looking directly forward
+                    priority_score *= 0.9  # Normal priority when looking directly forward
                 else:
-                    priority_score *= 1.2  # Lower priority when at side angles
+                    priority_score *= 2.0  # Much lower priority when at side angles
                     
             elif face_name == 'back' and (ry > 130 or ry < -130):
-                # Back gets priority only when looking directly backward
+                # Back gets normal priority only when looking directly backward
                 if ry > 155 or ry < -155:
-                    priority_score *= 0.8  # Normal priority when looking directly backward
+                    priority_score *= 0.9  # Normal priority when looking directly backward
                 else:
-                    priority_score *= 1.2  # Lower priority when at side angles
+                    priority_score *= 2.0  # Much lower priority when at side angles
             
             face_priorities.append((face_name, priority_score))
         
@@ -495,7 +495,7 @@ class MouseCubeInteraction:
         return best_face
     
     def is_face_visible_from_camera(self, face_name):
-        """Determine if a face is visible from the current camera angle - much more generous for sides"""
+        """Determine if a face is visible from the current camera angle - MAXIMUM generosity for sides"""
         # Get current camera rotations
         rx = self.renderer.rotation_x % 360
         ry = self.renderer.rotation_y % 360
@@ -506,31 +506,31 @@ class MouseCubeInteraction:
         if ry > 180:
             ry -= 360
         
-        # Much more generous ranges, especially for side faces
+        # MAXIMUM generosity - make side faces visible from almost any angle where they appear
         
         if face_name == 'front':
             # Front face visible when looking forward-ish
-            return -50 < ry < 50
+            return -60 < ry < 60
             
         elif face_name == 'back':
             # Back face visible when looking backward-ish
-            return ry > 130 or ry < -130
+            return ry > 120 or ry < -120
             
         elif face_name == 'right':
-            # RIGHT FACE: Much more generous range - visible from many angles
-            return -160 < ry < -20
+            # RIGHT FACE: MAXIMUM range - visible from almost any angle where it appears
+            return -170 < ry < -10
             
         elif face_name == 'left':
-            # LEFT FACE: Much more generous range - visible from many angles  
-            return 20 < ry < 160
+            # LEFT FACE: MAXIMUM range - visible from almost any angle where it appears  
+            return 10 < ry < 170
             
         elif face_name == 'top':
             # Top face visible when looking from above or level
-            return rx < 40
+            return rx < 50
             
         elif face_name == 'bottom':
             # Bottom face visible when looking from below or level
-            return rx > -40
+            return rx > -50
             
         return False
     

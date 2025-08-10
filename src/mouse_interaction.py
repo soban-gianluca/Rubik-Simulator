@@ -456,6 +456,22 @@ class MouseCubeInteraction:
                 if distance_from_center < 200:  # Very generous center area
                     return (primary_face, self._get_cube_pos_for_face(primary_face))
             
+            # ENHANCED: Priority for medium tilt views too
+            elif self.is_medium_tilt_view(ry, rx):
+                # For medium tilts, use more generous detection
+                center_x = viewport[2] / 2
+                center_y = viewport[3] / 2
+                distance_from_center = math.sqrt((mouse_x - center_x)**2 + (mouse_y - center_y)**2)
+                
+                if distance_from_center < 150:  # Generous area for medium tilts
+                    medium_result = self.handle_medium_tilt_view(
+                        (mouse_x / viewport[2]) * 2 - 1,  # nx
+                        (mouse_y / viewport[3]) * 2 - 1,  # ny  
+                        ry, rx
+                    )
+                    if medium_result:
+                        return medium_result
+            
             # Calculate exact cube geometry
             spacing = self.renderer.cube_spacing * 0.85
             
@@ -572,6 +588,10 @@ class MouseCubeInteraction:
         if self.is_direct_face_view(ry, rx):
             return self.handle_direct_face_view(nx, ny, ry, rx)
         
+        # NEW: Special handling for medium tilt views
+        if self.is_medium_tilt_view(ry, rx):
+            return self.handle_medium_tilt_view(nx, ny, ry, rx)
+        
         # Standard mapping for rotated views
         face_result = None
         
@@ -595,6 +615,13 @@ class MouseCubeInteraction:
         return ((abs(ry) < 15 or abs(ry - 90) < 15 or abs(ry + 90) < 15 or 
                 abs(ry - 180) < 15 or abs(ry + 180) < 15) and abs(rx) < 30) or \
                (abs(rx - 90) < 15 or abs(rx + 90) < 15)  # Added top/bottom direct views
+    
+    def is_medium_tilt_view(self, ry, rx):
+        """Check if we're in a medium tilt view (30-75 degree range)"""
+        # Medium tilts that need special handling
+        return ((15 <= abs(ry) <= 75 or 15 <= abs(ry - 90) <= 75 or 15 <= abs(ry + 90) <= 75 or 
+                15 <= abs(ry - 180) <= 75 or 15 <= abs(ry + 180) <= 75) and abs(rx) < 60) or \
+               (15 <= abs(rx - 90) <= 75 or 15 <= abs(rx + 90) <= 75)
     
     def handle_direct_face_view(self, nx, ny, ry, rx):
         """Handle direct face-on views - FIXED to work like front/back faces"""
@@ -625,6 +652,55 @@ class MouseCubeInteraction:
         
         # Fallback for edge cases
         return ('front', (0, 0, 1))
+    
+    def handle_medium_tilt_view(self, nx, ny, ry, rx):
+        """Handle medium tilt views (30-75 degrees) with enhanced detection"""
+        # Get the primary face based on which rotation is dominant
+        primary_face = None
+        
+        # Check X rotation first for top/bottom dominance
+        if abs(rx) > abs(ry):  # X rotation is dominant
+            if rx > 30:  # Looking down towards bottom
+                primary_face = 'top'  # FIXED: was 'bottom'
+            elif rx < -30:  # Looking up towards top
+                primary_face = 'bottom'  # FIXED: was 'top'
+        
+        # If no X dominance, check Y rotation for side faces
+        if primary_face is None:
+            if ry > 15:  # Rotating towards left side
+                if ry < 75:
+                    primary_face = 'left'
+                else:
+                    primary_face = 'back' if ry > 105 else 'left'
+            elif ry < -15:  # Rotating towards right side
+                if ry > -75:
+                    primary_face = 'right'
+                else:
+                    primary_face = 'back' if ry < -105 else 'right'
+            else:  # Near front
+                primary_face = 'front'
+        
+        # Enhanced screen region mapping for medium tilts
+        # Make detection more generous based on mouse position
+        if primary_face:
+            # Check if mouse is in a reasonable area for the primary face
+            if abs(nx) < 0.7 and abs(ny) < 0.7:  # Central area
+                return (primary_face, self._get_cube_pos_for_face(primary_face))
+            elif primary_face in ['top', 'bottom']:
+                # For top/bottom, be more generous with vertical positioning
+                if (primary_face == 'top' and ny < 0.3) or (primary_face == 'bottom' and ny > -0.3):
+                    return (primary_face, self._get_cube_pos_for_face(primary_face))
+            elif primary_face in ['left', 'right']:
+                # For left/right, be more generous with horizontal positioning
+                if (primary_face == 'left' and nx > -0.5) or (primary_face == 'right' and nx < 0.5):
+                    return (primary_face, self._get_cube_pos_for_face(primary_face))
+            elif primary_face in ['front', 'back']:
+                # For front/back, check reasonable center area
+                if abs(nx) < 0.5 and abs(ny) < 0.5:
+                    return (primary_face, self._get_cube_pos_for_face(primary_face))
+        
+        # Fallback to standard mapping if no primary face detected properly
+        return None
     
     def get_face_for_screen_right(self, ry):
         """Determine which face appears on right side of screen"""

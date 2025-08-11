@@ -80,6 +80,9 @@ class MouseInteraction:
         if ry > 180:
             ry -= 360
         
+        # Debug output (temporary)
+        # print(f"🔍 Camera rotation: rx={rx:.1f}°, ry={ry:.1f}°")
+        
         # Determine primary face based on rotation
         # We use wider ranges for more forgiving detection
         if -45 <= ry <= 45:
@@ -90,9 +93,9 @@ class MouseInteraction:
             else:  # rx < -45
                 return 'top'
         elif ry > 45 and ry <= 135:
-            return 'right'
+            return 'left'  # Fixed: positive Y rotation = left face
         elif ry < -45 and ry >= -135:
-            return 'left'
+            return 'right'  # Fixed: negative Y rotation = right face
         else:  # ry > 135 or ry < -135
             if -45 <= rx <= 45:
                 return 'back'
@@ -244,34 +247,76 @@ class MouseInteraction:
             return self._get_vertical_move_from_position(zone, primary_direction)
     
     def _get_horizontal_move_from_position(self, zone, direction):
-        """Get horizontal move based on 3x3 grid position - INTUITIVE DIRECTIONS"""
-        # Map 3x3 positions to row moves with intuitive directions based on visual perspective
+        """Get horizontal move based on 3x3 grid position - SIMPLIFIED FACE-AWARE"""
+        # Map 3x3 positions to row moves with simplified face-aware directions
         if zone in ['top_left', 'top_center', 'top_right']:
-            # Top row (U moves) - always follows visual left/right drag direction
-            return 'U' if direction == 'right' else "U'"
+            # Top row (U moves) - simplified direction logic
+            if self.detected_face in ['front', 'right', 'top']:
+                return 'U' if direction == 'right' else "U'"
+            else:  # back, left, bottom - flip direction
+                return "U'" if direction == 'right' else 'U'
                 
         elif zone in ['middle_left', 'middle_center', 'middle_right']:
-            # Middle row (E moves) - always follows visual left/right drag direction
-            return 'E' if direction == 'right' else "E'"
+            # Middle row (E moves) - simplified direction logic
+            if self.detected_face in ['front', 'right', 'top']:
+                return 'E' if direction == 'right' else "E'"
+            else:  # back, left, bottom - flip direction
+                return "E'" if direction == 'right' else 'E'
                 
         else:  # bottom row
-            # Bottom row (D moves) - always follows visual left/right drag direction
-            return 'D' if direction == 'right' else "D'"
+            # Bottom row (D moves) - simplified direction logic
+            if self.detected_face in ['front', 'right', 'top']:
+                return 'D' if direction == 'right' else "D'"
+            else:  # back, left, bottom - flip direction
+                return "D'" if direction == 'right' else 'D'
     
     def _get_vertical_move_from_position(self, zone, direction):
-        """Get vertical move based on 3x3 grid position - INTUITIVE DIRECTIONS"""
-        # Map 3x3 positions to column moves with intuitive directions based on visual perspective
+        """Get vertical move based on 3x3 grid position - SIMPLIFIED FACE-AWARE"""
+        # Map 3x3 positions to column moves with simplified face-aware directions
         if zone in ['top_left', 'middle_left', 'bottom_left']:
-            # Left column (L moves) - always follows visual up/down drag direction
-            return "L'" if direction == 'down' else 'L'
+            # Left column - different moves depending on viewing face
+            if self.detected_face == 'front':
+                return "L'" if direction == 'down' else 'L'
+            elif self.detected_face == 'back':
+                return 'L' if direction == 'down' else "L'"  # Flipped for back view
+            elif self.detected_face == 'right':
+                return "F'" if direction == 'down' else 'F'  # Right view: left = F slice
+            elif self.detected_face == 'left':
+                return 'B' if direction == 'down' else "B'"  # Left view: left = B slice (flipped)
+            elif self.detected_face == 'bottom':
+                return 'L' if direction == 'down' else "L'"  # Bottom view: flipped L
+            else:  # top
+                return 'L' if direction == 'down' else "L'"  # Top view: flipped L
                 
         elif zone in ['top_center', 'middle_center', 'bottom_center']:
-            # Middle column (M moves) - always follows visual up/down drag direction  
-            return "M'" if direction == 'down' else 'M'
+            # Middle column - different moves depending on viewing face
+            if self.detected_face == 'front':
+                return "M'" if direction == 'down' else 'M'
+            elif self.detected_face == 'back':
+                return 'M' if direction == 'down' else "M'"  # Flipped for back view
+            elif self.detected_face == 'right':
+                return "S'" if direction == 'down' else 'S'  # Right view: center = S slice
+            elif self.detected_face == 'left':
+                return 'S' if direction == 'down' else "S'"  # Left view: center = S slice (flipped)
+            elif self.detected_face == 'bottom':
+                return 'M' if direction == 'down' else "M'"  # Bottom view: flipped M
+            else:  # top
+                return 'M' if direction == 'down' else "M'"  # Top view: flipped M
                 
         else:  # right column
-            # Right column (R moves) - always follows visual up/down drag direction
-            return "R'" if direction == 'down' else 'R'
+            # Right column - different moves depending on viewing face
+            if self.detected_face == 'front':
+                return "R'" if direction == 'down' else 'R'
+            elif self.detected_face == 'back':
+                return 'R' if direction == 'down' else "R'"  # Flipped for back view
+            elif self.detected_face == 'right':
+                return 'B' if direction == 'down' else "B'"  # Right view: right = B slice (flipped)
+            elif self.detected_face == 'left':
+                return "F'" if direction == 'down' else 'F'  # Left view: right = F slice
+            elif self.detected_face == 'bottom':
+                return 'R' if direction == 'down' else "R'"  # Bottom view: flipped R
+            else:  # top
+                return 'R' if direction == 'down' else "R'"  # Top view: flipped R
 
     def update_hover(self, mouse_pos):
         """Update hover detection for revolutionary zones"""
@@ -371,6 +416,19 @@ class MouseInteraction:
         
         glPushMatrix()
         glTranslatef(face_center[0], face_center[1], face_center[2])
+        
+        # Apply correct rotation for each face orientation
+        if self.hovered_face == 'right':
+            glRotatef(90, 0, 1, 0)  # Rotate 90° around Y-axis
+        elif self.hovered_face == 'left':
+            glRotatef(-90, 0, 1, 0)  # Rotate -90° around Y-axis
+        elif self.hovered_face == 'top':
+            glRotatef(-90, 1, 0, 0)  # Rotate -90° around X-axis
+        elif self.hovered_face == 'bottom':
+            glRotatef(90, 1, 0, 0)  # Rotate 90° around X-axis
+        elif self.hovered_face == 'back':
+            glRotatef(180, 0, 1, 0)  # Rotate 180° around Y-axis
+        # front face needs no rotation
         
         # Draw minimal grid lines only
         self._draw_minimal_grid(size)

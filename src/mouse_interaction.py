@@ -253,7 +253,9 @@ class MouseInteraction:
             # Top row (U moves) - simplified direction logic
             if self.detected_face in ['front']:
                 return "U'" if direction == 'right' else 'U'  # Fixed: flipped for front face top row
-            elif self.detected_face in ['right', 'top']:
+            elif self.detected_face == 'right':
+                return "U'" if direction == 'right' else 'U'  # Fixed: flipped for right face top row
+            elif self.detected_face in ['top']:
                 return 'U' if direction == 'right' else "U'"
             else:  # back, left, bottom - flip direction
                 return "U'" if direction == 'right' else 'U'
@@ -262,16 +264,18 @@ class MouseInteraction:
             # Middle row (E moves) - simplified direction logic
             if self.detected_face in ['front']:
                 return "E'" if direction == 'right' else 'E'  # Fixed: flipped for front face middle row
-            elif self.detected_face in ['right', 'top']:
+            elif self.detected_face == 'right':
+                return "E'" if direction == 'right' else 'E'  # Fixed: flipped for right face middle row
+            elif self.detected_face in ['top']:
                 return 'E' if direction == 'right' else "E'"
             else:  # back, left, bottom - flip direction
                 return "E'" if direction == 'right' else 'E'
                 
         else:  # bottom row
             # Bottom row (D moves) - simplified direction logic
-            if self.detected_face in ['front', 'right', 'top']:
-                return 'D' if direction == 'right' else "D'"
-            else:  # back, left, bottom - flip direction
+            if self.detected_face in ['front', 'top', 'left', 'right']:
+                return 'D' if direction == 'right' else "D'"  # Fixed: right face bottom row should NOT be flipped
+            else:  # back, bottom - flip direction
                 return "D'" if direction == 'right' else 'D'
     
     def _get_vertical_move_from_position(self, zone, direction):
@@ -284,7 +288,7 @@ class MouseInteraction:
             elif self.detected_face == 'back':
                 return 'L' if direction == 'down' else "L'"  # Flipped for back view
             elif self.detected_face == 'right':
-                return "F'" if direction == 'down' else 'F'  # Right view: left = F slice
+                return 'F' if direction == 'down' else "F'"  # Fixed: flipped for right face left column
             elif self.detected_face == 'left':
                 return 'B' if direction == 'down' else "B'"  # Left view: left = B slice (flipped)
             elif self.detected_face == 'bottom':
@@ -314,7 +318,7 @@ class MouseInteraction:
             elif self.detected_face == 'back':
                 return 'R' if direction == 'down' else "R'"  # Flipped for back view
             elif self.detected_face == 'right':
-                return 'B' if direction == 'down' else "B'"  # Right view: right = B slice (flipped)
+                return "B'" if direction == 'down' else 'B'  # Fixed: flipped for right face right column
             elif self.detected_face == 'left':
                 return "F'" if direction == 'down' else 'F'  # Left view: right = F slice
             elif self.detected_face == 'bottom':

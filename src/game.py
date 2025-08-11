@@ -9,7 +9,7 @@ from renderer import Renderer
 from settings_manager import SettingsManager
 from sound_manager import SoundManager
 from results_window import ResultsWindow
-from mouse_interaction import MouseCubeInteraction
+from mouse_interaction import MouseInteraction
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -86,8 +86,8 @@ class Game:
         # Load audio settings into sound manager
         self.sound_manager.load_volumes_from_settings(self.settings)
         
-        # Initialize enhanced mouse cube interaction system
-        self.mouse_interaction = MouseCubeInteraction(self.renderer)
+        # Initialize mouse cube interaction system
+        self.mouse_interaction = MouseInteraction(self.renderer)
         
         # Initialize menu
         self.menu = Menu(self.width, self.height)
@@ -136,12 +136,20 @@ class Game:
         print("  Space: Toggle auto-rotation")
         print("  Arrow keys: Manual rotation")
         print("  Left Mouse + Drag: Rotate cube view")
-        print("  Right Mouse + Drag: Perform cube moves")
+        print("  Right Mouse + Drag: REVOLUTIONARY 6-MOVE SYSTEM!")
         print("  Ctrl+B: Toggle debug mode")
         print("  T: Reset rotation")
         print("  ESC: Toggle menu")
         
-        print("Movement Controls:")
+        print("\n🔥 REVOLUTIONARY MOVEMENT SYSTEM 🔥")
+        print("When looking at any face, you can make 6 different moves:")
+        print("  📍 3 HORIZONTAL ZONES (Red): Drag left/right to move rows")
+        print("     • Top row, Middle row, Bottom row")
+        print("  📍 3 VERTICAL ZONES (Blue): Drag up/down to move columns") 
+        print("     • Left column, Middle column, Right column")
+        print("  🎯 Visual grid overlay shows the 6 movement zones!")
+        
+        print("\nMovement Controls:")
         print("  R: R move       Shift+R: R' move")
         print("  L: L move       Shift+L: L' move") 
         print("  U: U move       Shift+U: U' move")
@@ -531,12 +539,21 @@ class Game:
                 elif self.mouse_cube_moving:
                     detected_move = self.mouse_interaction.update_drag(event.pos)
                     if detected_move:
-                        self.debug_print(f"Mouse detected move: {detected_move}")
+                        self.debug_print(f"🔥 Revolutionary move detected: {detected_move}")
+                        # Show revolutionary debug info
+                        debug_info = self.mouse_interaction.get_debug_info()
+                        self.debug_print(f"   Face: {debug_info['detected_face']}, Zone: {debug_info['detected_zone']}")
                         self.execute_cube_move(detected_move)
                 
                 # Update hover detection when not doing anything else
                 else:
                     self.mouse_interaction.update_hover(event.pos)
+                    # Show hover debug info
+                    if self.debug_mode:
+                        debug_info = self.mouse_interaction.get_debug_info()
+                        if debug_info['hovered_face'] and debug_info['hovered_zone']:
+                            zone_type = debug_info['zone_type']
+                            self.debug_print(f"Hovering: {debug_info['hovered_face']} face, {debug_info['hovered_zone']} ({zone_type})")
         
         # Handle results window events
         if self.results_window.active:

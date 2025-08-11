@@ -275,10 +275,167 @@ class RubiksCube:
             self.faces['left'][:, 1] = self.faces['bottom'][1, :].copy()
             self.faces['bottom'][1, :] = self.faces['right'][:, 1][::-1].copy()
             self.faces['right'][:, 1] = temp.copy()
+
+    # Revolutionary movement system - Enhanced slice moves for 6-movement face system
+    
+    def move_row(self, face_name, row_index, direction='right'):
+        """Move a specific row of a face (0=top, 1=middle, 2=bottom)"""
+        self.move_history.append(('row', face_name, row_index, direction))
+        
+        clockwise = (direction == 'right')
+        
+        if row_index == 0:  # Top row
+            self.move_U(clockwise)
+        elif row_index == 2:  # Bottom row
+            self.move_D(not clockwise)  # D moves opposite to visual direction
+        else:  # Middle row (row_index == 1)
+            self.move_E(not clockwise)  # E moves opposite to U
+    
+    def move_column(self, face_name, col_index, direction='up'):
+        """Move a specific column of a face (0=left, 1=middle, 2=right)"""
+        self.move_history.append(('col', face_name, col_index, direction))
+        
+        clockwise = (direction == 'up')
+        
+        if col_index == 0:  # Left column
+            if face_name in ['front', 'back']:
+                self.move_L(clockwise)
+            else:
+                self.move_L(clockwise)
+        elif col_index == 2:  # Right column
+            if face_name in ['front', 'back']:
+                self.move_R(not clockwise)  # R moves opposite to visual direction
+            else:
+                self.move_R(not clockwise)
+        else:  # Middle column (col_index == 1)
+            self.move_M(clockwise)
+
+    def move_face_row(self, face_name, row_index, clockwise=True):
+        """Move a specific row relative to a face"""
+        self.move_history.append(('face_row', face_name, row_index, clockwise))
+        
+        if face_name == 'front':
+            if row_index == 0:  # Top row of front face
+                self.move_U(clockwise)
+            elif row_index == 1:  # Middle row of front face
+                self.move_E(not clockwise)
+            else:  # Bottom row of front face
+                self.move_D(not clockwise)
+                
+        elif face_name == 'back':
+            if row_index == 0:  # Top row of back face
+                self.move_U(not clockwise)  # Reversed for back view
+            elif row_index == 1:  # Middle row of back face
+                self.move_E(clockwise)
+            else:  # Bottom row of back face
+                self.move_D(clockwise)
+                
+        elif face_name == 'right':
+            if row_index == 0:  # Top row of right face
+                self.move_U(clockwise)
+            elif row_index == 1:  # Middle row of right face
+                self.move_E(not clockwise)
+            else:  # Bottom row of right face
+                self.move_D(not clockwise)
+                
+        elif face_name == 'left':
+            if row_index == 0:  # Top row of left face
+                self.move_U(not clockwise)
+            elif row_index == 1:  # Middle row of left face
+                self.move_E(clockwise)
+            else:  # Bottom row of left face
+                self.move_D(clockwise)
+                
+        elif face_name == 'top':
+            if row_index == 0:  # Front edge of top face
+                self.move_F(clockwise)
+            elif row_index == 1:  # Middle slice of top face
+                self.move_S(clockwise)
+            else:  # Back edge of top face
+                self.move_B(not clockwise)
+                
+        elif face_name == 'bottom':
+            if row_index == 0:  # Front edge of bottom face
+                self.move_F(not clockwise)
+            elif row_index == 1:  # Middle slice of bottom face
+                self.move_S(not clockwise)
+            else:  # Back edge of bottom face
+                self.move_B(clockwise)
+
+    def move_face_column(self, face_name, col_index, clockwise=True):
+        """Move a specific column relative to a face"""
+        self.move_history.append(('face_col', face_name, col_index, clockwise))
+        
+        if face_name == 'front':
+            if col_index == 0:  # Left column of front face
+                self.move_L(clockwise)
+            elif col_index == 1:  # Middle column of front face
+                self.move_M(clockwise)
+            else:  # Right column of front face
+                self.move_R(not clockwise)
+                
+        elif face_name == 'back':
+            if col_index == 0:  # Left column of back face (right from back view)
+                self.move_R(clockwise)
+            elif col_index == 1:  # Middle column of back face
+                self.move_M(not clockwise)
+            else:  # Right column of back face (left from back view)
+                self.move_L(not clockwise)
+                
+        elif face_name == 'right':
+            if col_index == 0:  # Front column of right face
+                self.move_F(clockwise)
+            elif col_index == 1:  # Middle column of right face
+                self.move_S(clockwise)
+            else:  # Back column of right face
+                self.move_B(not clockwise)
+                
+        elif face_name == 'left':
+            if col_index == 0:  # Back column of left face
+                self.move_B(clockwise)
+            elif col_index == 1:  # Middle column of left face
+                self.move_S(not clockwise)
+            else:  # Front column of left face
+                self.move_F(not clockwise)
+                
+        elif face_name == 'top':
+            if col_index == 0:  # Left edge of top face
+                self.move_L(clockwise)
+            elif col_index == 1:  # Middle slice of top face
+                self.move_M(clockwise)
+            else:  # Right edge of top face
+                self.move_R(not clockwise)
+                
+        elif face_name == 'bottom':
+            if col_index == 0:  # Left edge of bottom face
+                self.move_L(not clockwise)
+            elif col_index == 1:  # Middle slice of bottom face
+                self.move_M(not clockwise)
+            else:  # Right edge of bottom face
+                self.move_R(clockwise)
     
     def execute_move(self, move_notation):
-        """Execute a move using standard Rubik's cube notation"""
+        """Execute a move using standard Rubik's cube notation or revolutionary notation"""
         move_notation = move_notation.strip().upper()
+        
+        # Handle revolutionary face-relative moves
+        if move_notation.startswith('REV_'):
+            parts = move_notation.split('_')
+            if len(parts) >= 4:
+                # Format: REV_FACE_TYPE_INDEX_DIRECTION
+                # Example: REV_FRONT_ROW_1_RIGHT or REV_TOP_COL_2_UP
+                face = parts[1].lower()
+                move_type = parts[2].lower()
+                index = int(parts[3])
+                direction = parts[4].lower() if len(parts) > 4 else 'right'
+                
+                if move_type == 'row':
+                    clockwise = (direction == 'right')
+                    self.move_face_row(face, index, clockwise)
+                elif move_type == 'col':
+                    clockwise = (direction == 'up')
+                    self.move_face_column(face, index, clockwise)
+                return
         
         # Handle double moves (2)
         if move_notation.endswith('2'):

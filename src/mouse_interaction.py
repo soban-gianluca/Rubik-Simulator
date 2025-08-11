@@ -59,14 +59,9 @@ class MouseInteraction:
         # Unified colors for dual-mode zones (yellow-ish)
         self.zone_colors = {
             'top_left': (1.0, 0.9, 0.3, 0.4), 'top_center': (1.0, 0.9, 0.3, 0.4), 'top_right': (1.0, 0.9, 0.3, 0.4),
-            'middle_left': (1.0, 0.9, 0.3, 0.4), 'middle_center': (1.0, 0.9, 0.3, 0.4), 'middle_right': (1.0, 0.9, 0.3, 0.4),
+            'middle_left': (1.0, 0.9, 0.3, 0.4), 'middle_center': (1.0, 0.9, 0.3, 0.4), 'middle_right': (1.0, 0.9, 0.4),
             'bottom_left': (1.0, 0.9, 0.3, 0.4), 'bottom_center': (1.0, 0.9, 0.3, 0.4), 'bottom_right': (1.0, 0.9, 0.3, 0.4)
         }
-        
-        print("🚀 Dual-Mode Mouse Interaction System initialized!")
-        print("   ✨ 3x3 grid with dual-mode zones")
-        print("   🎯 Direction-based move detection")
-        print("   📱 Enhanced visual feedback")
         
     def _detect_face_from_screen_position(self, mouse_pos):
         """Detect which face is being looked at based on camera rotation"""
@@ -84,25 +79,15 @@ class MouseInteraction:
         # print(f"🔍 Camera rotation: rx={rx:.1f}°, ry={ry:.1f}°")
         
         # Determine primary face based on rotation
-        # We use wider ranges for more forgiving detection
-        if -45 <= ry <= 45:
-            if -45 <= rx <= 45:
-                return 'front'
-            elif rx > 45:
-                return 'bottom'
-            else:  # rx < -45
-                return 'top'
-        elif ry > 45 and ry <= 135:
-            return 'left'  # Fixed: positive Y rotation = left face
-        elif ry < -45 and ry >= -135:
-            return 'right'  # Fixed: negative Y rotation = right face
-        else:  # ry > 135 or ry < -135
-            if -45 <= rx <= 45:
-                return 'back'
-            elif rx > 45:
-                return 'bottom'
-            else:  # rx < -45
-                return 'top'
+        # Only detect the 4 main faces (front, back, left, right) for cleaner interaction
+        if -50 <= ry <= 50:  # Front/back oriented
+            return 'front'
+        elif ry > 50 and ry <= 130:  # Left side
+            return 'left'
+        elif ry < -50 and ry >= -130:  # Right side
+            return 'right'
+        else:  # Back oriented (ry > 130 or ry < -130)
+            return 'back'
 
     def _detect_zone_on_face(self, mouse_pos, face):
         """Detect which 3x3 grid position - IMPROVED dual-mode system"""
@@ -116,56 +101,52 @@ class MouseInteraction:
         rel_x = mouse_x - center_x
         rel_y = mouse_y - center_y
         
-        # Face size on screen - increased to match cube size
-        face_size = 200  # pixels (increased to match actual cube size)
+        # Face size on screen - increased for better detection
+        face_size = 280  # pixels (increased from 200 for larger detection areas)
         
         # Normalize to [-1, 1] range
         norm_x = rel_x / (face_size / 2)
         norm_y = rel_y / (face_size / 2)
         
-        # Extended boundaries for much better targeting (covers entire cube face)
-        if abs(norm_x) > 2.0 or abs(norm_y) > 2.0:
+        # Extended boundaries for much better targeting (expanded outwards)
+        if abs(norm_x) > 2.5 or abs(norm_y) > 2.5:  # Increased from 2.0 to 2.5
             return None
         
         # Divide face into 3x3 grid with expanded boundaries to match cube size
-        if norm_x < -0.15:      # Left third (expanded boundaries)
-            if norm_y < -0.15:      # Top third
+        if norm_x < -0.1:      # Left third (more forgiving boundaries)
+            if norm_y < -0.1:      # Top third
                 return 'top_left'
-            elif norm_y > 0.15:     # Bottom third
+            elif norm_y > 0.1:     # Bottom third
                 return 'bottom_left'
             else:                   # Middle third
                 return 'middle_left'
                 
-        elif norm_x > 0.15:     # Right third (expanded boundaries)
-            if norm_y < -0.15:      # Top third
+        elif norm_x > 0.1:     # Right third (more forgiving boundaries)
+            if norm_y < -0.1:      # Top third
                 return 'top_right'
-            elif norm_y > 0.15:     # Bottom third
+            elif norm_y > 0.1:     # Bottom third
                 return 'bottom_right'
             else:                   # Middle third
                 return 'middle_right'
                 
         else:                   # Center third
-            if norm_y < -0.15:      # Top third
+            if norm_y < -0.1:      # Top third
                 return 'top_center'
-            elif norm_y > 0.15:     # Bottom third
+            elif norm_y > 0.1:     # Bottom third
                 return 'bottom_center'
             else:                   # Middle third
                 return 'middle_center'  # Most versatile position
 
     def start_drag(self, mouse_pos):
         """Start drag operation with enhanced face and zone detection"""
-        print(f"\\n🎯 Starting drag at {mouse_pos}")
-        
         # Detect face
         face = self._detect_face_from_screen_position(mouse_pos)
         if not face:
-            print("❌ No face detected")
             return
         
         # Detect zone on face
         zone = self._detect_zone_on_face(mouse_pos, face)
         if not zone:
-            print(f"❌ No zone detected on face {face}")
             return
         
         # Initialize drag
@@ -175,8 +156,6 @@ class MouseInteraction:
         self.detected_face = face
         self.detected_zone = zone
         self.move_executed = False
-        
-        print(f"✅ Drag started: face={face}, zone={zone} ({self.zone_types[zone]})")
 
     def update_drag(self, mouse_pos):
         """Update drag and detect moves - ENHANCED with dual-mode detection"""
@@ -205,7 +184,6 @@ class MouseInteraction:
             if move:
                 self.move_executed = True
                 self.last_move_time = current_time
-                print(f"🎮 Move executed: {move}")
                 return move
         
         return None
@@ -234,12 +212,6 @@ class MouseInteraction:
         is_horizontal_move = primary_direction in ['left', 'right']
         is_vertical_move = primary_direction in ['up', 'down']
         
-        print(f"🎯 Dual-mode drag analysis:")
-        print(f"   dx={dx:.1f}, dy={dy:.1f}, angle={drag_angle:.1f}°")
-        print(f"   zone={zone}, direction={primary_direction}")
-        print(f"   horizontal_move={is_horizontal_move}, vertical_move={is_vertical_move}")
-        print(f"   distance={total_distance:.1f}")
-        
         # Generate move based on direction and zone position
         if is_horizontal_move:
             return self._get_horizontal_move_from_position(zone, primary_direction)
@@ -255,9 +227,7 @@ class MouseInteraction:
                 return "U'" if direction == 'right' else 'U'  # Fixed: flipped for front face top row
             elif self.detected_face == 'right':
                 return "U'" if direction == 'right' else 'U'  # Fixed: flipped for right face top row
-            elif self.detected_face in ['top']:
-                return 'U' if direction == 'right' else "U'"
-            else:  # back, left, bottom - flip direction
+            else:  # back, left - flip direction
                 return "U'" if direction == 'right' else 'U'
                 
         elif zone in ['middle_left', 'middle_center', 'middle_right']:
@@ -266,17 +236,15 @@ class MouseInteraction:
                 return "E'" if direction == 'right' else 'E'  # Fixed: flipped for front face middle row
             elif self.detected_face == 'right':
                 return "E'" if direction == 'right' else 'E'  # Fixed: flipped for right face middle row
-            elif self.detected_face in ['top']:
-                return 'E' if direction == 'right' else "E'"
-            else:  # back, left, bottom - flip direction
+            else:  # back, left - flip direction
                 return "E'" if direction == 'right' else 'E'
                 
         else:  # bottom row
             # Bottom row (D moves) - simplified direction logic
-            if self.detected_face in ['front', 'top', 'left', 'right']:
-                return 'D' if direction == 'right' else "D'"  # Fixed: right face bottom row should NOT be flipped
-            else:  # back, bottom - flip direction
-                return "D'" if direction == 'right' else 'D'
+            if self.detected_face in ['front', 'left', 'right']:
+                return 'D' if direction == 'right' else "D'"
+            else:  # back
+                return 'D' if direction == 'right' else "D'"
     
     def _get_vertical_move_from_position(self, zone, direction):
         """Get vertical move based on 3x3 grid position - SIMPLIFIED FACE-AWARE"""
@@ -286,15 +254,11 @@ class MouseInteraction:
             if self.detected_face == 'front':
                 return 'L' if direction == 'down' else "L'"  # Fixed: flipped for front face left column
             elif self.detected_face == 'back':
-                return 'L' if direction == 'down' else "L'"  # Flipped for back view
+                return 'R' if direction == 'down' else "R'"  # Fixed: back face left column should control R (visually reversed)
             elif self.detected_face == 'right':
                 return 'F' if direction == 'down' else "F'"  # Fixed: flipped for right face left column
-            elif self.detected_face == 'left':
+            else:  # left
                 return 'B' if direction == 'down' else "B'"  # Left view: left = B slice (flipped)
-            elif self.detected_face == 'bottom':
-                return 'L' if direction == 'down' else "L'"  # Bottom view: flipped L
-            else:  # top
-                return 'L' if direction == 'down' else "L'"  # Top view: flipped L
                 
         elif zone in ['top_center', 'middle_center', 'bottom_center']:
             # Middle column - different moves depending on viewing face
@@ -304,27 +268,19 @@ class MouseInteraction:
                 return 'M' if direction == 'down' else "M'"  # Flipped for back view
             elif self.detected_face == 'right':
                 return "S'" if direction == 'down' else 'S'  # Right view: center = S slice
-            elif self.detected_face == 'left':
+            else:  # left
                 return 'S' if direction == 'down' else "S'"  # Left view: center = S slice (flipped)
-            elif self.detected_face == 'bottom':
-                return 'M' if direction == 'down' else "M'"  # Bottom view: flipped M
-            else:  # top
-                return 'M' if direction == 'down' else "M'"  # Top view: flipped M
                 
         else:  # right column
             # Right column - different moves depending on viewing face
             if self.detected_face == 'front':
                 return "R'" if direction == 'down' else 'R'  # Fixed: reverted back for front face right column
             elif self.detected_face == 'back':
-                return 'R' if direction == 'down' else "R'"  # Flipped for back view
+                return "L'" if direction == 'down' else 'L'  # Fixed: back face right column should control L' (flipped)
             elif self.detected_face == 'right':
                 return "B'" if direction == 'down' else 'B'  # Fixed: flipped for right face right column
-            elif self.detected_face == 'left':
+            else:  # left
                 return "F'" if direction == 'down' else 'F'  # Left view: right = F slice
-            elif self.detected_face == 'bottom':
-                return 'R' if direction == 'down' else "R'"  # Bottom view: flipped R
-            else:  # top
-                return 'R' if direction == 'down' else "R'"  # Top view: flipped R
 
     def update_hover(self, mouse_pos):
         """Update hover detection for revolutionary zones"""
@@ -349,9 +305,6 @@ class MouseInteraction:
 
     def end_drag(self):
         """End drag operation"""
-        if self.is_dragging:
-            print("🏁 Drag ended")
-        
         self.is_dragging = False
         self.drag_start_pos = None
         self.drag_current_pos = None
@@ -364,31 +317,8 @@ class MouseInteraction:
         pass
 
     def render_visual_feedback(self):
-        """Render revolutionary visual feedback with zone grid"""
-        if not self.hovered_face or self.highlight_intensity <= 0:
-            return
-        
-        # Save current state
-        glPushAttrib(GL_ALL_ATTRIB_BITS)
-        glPushMatrix()
-        
-        # Enable blending for transparent overlay
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glDisable(GL_LIGHTING)
-        glDisable(GL_DEPTH_TEST)
-        
-        # Position the camera the same way as the main renderer
-        glTranslatef(0.0, 0.0, -4.0)
-        glRotatef(self.renderer.rotation_x, 1, 0, 0)
-        glRotatef(self.renderer.rotation_y, 0, 1, 0)
-        
-        # Render revolutionary zone highlights
-        self._render_revolutionary_grid()
-        
-        # Restore state
-        glPopMatrix()
-        glPopAttrib()
+        """Render revolutionary visual feedback with zone grid - DISABLED for cleaner look"""
+        return  # Disabled for cleaner appearance
     
     def _render_revolutionary_grid(self):
         """Render a minimal grid overlay on the hovered face only"""
@@ -398,8 +328,8 @@ class MouseInteraction:
         # Don't draw any large face overlays - just draw a small grid on the actual cube face
         # The positioning should be much more precise and smaller
         
-        # Large overlay size - matches cube face size
-        size = 0.35  # Larger overlay to match cube face dimensions
+        # Large overlay size - matches expanded detection areas
+        size = 0.45  # Increased from 0.35 to match larger detection areas
         
         # Only draw if hovering and highlight is strong enough
         if self.highlight_intensity < 0.3:

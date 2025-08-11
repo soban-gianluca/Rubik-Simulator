@@ -251,14 +251,18 @@ class MouseInteraction:
         # Map 3x3 positions to row moves with simplified face-aware directions
         if zone in ['top_left', 'top_center', 'top_right']:
             # Top row (U moves) - simplified direction logic
-            if self.detected_face in ['front', 'right', 'top']:
+            if self.detected_face in ['front']:
+                return "U'" if direction == 'right' else 'U'  # Fixed: flipped for front face top row
+            elif self.detected_face in ['right', 'top']:
                 return 'U' if direction == 'right' else "U'"
             else:  # back, left, bottom - flip direction
                 return "U'" if direction == 'right' else 'U'
                 
         elif zone in ['middle_left', 'middle_center', 'middle_right']:
             # Middle row (E moves) - simplified direction logic
-            if self.detected_face in ['front', 'right', 'top']:
+            if self.detected_face in ['front']:
+                return "E'" if direction == 'right' else 'E'  # Fixed: flipped for front face middle row
+            elif self.detected_face in ['right', 'top']:
                 return 'E' if direction == 'right' else "E'"
             else:  # back, left, bottom - flip direction
                 return "E'" if direction == 'right' else 'E'
@@ -276,7 +280,7 @@ class MouseInteraction:
         if zone in ['top_left', 'middle_left', 'bottom_left']:
             # Left column - different moves depending on viewing face
             if self.detected_face == 'front':
-                return "L'" if direction == 'down' else 'L'
+                return 'L' if direction == 'down' else "L'"  # Fixed: flipped for front face left column
             elif self.detected_face == 'back':
                 return 'L' if direction == 'down' else "L'"  # Flipped for back view
             elif self.detected_face == 'right':
@@ -291,7 +295,7 @@ class MouseInteraction:
         elif zone in ['top_center', 'middle_center', 'bottom_center']:
             # Middle column - different moves depending on viewing face
             if self.detected_face == 'front':
-                return "M'" if direction == 'down' else 'M'
+                return "M'" if direction == 'down' else 'M'  # Fixed: reverted back for front face middle column
             elif self.detected_face == 'back':
                 return 'M' if direction == 'down' else "M'"  # Flipped for back view
             elif self.detected_face == 'right':
@@ -306,7 +310,7 @@ class MouseInteraction:
         else:  # right column
             # Right column - different moves depending on viewing face
             if self.detected_face == 'front':
-                return "R'" if direction == 'down' else 'R'
+                return "R'" if direction == 'down' else 'R'  # Fixed: reverted back for front face right column
             elif self.detected_face == 'back':
                 return 'R' if direction == 'down' else "R'"  # Flipped for back view
             elif self.detected_face == 'right':

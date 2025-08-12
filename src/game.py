@@ -136,7 +136,7 @@ class Game:
         print("  Space: Toggle auto-rotation")
         print("  Arrow keys: Manual rotation")
         print("  Left Mouse + Drag: Rotate cube view")
-        print("  Right Mouse + Drag: REVOLUTIONARY 6-MOVE SYSTEM!")
+        print("  Right Mouse + Drag: Execute move cube")
         print("  Ctrl+B: Toggle debug mode")
         print("  T: Reset rotation")
         print("  ESC: Toggle menu")        

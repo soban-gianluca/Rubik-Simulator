@@ -625,12 +625,6 @@ class Game:
         if not self.menu.is_active() and self.auto_rotate:
             self.renderer.rotate_camera(azimuth=self.auto_rotation_speed, elevation=0)
         
-        # Update mouse interaction visual feedback
-        if hasattr(self, 'mouse_interaction'):
-            # Calculate delta time for smooth animations
-            dt = self.clock.get_time() / 1000.0  # Convert to seconds
-            self.mouse_interaction.update_visual_feedback(dt)
-        
         # Frame-rate independent keyboard controls for camera rotation
         if not self.menu.is_active() and not self.results_window.active:
             dt = self.clock.get_time() / 1000.0  # Convert to seconds
@@ -684,10 +678,6 @@ class Game:
         # Notify menu that game has rendered (for blur background capture)
         if hasattr(self, 'menu') and not self.menu.game_rendered:
             self.menu.notify_game_rendered()
-        
-        # Render mouse interaction visual feedback
-        if hasattr(self, 'mouse_interaction'):
-            self.mouse_interaction.render_visual_feedback()
         
         # Render 2D overlays (menu and FPS)
         # Switch to 2D orthographic projection

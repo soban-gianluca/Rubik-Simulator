@@ -90,7 +90,7 @@ class MouseInteraction:
             return 'back'
 
     def _detect_zone_on_face(self, mouse_pos, face):
-        """Detect which 3x3 grid position - IMPROVED dual-mode system"""
+        """Detect which 3x3 grid position - ACCURATE cube-matching system"""
         mouse_x, mouse_y = mouse_pos
         
         # Get face center on screen
@@ -101,41 +101,50 @@ class MouseInteraction:
         rel_x = mouse_x - center_x
         rel_y = mouse_y - center_y
         
-        # Face size on screen - increased for better detection
-        face_size = 280  # pixels (increased from 200 for larger detection areas)
+        # Calculate actual projected cube size on screen based on camera distance and FOV
+        camera_distance = 4.0
+        cube_world_size = 3 * self.renderer.cube_spacing * 0.85  # Total size of 3x3 cube
         
-        # Normalize to [-1, 1] range
-        norm_x = rel_x / (face_size / 2)
-        norm_y = rel_y / (face_size / 2)
+        # Calculate projected size using perspective projection
+        fov_rad = math.radians(self.renderer.fov)
+        projected_size = (cube_world_size * self.renderer.height) / (2 * camera_distance * math.tan(fov_rad / 2))
         
-        # Extended boundaries for much better targeting (expanded outwards)
-        if abs(norm_x) > 2.5 or abs(norm_y) > 2.5:  # Increased from 2.0 to 2.5
+        # Each small cube in the 3x3 grid
+        small_cube_size = projected_size / 3
+        
+        # Normalize to grid coordinates [-1.5, -0.5, 0.5, 1.5] for 3x3 grid
+        grid_x = rel_x / small_cube_size
+        grid_y = rel_y / small_cube_size
+        
+        # Check if within cube bounds (with small tolerance)
+        tolerance = 0.2  # Allow slight overlap between cubes
+        if abs(grid_x) > 1.5 + tolerance or abs(grid_y) > 1.5 + tolerance:
             return None
         
-        # Divide face into 3x3 grid with expanded boundaries to match cube size
-        if norm_x < -0.1:      # Left third (more forgiving boundaries)
-            if norm_y < -0.1:      # Top third
-                return 'top_left'
-            elif norm_y > 0.1:     # Bottom third
-                return 'bottom_left'
-            else:                   # Middle third
-                return 'middle_left'
-                
-        elif norm_x > 0.1:     # Right third (more forgiving boundaries)
-            if norm_y < -0.1:      # Top third
-                return 'top_right'
-            elif norm_y > 0.1:     # Bottom third
-                return 'bottom_right'
-            else:                   # Middle third
-                return 'middle_right'
-                
-        else:                   # Center third
-            if norm_y < -0.1:      # Top third
-                return 'top_center'
-            elif norm_y > 0.1:     # Bottom third
-                return 'bottom_center'
-            else:                   # Middle third
-                return 'middle_center'  # Most versatile position
+        # Map to 3x3 grid indices
+        # Convert from continuous space to discrete grid
+        if grid_x < -0.5:
+            col = 0  # left
+        elif grid_x > 0.5:
+            col = 2  # right
+        else:
+            col = 1  # center
+            
+        if grid_y < -0.5:
+            row = 0  # top
+        elif grid_y > 0.5:
+            row = 2  # bottom
+        else:
+            row = 1  # middle
+        
+        # Map grid position to zone names
+        zone_map = [
+            ['top_left', 'top_center', 'top_right'],
+            ['middle_left', 'middle_center', 'middle_right'],
+            ['bottom_left', 'bottom_center', 'bottom_right']
+        ]
+        
+        return zone_map[row][col]
 
     def start_drag(self, mouse_pos):
         """Start drag operation with enhanced face and zone detection"""
@@ -312,128 +321,6 @@ class MouseInteraction:
         self.detected_zone = None
         self.move_executed = False
 
-    def update_visual_feedback(self, dt):
-        """Update visual feedback animations"""
-        pass
-
-    def render_visual_feedback(self):
-        """Render revolutionary visual feedback with zone grid - DISABLED for cleaner look"""
-        return  # Disabled for cleaner appearance
-    
-    def _render_revolutionary_grid(self):
-        """Render a minimal grid overlay on the hovered face only"""
-        if not self.hovered_face:
-            return
-            
-        # Don't draw any large face overlays - just draw a small grid on the actual cube face
-        # The positioning should be much more precise and smaller
-        
-        # Large overlay size - matches expanded detection areas
-        size = 0.45  # Increased from 0.35 to match larger detection areas
-        
-        # Only draw if hovering and highlight is strong enough
-        if self.highlight_intensity < 0.3:
-            return
-            
-        # Position directly on the cube face center (no offset)
-        face_center = [0, 0, 0]
-        
-        # Minimal positioning - much closer to the actual cube
-        if self.hovered_face == 'front':
-            face_center[2] = 0.51  # Just in front of cube face
-        elif self.hovered_face == 'back':
-            face_center[2] = -0.51
-        elif self.hovered_face == 'right':
-            face_center[0] = 0.51
-        elif self.hovered_face == 'left':
-            face_center[0] = -0.51
-        elif self.hovered_face == 'top':
-            face_center[1] = 0.51
-        elif self.hovered_face == 'bottom':
-            face_center[1] = -0.51
-        
-        glPushMatrix()
-        glTranslatef(face_center[0], face_center[1], face_center[2])
-        
-        # Apply correct rotation for each face orientation
-        if self.hovered_face == 'right':
-            glRotatef(90, 0, 1, 0)  # Rotate 90° around Y-axis
-        elif self.hovered_face == 'left':
-            glRotatef(-90, 0, 1, 0)  # Rotate -90° around Y-axis
-        elif self.hovered_face == 'top':
-            glRotatef(-90, 1, 0, 0)  # Rotate -90° around X-axis
-        elif self.hovered_face == 'bottom':
-            glRotatef(90, 1, 0, 0)  # Rotate 90° around X-axis
-        elif self.hovered_face == 'back':
-            glRotatef(180, 0, 1, 0)  # Rotate 180° around Y-axis
-        # front face needs no rotation
-        
-        # Draw minimal grid lines only
-        self._draw_minimal_grid(size)
-        
-        glPopMatrix()
-    
-    def _draw_minimal_grid(self, size):
-        """Draw a minimal 3x3 grid overlay - no large colored blocks"""
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glLineWidth(1.5)
-        
-        # Very subtle grid lines only
-        third = size * 2 / 3
-        glColor4f(1.0, 1.0, 1.0, 0.4 * self.highlight_intensity)
-        
-        # Draw minimal grid lines
-        glBegin(GL_LINES)
-        
-        # Horizontal lines
-        for i in range(4):
-            y = size - (i * third)
-            glVertex3f(-size, y, 0.001)
-            glVertex3f(size, y, 0.001)
-        
-        # Vertical lines  
-        for i in range(4):
-            x = -size + (i * third)
-            glVertex3f(x, -size, 0.001)
-            glVertex3f(x, size, 0.001)
-            
-        glEnd()
-        
-        # Optional: show a subtle highlight for the current zone
-        if self.hovered_zone:
-            self._draw_minimal_zone_highlight(size, third)
-        
-        glLineWidth(1.0)
-    
-    def _draw_minimal_zone_highlight(self, size, third):
-        """Draw a very subtle highlight for the hovered zone"""
-        zone_positions = {
-            'top_left': (0, 0), 'top_center': (1, 0), 'top_right': (2, 0),
-            'middle_left': (0, 1), 'middle_center': (1, 1), 'middle_right': (2, 1),
-            'bottom_left': (0, 2), 'bottom_center': (1, 2), 'bottom_right': (2, 2)
-        }
-        
-        if self.hovered_zone not in zone_positions:
-            return
-            
-        col, row = zone_positions[self.hovered_zone]
-        
-        # Calculate zone bounds
-        x1 = -size + col * third
-        x2 = -size + (col + 1) * third
-        y1 = size - row * third
-        y2 = size - (row + 1) * third
-        
-        # Very subtle highlight
-        glColor4f(1.0, 1.0, 0.0, 0.2 * self.highlight_intensity)
-        glBegin(GL_QUADS)
-        glVertex3f(x1, y1, 0.002)
-        glVertex3f(x2, y1, 0.002)
-        glVertex3f(x2, y2, 0.002)
-        glVertex3f(x1, y2, 0.002)
-        glEnd()
-        
     def get_debug_info(self):
         """Get debug info for troubleshooting"""
         return {

@@ -54,7 +54,6 @@ class SoundManager:
             self.sounds["menu_select"].set_volume(0.3 * self.menu_volume * self.master_volume)
             self.sounds["menu_apply"].set_volume(0.4 * self.menu_volume * self.master_volume)
             
-            print(f"Sound effects loaded successfully ({len(self.cube_sounds)} cube sounds)")
         except Exception as e:
             print(f"Error loading sound effects: {e}")
             self.is_enabled = False

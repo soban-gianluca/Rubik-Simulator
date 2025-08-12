@@ -139,16 +139,7 @@ class Game:
         print("  Right Mouse + Drag: REVOLUTIONARY 6-MOVE SYSTEM!")
         print("  Ctrl+B: Toggle debug mode")
         print("  T: Reset rotation")
-        print("  ESC: Toggle menu")
-        
-        print("\n🔥 REVOLUTIONARY MOVEMENT SYSTEM 🔥")
-        print("When looking at any face, you can make 6 different moves:")
-        print("  📍 3 HORIZONTAL ZONES (Red): Drag left/right to move rows")
-        print("     • Top row, Middle row, Bottom row")
-        print("  📍 3 VERTICAL ZONES (Blue): Drag up/down to move columns") 
-        print("     • Left column, Middle column, Right column")
-        print("  🎯 Visual grid overlay shows the 6 movement zones!")
-        
+        print("  ESC: Toggle menu")        
         print("\nMovement Controls:")
         print("  R: R move       Shift+R: R' move")
         print("  L: L move       Shift+L: L' move") 

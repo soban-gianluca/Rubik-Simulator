@@ -107,6 +107,7 @@ class Game:
         self.auto_rotate = True
         self.game_started = False  # Track if game has started
         self.new_game_requested = False  # Track if user explicitly requested a new game
+        self.difficulty_change_count = 0  # Track how many times difficulty has changed in this session
         
         # Control variables
         self.mouse_rotating = False
@@ -162,6 +163,15 @@ class Game:
         self.move_counter = 0  # Reset move counter
         self.start_time = None  # Reset timer
         self.cube_solved = False  # Reset solved state
+
+    def increment_difficulty_change_count(self):
+        """Increment the difficulty change count"""
+        self.difficulty_change_count += 1
+        self.debug_print(f"Difficulty change count: {self.difficulty_change_count}")
+
+    def get_difficulty_change_count(self):
+        """Get the current difficulty change count"""
+        return self.difficulty_change_count
 
     def has_game_progress(self):
         """Check if the current game has any progress (moves made)"""
@@ -398,11 +408,16 @@ class Game:
                 if event.key == pygame.K_ESCAPE:
                     # Don't allow closing results window with ESC - user must choose an option
                     if not self.results_window.active:
-                        menu_was_active = self.menu.is_active()
-                        self.menu.toggle()
-                        if menu_was_active:
-                            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
-                        self.debug_print(f"Menu: {'ON' if self.menu.is_active() else 'OFF'}")
+                        # Only allow ESC to toggle menu if difficulty has been changed at least once
+                        if self.difficulty_change_count >= 1:
+                            menu_was_active = self.menu.is_active()
+                            self.menu.toggle()
+                            if menu_was_active:
+                                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                            self.debug_print(f"Menu: {'ON' if self.menu.is_active() else 'OFF'}")
+                        else:
+                            # ESC is disabled when difficulty_change_count is 0 (no banner shown)
+                            self.debug_print("ESC disabled: Select a difficulty first")
                 elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_SPACE:
                     self.auto_rotate = not self.auto_rotate
                     self.debug_print(f"Auto-rotate: {'ON' if self.auto_rotate else 'OFF'}")

@@ -29,6 +29,8 @@ class Menu:
         self.resolution_changed_flag = False
         self.settings_changed = False
         self.selected_difficulty = "freeplay"  # Default difficulty - start in free play mode
+        self.has_difficulty_changed = False  # Track if difficulty has been changed at least once
+        self.difficulty_ever_selected = False  # Track if any difficulty has ever been selected
         
         # Animation state for smooth transitions
         self.is_animating = False
@@ -289,8 +291,24 @@ class Menu:
         # Clear hover effects before starting game
         self._clear_all_hover_effects()
         
+        # Check if difficulty is different from current selection OR this is the first selection
+        difficulty_changed = (difficulty != self.selected_difficulty) or not self.difficulty_ever_selected
+        
         # Store the selected difficulty for future use
         self.selected_difficulty = difficulty
+        
+        # Track that difficulty has been changed at least once
+        if difficulty_changed:
+            self.has_difficulty_changed = True
+            self.difficulty_ever_selected = True
+            # Increment difficulty change count in game instance
+            if hasattr(self, "game") and self.game:
+                self.game.increment_difficulty_change_count()
+                # Refresh main menu buttons to reflect the change
+                self.refresh_main_menu_buttons()
+            
+            if hasattr(self, "debug_mode") and self.debug_mode:
+                print(f"Difficulty selected: {difficulty} (ESC now enabled)")
         
         # Change skybox based on difficulty
         if hasattr(self, "game") and self.game:
@@ -299,11 +317,26 @@ class Menu:
             if hasattr(self, "debug_mode") and self.debug_mode:
                 print(f"Changed skybox to: {skybox_path}")
             
-            # Request a new game to be started (this will trigger scrambling)
-            self.game.request_new_game()
+            # Only request a new game if difficulty changed and we have changed it before
+            # or if this is the very first time a difficulty is selected
+            if difficulty_changed:
+                self.game.request_new_game()
         
         if hasattr(self, "debug_mode") and self.debug_mode:
             print(f"Starting game with difficulty: {difficulty}")
+        
+        # Start closing animation instead of immediately setting active to False
+        if not self.is_animating:  # Prevent multiple animations
+            self.toggle()
+
+    def _play_current_difficulty(self):
+        """Play with the current difficulty without changing it (just closes menu)"""
+        self.sound_manager.play("menu_select")
+        # Clear hover effects before starting game
+        self._clear_all_hover_effects()
+        
+        if hasattr(self, "debug_mode") and self.debug_mode:
+            print(f"Playing with current difficulty: {self.selected_difficulty}")
         
         # Start closing animation instead of immediately setting active to False
         if not self.is_animating:  # Prevent multiple animations
@@ -537,6 +570,8 @@ class Menu:
         """Return to the main menu"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
+        # Refresh main menu buttons in case difficulty change count has changed
+        self.refresh_main_menu_buttons()
         self.current_menu = self.main_menu
     
     def _back_to_settings(self):
@@ -1096,6 +1131,36 @@ class Menu:
         """Force recapture of the background (useful after resolution changes)"""
         if self.game_rendered:
             self._capture_and_blur_background()
+
+    def refresh_main_menu_buttons(self):
+        """Refresh the main menu buttons based on current difficulty change count"""
+        if hasattr(self, 'main_menu'):
+            # Clear existing widgets (keeping the title label)
+            widgets = self.main_menu.get_widgets()
+            # Remove all widgets except the first one (title label) and vertical margin
+            widgets_to_remove = []
+            for i, widget in enumerate(widgets):
+                if i > 1:  # Keep title label and first vertical margin
+                    widgets_to_remove.append(widget)
+            
+            for widget in widgets_to_remove:
+                self.main_menu.remove_widget(widget)
+            
+            # Re-add buttons with correct behavior
+            if hasattr(self, "game") and self.game and self.game.get_difficulty_change_count() >= 1:
+                # Once difficulty has been changed, "Play" just closes menu and "Change Difficulty" opens difficulty menu
+                play_btn = self.main_menu.add.button("Play", self._play_current_difficulty)
+                change_difficulty_btn = self.main_menu.add.button("Change Difficulty", self._open_difficulty_select)
+            else:
+                # Initially, "Play" opens difficulty selection menu
+                play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
+            
+            settings_btn = self.main_menu.add.button("Settings", self._open_settings)
+            controls_btn = self.main_menu.add.button("Controls", self._open_controls)
+            quit_btn = self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
+            
+            # Apply custom styling to main menu
+            self._customize_menu_widgets(self.main_menu)
     
     def _create_menus(self):
         """Create or recreate menus with current dimensions"""
@@ -1170,8 +1235,15 @@ class Menu:
         except:
             pass
         
-        # Add main menu buttons
-        play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
+        # Add main menu buttons - behavior changes based on difficulty change count
+        if hasattr(self, "game") and self.game and self.game.get_difficulty_change_count() >= 1:
+            # Once difficulty has been changed, "Play" just closes menu and "Change Difficulty" opens difficulty menu
+            play_btn = self.main_menu.add.button("Play", self._play_current_difficulty)
+            change_difficulty_btn = self.main_menu.add.button("Change Difficulty", self._open_difficulty_select)
+        else:
+            # Initially, "Play" opens difficulty selection menu
+            play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
+        
         settings_btn = self.main_menu.add.button("Settings", self._open_settings)
         controls_btn = self.main_menu.add.button("Controls", self._open_controls)
         quit_btn = self.main_menu.add.button("Quit", pygame_menu.events.EXIT)

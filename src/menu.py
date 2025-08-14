@@ -46,6 +46,10 @@ class Menu:
         self.game_rendered = False  # Track if game has rendered at least once
         self.frames_rendered = 0  # Count frames to ensure proper initialization
         
+        # Main menu background image for when difficulty change index is 0
+        self.main_menu_background = None
+        self._load_main_menu_background()
+        
         # Available resolutions
         self.available_resolutions = [
             (1024, 768),
@@ -146,6 +150,21 @@ class Menu:
         self.text_color_normal = (255, 255, 255)  # White color for normal text
         self.text_color_hover = (240, 198, 38)   # Hover color
         self.text_color_selected = (255, 18, 18)  # Red color for selected
+    
+    def _load_main_menu_background(self):
+        """Load the main menu background image"""
+        try:
+            # Load the main menu background image
+            background_path = os.path.join("utils", "main_menu_background.png")
+            if os.path.exists(background_path):
+                self.main_menu_background = pygame.image.load(background_path)
+                print(f"Loaded main menu background: {background_path}")
+            else:
+                print(f"Main menu background not found: {background_path}")
+                self.main_menu_background = None
+        except Exception as e:
+            print(f"Error loading main menu background: {e}")
+            self.main_menu_background = None
     
     def _customize_button_appearance(self, button):
         """Apply custom styling to a button widget - remove backgrounds"""
@@ -997,50 +1016,81 @@ class Menu:
         if current_alpha <= 0.0:
             return
         
-        # Use blurred background if available, otherwise fallback to solid overlay
-        if self.blurred_background is not None:
-            # Check if blurred background size matches current screen size
-            bg_size = self.blurred_background.get_size()
+        # Check if we should use the main menu background (when difficulty change count is 0)
+        should_use_main_background = (
+            hasattr(self, "game") and self.game and 
+            self.game.get_difficulty_change_count() == 0 and 
+            self.main_menu_background is not None
+        )
+        
+        # Use main menu background for difficulty change count = 0
+        if should_use_main_background:
+            # Tile the main menu background 4 times (2x2 grid) to avoid zooming
             screen_size = (screen.get_width(), screen.get_height())
+            bg_size = self.main_menu_background.get_size()
             
-            if bg_size != screen_size:
-                # Size mismatch - scale the background or clear it
-                if hasattr(self, 'debug_mode') and self.debug_mode:
-                    print(f"Background size mismatch: {bg_size} vs {screen_size}, clearing background")
-                self.blurred_background = None
-                self.background_capture = None
-                # Try to recapture with correct size if game has rendered
-                if self.game_rendered:
-                    self._capture_and_blur_background()
+            # Calculate tile size (each tile is 1/4 of the screen)
+            tile_width = screen_size[0] // 2
+            tile_height = screen_size[1] // 2
             
-            # Draw blurred background with alpha if still available
+            # Scale the background to fit each tile
+            scaled_background = pygame.transform.scale(self.main_menu_background, (tile_width, tile_height))
+            
+            # Apply alpha if needed
+            if current_alpha < 1.0:
+                scaled_background.set_alpha(int(255 * current_alpha))
+            
+            # Draw the background in a 2x2 grid pattern
+            for row in range(2):
+                for col in range(2):
+                    x = col * tile_width
+                    y = row * tile_height
+                    screen.blit(scaled_background, (x, y))
+        else:
+            # Use blurred background if available, otherwise fallback to solid overlay
             if self.blurred_background is not None:
-                if current_alpha < 1.0:
-                    # Create a copy for alpha blending
-                    background_surface = self.blurred_background.copy()
-                    background_surface.set_alpha(int(255 * current_alpha))
-                    screen.blit(background_surface, (0, 0))
-                else:
-                    screen.blit(self.blurred_background, (0, 0))
-        
-        # Fallback to modern solid background if no blur available
-        if self.blurred_background is None:
-            # Fallback to modern solid background with gradient effect
-            overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
-            base_alpha = 200  # Slightly more opaque for better readability
-            final_alpha = int(base_alpha * current_alpha)
+                # Check if blurred background size matches current screen size
+                bg_size = self.blurred_background.get_size()
+                screen_size = (screen.get_width(), screen.get_height())
+                
+                if bg_size != screen_size:
+                    # Size mismatch - scale the background or clear it
+                    if hasattr(self, 'debug_mode') and self.debug_mode:
+                        print(f"Background size mismatch: {bg_size} vs {screen_size}, clearing background")
+                    self.blurred_background = None
+                    self.background_capture = None
+                    # Try to recapture with correct size if game has rendered
+                    if self.game_rendered:
+                        self._capture_and_blur_background()
+                
+                # Draw blurred background with alpha if still available
+                if self.blurred_background is not None:
+                    if current_alpha < 1.0:
+                        # Create a copy for alpha blending
+                        background_surface = self.blurred_background.copy()
+                        background_surface.set_alpha(int(255 * current_alpha))
+                        screen.blit(background_surface, (0, 0))
+                    else:
+                        screen.blit(self.blurred_background, (0, 0))
             
-            # Create a subtle gradient effect
-            for y in range(screen.get_height()):
-                alpha_variation = final_alpha + int(20 * math.sin(y * 0.01))
-                alpha_variation = max(0, min(255, alpha_variation))
-                color = (8, 12, 28, alpha_variation)  # Dark blue-grey
-                pygame.draw.line(overlay, color, (0, y), (screen.get_width(), y))
-            
-            screen.blit(overlay, (0, 0))
+            # Fallback to modern solid background if no blur available
+            if self.blurred_background is None:
+                # Fallback to modern solid background with gradient effect
+                overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
+                base_alpha = 200  # Slightly more opaque for better readability
+                final_alpha = int(base_alpha * current_alpha)
+                
+                # Create a subtle gradient effect
+                for y in range(screen.get_height()):
+                    alpha_variation = final_alpha + int(20 * math.sin(y * 0.01))
+                    alpha_variation = max(0, min(255, alpha_variation))
+                    color = (8, 12, 28, alpha_variation)  # Dark blue-grey
+                    pygame.draw.line(overlay, color, (0, y), (screen.get_width(), y))
+                
+                screen.blit(overlay, (0, 0))
         
-        # Add subtle particle effects with reduced intensity for performance
-        if current_alpha > 0.5:  # Only draw particles when menu is mostly visible
+        # Add subtle particle effects with reduced intensity for performance (only when not using main background)
+        if current_alpha > 0.5 and not should_use_main_background:  # Only draw particles when menu is mostly visible and not using main background
             self._draw_background_effects(screen, current_alpha)
         
         # Handle dimension mismatch

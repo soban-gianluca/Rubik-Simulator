@@ -666,8 +666,14 @@ class Menu:
             self.current_menu = self.main_menu
             
             # Capture and blur the background when opening the menu (if game has rendered)
+            # Only capture if difficulty change count > 0 (don't blur when using main menu background)
             # Always try to recapture to ensure we have the current resolution
-            if self.game_rendered:
+            should_capture_background = (
+                self.game_rendered and 
+                hasattr(self, "game") and self.game and 
+                self.game.get_difficulty_change_count() > 0
+            )
+            if should_capture_background:
                 self._capture_and_blur_background()
     
     def _capture_and_blur_background(self):
@@ -1036,16 +1042,27 @@ class Menu:
             # Scale the background to fit each tile
             scaled_background = pygame.transform.scale(self.main_menu_background, (tile_width, tile_height))
             
+            # Apply brightness enhancement to make the background more visible
+            # Create a copy for brightness adjustment
+            brightened_background = scaled_background.copy()
+            
+            # Create a bright overlay to enhance visibility
+            brightness_overlay = pygame.Surface((tile_width, tile_height), pygame.SRCALPHA)
+            brightness_overlay.fill((80, 80, 80, 120))  # Light gray overlay with transparency
+            
+            # Blend the brightness overlay with the background
+            brightened_background.blit(brightness_overlay, (0, 0), special_flags=pygame.BLEND_ADD)
+            
             # Apply alpha if needed
             if current_alpha < 1.0:
-                scaled_background.set_alpha(int(255 * current_alpha))
+                brightened_background.set_alpha(int(255 * current_alpha))
             
-            # Draw the background in a 2x2 grid pattern
+            # Draw the brightened background in a 2x2 grid pattern
             for row in range(2):
                 for col in range(2):
                     x = col * tile_width
                     y = row * tile_height
-                    screen.blit(scaled_background, (x, y))
+                    screen.blit(brightened_background, (x, y))
         else:
             # Use blurred background if available, otherwise fallback to solid overlay
             if self.blurred_background is not None:
@@ -1060,7 +1077,13 @@ class Menu:
                     self.blurred_background = None
                     self.background_capture = None
                     # Try to recapture with correct size if game has rendered
-                    if self.game_rendered:
+                    # Only capture if difficulty change count > 0 (don't blur when using main menu background)
+                    should_capture_background = (
+                        self.game_rendered and 
+                        hasattr(self, "game") and self.game and 
+                        self.game.get_difficulty_change_count() > 0
+                    )
+                    if should_capture_background:
                         self._capture_and_blur_background()
                 
                 # Draw blurred background with alpha if still available
@@ -1179,7 +1202,13 @@ class Menu:
     
     def force_background_recapture(self):
         """Force recapture of the background (useful after resolution changes)"""
-        if self.game_rendered:
+        # Only capture if difficulty change count > 0 (don't blur when using main menu background)
+        should_capture_background = (
+            self.game_rendered and 
+            hasattr(self, "game") and self.game and 
+            self.game.get_difficulty_change_count() > 0
+        )
+        if should_capture_background:
             self._capture_and_blur_background()
 
     def refresh_main_menu_buttons(self):

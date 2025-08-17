@@ -2,27 +2,27 @@
 
 # RubikSimulator
 
-**RubikSimulator** è un simulatore digitale del celebre Cubo di Rubik 3x3, progettato per offrire un'esperienza realistica e coinvolgente direttamente dal tuo dispositivo
+**RubikSimulator** is a digital game of the renowned brain teaser, designed to offer a realistic and engaging experience directly on your pc.
 
-Che tu sia un principiante o un esperto il nostro simulatore permette di:
-* Risolvere il cubo in modo interattivo
-* Esplorare le rotazioni standard con animazioni fluide
-* Visualizzare lo stato del cubo in 3D
-* Allenarti con timer integrati e altre statistiche
+Whether you are a beginner or an expert, our simulator allows you to:
+* Solve the cube interactively
+* Explore standard rotations with smooth animations
+* Visualize the cube state in 3D
+* Train with built-in timer and visualize other stats
 
-## Tecnologie utilizzate
+## Used Technologies
 
-Il progetto è stato sviluppato utilizzando un insieme di tecnologie moderne, con l'obiettivo di offrire una simulazione fluida e accessibile del celebre Cubo di Rubik
+The project has been developed using a set of modern technologies, with the aim of offering a smooth and accessible simulation of the famous Rubik's Cube
 
-* Linguaggio di programmazione:
-Utilizziamo Python per la logica del cubo, gestione delle mosse e integrazione con l'interfaccia utente
+* Programming Language:
+We've used 100% Python for the cube logic, the move management and user interface integration
 
-* Rendering Grafico:
-Per il gioco sfruttiamo Pygame e OpenGL per la renderizzazione 3D
+* Graphic Rendering:
+For our game we utilize Pygame and OpenGl for the 3D rendering
 
-* Per eseguire il gioco:
-Eseguire il main.py da linea di comando oppure da qualsiasi editor
+* To run the game:
+Execute the main.py file from command line or from any editor
 
 ## Credits
 
-Sviluppato come progetto scolastico da due programmatori
+Developed as a school project by two IT expert programmers

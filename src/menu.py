@@ -50,6 +50,10 @@ class Menu:
         self.main_menu_background = None
         self._load_main_menu_background()
         
+        # Load the logo image for the main menu title
+        self.logo_image = None
+        self._load_logo_image()
+        
         # Available resolutions
         self.available_resolutions = [
             (1024, 768),
@@ -119,7 +123,7 @@ class Menu:
         self.theme.widget_font_shadow = True
         self.theme.widget_font_shadow_color = (0, 0, 0)
         self.theme.widget_font_shadow_offset = 2
-        self.theme.widget_margin = (0, 15)
+        self.theme.widget_margin = (0, 5)  # Reduced from 15 to 5 for tighter spacing
         self.theme.widget_padding = (15, 10)
         
         # Button styling - use NoneSelection for now and handle custom effects manually
@@ -165,6 +169,25 @@ class Menu:
         except Exception as e:
             print(f"Error loading main menu background: {e}")
             self.main_menu_background = None
+    
+    def _load_logo_image(self):
+        """Load the Rubik's Cube logo image"""
+        try:
+            # Load the logo image
+            logo_path = os.path.join("utils", "rubiks_logo.png")
+            if os.path.exists(logo_path):
+                self.logo_image = pygame.image.load(logo_path)
+                # Scale the logo to an appropriate size for the menu
+                logo_width = int(self.width * 0.4)  # 40% of screen width
+                logo_height = int(logo_width * 0.3)  # Maintain aspect ratio (adjust as needed)
+                self.logo_image = pygame.transform.scale(self.logo_image, (logo_width, logo_height))
+                print(f"Loaded logo image: {logo_path} (scaled to {logo_width}x{logo_height})")
+            else:
+                print(f"Logo image not found: {logo_path}")
+                self.logo_image = None
+        except Exception as e:
+            print(f"Error loading logo image: {e}")
+            self.logo_image = None
     
     def _customize_button_appearance(self, button):
         """Apply custom styling to a button widget - remove backgrounds"""
@@ -1180,6 +1203,9 @@ class Menu:
         self.width = width
         self.height = height
         
+        # Reload logo image with new screen dimensions
+        self._load_logo_image()
+        
         # Clear cached background images since resolution changed
         self.background_capture = None
         self.blurred_background = None
@@ -1286,20 +1312,33 @@ class Menu:
             rows=None
         )
         
-        # Add custom centered title as a label
-        self.main_menu.add.label(
-            "Rubik's Cube Simulator",
-            font_size=65,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            font_color=(255, 255, 255),
-            font_shadow=True,
-            font_shadow_color=(0, 0, 0),
-            font_shadow_offset=3,
-            align=ALIGN_CENTER
-        )
+        # Add custom logo image as title if available, otherwise use text
+        logo_path = os.path.join("utils", "rubiks_logo.png")
+        if os.path.exists(logo_path):
+            # Calculate appropriate scale based on screen size - smaller scale for compact design
+            logo_scale_width = self.width * 0.30 / 400  # Reduced from 0.4 to 0.25 for smaller logo
+            logo_scale_height = logo_scale_width  # Keep aspect ratio
+            self.main_menu.add.image(
+                logo_path,
+                angle=0,
+                scale=(logo_scale_width, logo_scale_height),
+                align=ALIGN_CENTER,
+                margin=(0, 0)  # Remove top and bottom margins
+            )
+        else:
+            # Fallback to text title if logo fails to load
+            self.main_menu.add.label(
+                "Rubik's Cube Simulator",
+                font_size=65,
+                font_name=pygame_menu.font.FONT_FRANCHISE,
+                font_color=(255, 255, 255),
+                font_shadow=True,
+                font_shadow_color=(0, 0, 0),
+                font_shadow_offset=3,
+                align=ALIGN_CENTER,
+                margin=(0, 0)  # Remove top and bottom margins
+            )
         
-        # Add some spacing after the title
-        self.main_menu.add.vertical_margin(30)
         
         # Try to center the title after menu creation
         try:

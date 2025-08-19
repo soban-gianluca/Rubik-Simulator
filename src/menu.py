@@ -1240,13 +1240,17 @@ class Menu:
     def refresh_main_menu_buttons(self):
         """Refresh the main menu buttons based on current difficulty change count"""
         if hasattr(self, 'main_menu'):
-            # Clear existing widgets (keeping the title label)
+            # Clear existing widgets (keeping only the title/logo)
             widgets = self.main_menu.get_widgets()
-            # Remove all widgets except the first one (title label) and vertical margin
             widgets_to_remove = []
+            
+            # Remove all buttons and vertical margins, but keep the logo/title (first widget)
             for i, widget in enumerate(widgets):
-                if i > 1:  # Keep title label and first vertical margin
-                    widgets_to_remove.append(widget)
+                if i > 0:  # Keep only the first widget (logo/title)
+                    # Check if it's a button or vertical margin that we want to remove
+                    widget_type = type(widget).__name__
+                    if 'Button' in widget_type or 'VMargin' in widget_type or 'VerticalMargin' in widget_type:
+                        widgets_to_remove.append(widget)
             
             for widget in widgets_to_remove:
                 self.main_menu.remove_widget(widget)

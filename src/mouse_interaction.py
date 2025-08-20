@@ -346,3 +346,9 @@ class MouseInteraction:
         self.hovered_zone = None
         self.highlight_intensity = 0.0
         self.last_move_time = 0
+    
+    def update_renderer(self, new_renderer):
+        """Update the renderer reference after resolution changes"""
+        self.renderer = new_renderer
+        # Reset any ongoing interactions since the coordinate system has changed
+        self.reset_interaction()

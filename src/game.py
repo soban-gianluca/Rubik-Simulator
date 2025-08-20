@@ -255,6 +255,10 @@ class Game:
             if hasattr(self, 'results_window'):
                 self.results_window.update_dimensions(self.width, self.height)
             
+            # Update mouse interaction system for fullscreen dimensions
+            if hasattr(self, 'mouse_interaction'):
+                self.mouse_interaction.update_renderer(self.renderer)
+            
             self.debug_print(f"Switched to fullscreen: {fullscreen_width}x{fullscreen_height}")
         
         self.is_fullscreen = not self.is_fullscreen
@@ -332,6 +336,10 @@ class Game:
     
             # Now recreate the OpenGL context with correct dimensions
             self.renderer = Renderer(self.width, self.height)
+            
+            # Update mouse interaction system with new renderer
+            if hasattr(self, 'mouse_interaction'):
+                self.mouse_interaction.update_renderer(self.renderer)
             
             # Restore the saved cube state
             if cube_state is not None:

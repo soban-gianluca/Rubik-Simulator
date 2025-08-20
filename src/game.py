@@ -96,6 +96,10 @@ class Game:
         # Load audio settings into menu's sound manager
         self.menu.sound_manager.load_volumes_from_settings(self.settings)
         
+        # Set initial auto-rotation based on default difficulty
+        default_difficulty = self.menu.get_selected_difficulty()
+        self.set_auto_rotation_by_difficulty(default_difficulty)
+        
         self.menu.toggle()  # Start with menu active
         
         # Initialize results window
@@ -104,7 +108,7 @@ class Game:
         
         # Game state
         self.running = True
-        self.auto_rotate = True
+        self.auto_rotate = False  # Default to False, will be set based on difficulty
         self.game_started = False  # Track if game has started
         self.new_game_requested = False  # Track if user explicitly requested a new game
         self.difficulty_change_count = 0  # Track how many times difficulty has changed in this session
@@ -155,6 +159,13 @@ class Game:
         print("  Z: Undo last move")
         print("  X: Scramble cube (freeplay mode only)")
         print("  Ctrl+B: Toggle debug mode")
+
+    def set_auto_rotation_by_difficulty(self, difficulty):
+        """Set auto-rotation based on difficulty level"""
+        if difficulty == "freeplay":
+            self.auto_rotate = True
+        else:
+            self.auto_rotate = False
 
     def request_new_game(self):
         """Request a new game to be started (triggers scrambling)"""
@@ -432,7 +443,7 @@ class Game:
                     self.toggle_fullscreen()
                 
                 # Cube movement controls using standard notation
-                elif not self.menu.is_active() and not self.results_window.active:
+                elif not self.menu.is_active() and not self.results_window.active and not (hasattr(self, 'is_scrambling') and self.is_scrambling):
                     # R moves
                     if event.key == pygame.K_r:
                         if event.mod & pygame.KMOD_SHIFT:
@@ -588,12 +599,18 @@ class Game:
         # Update banner animation
         self.update_banner()
         
+        # Update animated scrambling
+        self.update_animated_scramble()
+        
         # Check for game start (when menu becomes inactive for the first time OR new game is requested)
         if not self.menu.is_active():
             if not self.game_started or self.new_game_requested:
                 self.game_started = True
                 difficulty = self.menu.get_selected_difficulty()
                 self.debug_print(f"Game starting with difficulty: {difficulty}")
+                
+                # Set auto-rotation based on difficulty
+                self.set_auto_rotation_by_difficulty(difficulty)
                 
                 # Only scramble if this is a new game request or the very first start
                 if self.new_game_requested or not hasattr(self, '_ever_started'):
@@ -954,8 +971,10 @@ class Game:
         if self.renderer.is_animating:
             return
         
-        if self.start_time is None:
-            self.start_time = time.time()
+        # Only start timer if not scrambling
+        if not hasattr(self, 'is_scrambling') or not self.is_scrambling:
+            if self.start_time is None:
+                self.start_time = time.time()
         
         # Start animation first
         face_name = move_notation.replace("'", "") # FIX AND REMOVE THIS LINES
@@ -967,9 +986,13 @@ class Game:
             
             # Store the move to execute when animation completes
             self.renderer.pending_move = move_notation
-            self.move_counter += 1
             
-            self.debug_print(f"Move {self.move_counter}: {move_notation} (animating)")
+            # Only increment move counter if not scrambling
+            if not hasattr(self, 'is_scrambling') or not self.is_scrambling:
+                self.move_counter += 1
+                self.debug_print(f"Move {self.move_counter}: {move_notation} (animating)")
+            else:
+                self.debug_print(f"Scramble move: {move_notation} (animating)")
     
     def undo_move(self):
         """Undo the last move"""
@@ -995,6 +1018,62 @@ class Game:
         self.cube_solved = False
         self.debug_print("Cube scrambled!")
     
+    def animated_scramble_cube(self, num_moves):
+        """Scramble the cube with animated moves for visual effect"""
+        import random
+        
+        # Available moves for scrambling
+        moves = ['R', "R'", 'L', "L'", 'U', "U'", 'D', "D'", 'F', "F'", 'B', "B'", 'M', "M'", 'E', "E'", 'S', "S'"]
+        
+        # Generate the scramble sequence
+        scramble_sequence = []
+        for _ in range(num_moves):
+            move = random.choice(moves)
+            scramble_sequence.append(move)
+        
+        # Store original animation duration and set faster duration for scrambling
+        self.original_animation_duration = self.renderer.animation_duration
+        self.renderer.animation_duration = 0.1  # Faster animation (100ms instead of 300ms)
+        
+        # Store the scramble sequence for animated execution
+        self.scramble_queue = scramble_sequence.copy()
+        self.is_scrambling = True
+        self.scramble_start_time = time.time()
+        
+        self.debug_print(f"Starting fast animated scramble with {num_moves} moves: {' '.join(scramble_sequence)}")
+    
+    def update_animated_scramble(self):
+        """Update the animated scrambling process"""
+        if not hasattr(self, 'is_scrambling') or not self.is_scrambling:
+            return
+        
+        # Don't execute next move if animation is still running
+        if self.renderer.is_animating:
+            return
+        
+        # Check if we have more moves to execute
+        if hasattr(self, 'scramble_queue') and self.scramble_queue:
+            # Execute the next move
+            next_move = self.scramble_queue.pop(0)
+            self.execute_cube_move(next_move)
+            self.debug_print(f"Scramble move: {next_move} ({len(self.scramble_queue)} moves remaining)")
+        else:
+            # Scrambling complete
+            self.is_scrambling = False
+            self.move_counter = 0  # Reset move counter after scrambling
+            self.start_time = None  # Reset timer
+            
+            # Restore original animation duration
+            if hasattr(self, 'original_animation_duration'):
+                self.renderer.animation_duration = self.original_animation_duration
+                delattr(self, 'original_animation_duration')
+            
+            self.debug_print("Fast animated scrambling complete!")
+            
+            # Clear move history to prevent undoing scramble moves
+            if hasattr(self.renderer.rubiks_cube, 'move_history'):
+                self.renderer.rubiks_cube.move_history.clear()
+    
     def scramble_cube_by_difficulty(self, difficulty):
         """Scramble the cube based on difficulty level"""
         # Play a cube sound for scrambling
@@ -1013,23 +1092,24 @@ class Game:
             self.debug_print("Free play mode: Cube ready for practice!")
         elif difficulty == "easy":
             # Easy: 5 moves scramble
-            self.renderer.rubiks_cube.scramble(1)       # 1 move for testing purposes
-            self.debug_print("Easy mode: Cube scrambled with 5 moves!")
+            self.animated_scramble_cube(1)
+            self.debug_print("Easy mode: Scramble with 1 move!")
         elif difficulty == "medium":
             # Medium: 10 moves scramble
-            self.renderer.rubiks_cube.scramble(10)
-            self.debug_print("Medium mode: Cube scrambled with 10 moves!")
+            self.animated_scramble_cube(10)
+            self.debug_print("Medium mode: Scramble with 10 moves!")
         elif difficulty == "hard":
             # Hard: Random scramble with >30 moves
             import random
             scramble_moves = random.randint(30, 70)  # Generate random number between 30-70
-            self.renderer.rubiks_cube.scramble(scramble_moves)
-            self.debug_print(f"Hard mode: Cube completely randomized!")
+            self.animated_scramble_cube(scramble_moves)
+            self.debug_print(f"Hard mode: Completely random scramble!")
         else:
             # Default case (fallback)
-            self.renderer.rubiks_cube.scramble(20)
-            self.debug_print(f"Unknown difficulty '{difficulty}', using default scramble!")
+            self.animated_scramble_cube(20)
+            self.debug_print(f"Unknown difficulty '{difficulty}', using default animated scramble!")
         
+        # Update cube colors and reset game state
         self.renderer.update_cube_colors()
         self.move_counter = 0
         self.start_time = None

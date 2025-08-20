@@ -1,6 +1,7 @@
 import pygame
 import sys
 import time
+import random
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -55,7 +56,7 @@ class Game:
             "utils/soundtrack/midnight_simmetry.mp3",
             "utils/soundtrack/the_fifth_color.mp3"
         ]
-        self.current_song = 0
+        self.current_song = random.randint(0, len(self.playlist) - 1)  # Start with random song
         self.MUSIC_END_EVENT = pygame.USEREVENT + 1
         
         try:
@@ -404,11 +405,11 @@ class Game:
                 self.running = False
                 
             elif event.type == self.MUSIC_END_EVENT:
-                # Move to the next song (looping back to the first)
-                self.current_song = (self.current_song + 1) % len(self.playlist)
-                self.debug_print(f"Playing next song: {self.playlist[self.current_song]}")
+                # Pick a random song from the playlist
+                self.current_song = random.randint(0, len(self.playlist) - 1)
+                self.debug_print(f"Playing random song: {self.playlist[self.current_song]}")
                 
-                # Load and play the next song
+                # Load and play the random song
                 try:
                     pygame.mixer.music.load(self.playlist[self.current_song])
                     pygame.mixer.music.play()

@@ -24,16 +24,12 @@
         
 
 --- TO DO LIST ---
-- Reset stats when starting new game
 - Reread, simplify/remove unecessary lines
 - Different difficulties and gamemodes
 
 - (Different gamemodes)
     - Speedrun
-    - race against time
     - limited moves
-
-- possible soundtrack expansion
 
 --- FUTURE IDEAS ---
 
@@ -43,7 +39,6 @@
 - **Step-by-step tutorial mode** - Guided lessons for beginners (F2L, OLL, PLL algorithms)
 - **Hint system** - Show next optimal move or highlight pieces that need attention
 - **Algorithm trainer** - Practice specific algorithms with visual guides
-- **Solve detection** - Automatically detect and name algorithms being performed
 - **Undo/Redo with branching** - Tree-like history allowing multiple solution paths
 
 ### **Game Modes & Challenges**
@@ -86,18 +81,9 @@
 - **Threaded animation** - Smooth animations even during heavy computation
 - **Adaptive quality** - Auto-adjust graphics based on performance
 
-### **Advanced Animation System**
-- **Realistic physics** - Cube pieces have weight and momentum
-- **Corner cutting simulation** - Realistic movement based on cube mechanism
-- **Multi-layer rotations** - Wide turns (Rw, Uw, etc.)
-- **Slice moves** - M, E, S moves with proper animation
-- **Cube rotations** - x, y, z rotations of entire cube
-
 ## 🎵 Audio & Feedback
 
 ### **Enhanced Sound Design**
-- **Realistic cube sounds** - Different sounds per cube brand/condition
-- **Positional audio** - 3D sound based on move location
 - **Dynamic music** - Music intensity changes based on solving speed
 - **Voice guidance** - Spoken algorithm instructions
 - **Custom sound packs** - Let users import their own sounds

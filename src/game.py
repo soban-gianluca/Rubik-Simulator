@@ -1123,9 +1123,16 @@ class Game:
             current_difficulty = self.menu.get_selected_difficulty()
             self.scramble_cube_by_difficulty(current_difficulty)
         elif action == 'main_menu':
+            # Clear the old blurred background to force a fresh capture of current cube state
+            self.menu.background_capture = None
+            self.menu.blurred_background = None
+            
             # Show the main menu (ensure we're at main menu, not difficulty selection)
             self.menu.current_menu = self.menu.main_menu
             self.menu.active = True
+            
+            # Force a new background capture with the current cube state
+            self.menu.force_background_recapture()
         # 'continue_playing' is handled by just closing the results window
     
     def _render_game_info(self):

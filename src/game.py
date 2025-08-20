@@ -1020,9 +1020,11 @@ class Game:
             self.renderer.rubiks_cube.scramble(10)
             self.debug_print("Medium mode: Cube scrambled with 10 moves!")
         elif difficulty == "hard":
-            # Hard: Full random scramble (completely randomize the cube state)
-            self._total_random_scramble()
-            self.debug_print("Hard mode: Cube completely randomized!")
+            # Hard: Random scramble with >30 moves
+            import random
+            scramble_moves = random.randint(30, 70)  # Generate random number between 30-70
+            self.renderer.rubiks_cube.scramble(scramble_moves)
+            self.debug_print(f"Hard mode: Cube completely randomized!")
         else:
             # Default case (fallback)
             self.renderer.rubiks_cube.scramble(20)
@@ -1033,30 +1035,6 @@ class Game:
         self.start_time = None
         self.cube_solved = False
     
-    def _total_random_scramble(self):
-        """Completely randomize the cube state for hard difficulty"""
-        import random
-        
-        # Get all available colors (0-5)
-        colors = list(range(6))
-        
-        # Create a list of all 54 sticker positions (9 stickers per face × 6 faces)
-        all_positions = []
-        for face_name in self.renderer.rubiks_cube.faces.keys():
-            for i in range(3):
-                for j in range(3):
-                    all_positions.append((face_name, i, j))
-        
-        # Create a random permutation of colors, ensuring each color appears exactly 9 times
-        random_colors = []
-        for color in colors:
-            random_colors.extend([color] * 9)
-        random.shuffle(random_colors)
-        
-        # Assign the shuffled colors to all positions
-        for idx, (face_name, i, j) in enumerate(all_positions):
-            self.renderer.rubiks_cube.faces[face_name][i][j] = random_colors[idx]
-        
     def handle_results_callback(self, action):
         """Handle callbacks from the results window"""
         if action == 'play_again':

@@ -11,6 +11,7 @@ from settings_manager import SettingsManager
 from sound_manager import SoundManager
 from results_window import ResultsWindow
 from mouse_interaction import MouseInteraction
+from help_overlay import HelpOverlay
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -106,6 +107,9 @@ class Game:
         # Initialize results window
         self.results_window = ResultsWindow(self.width, self.height)
         self.results_window.set_game_callback(self.handle_results_callback)
+        
+        # Initialize help overlay
+        self.help_overlay = HelpOverlay(self.width, self.height)
         
         # Game state
         self.running = True
@@ -254,6 +258,9 @@ class Game:
             
             if hasattr(self, 'results_window'):
                 self.results_window.update_dimensions(self.width, self.height)
+                
+            if hasattr(self, 'help_overlay'):
+                self.help_overlay.update_dimensions(self.width, self.height)
             
             # Update mouse interaction system for fullscreen dimensions
             if hasattr(self, 'mouse_interaction'):
@@ -382,6 +389,9 @@ class Game:
             # Update results window with new dimensions
             if hasattr(self, 'results_window'):
                 self.results_window.update_dimensions(self.width, self.height)
+                
+            if hasattr(self, 'help_overlay'):
+                self.help_overlay.update_dimensions(self.width, self.height)
     
             # Try to restore icon
             try:
@@ -426,8 +436,11 @@ class Game:
                 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    # Check if help overlay is active first
+                    if hasattr(self, 'help_overlay') and self.help_overlay.active:
+                        self.help_overlay.toggle()
                     # Don't allow closing results window with ESC - user must choose an option
-                    if not self.results_window.active:
+                    elif not self.results_window.active:
                         # Only allow ESC to toggle menu if difficulty has been changed at least once
                         if self.difficulty_change_count >= 1:
                             menu_was_active = self.menu.is_active()
@@ -520,13 +533,21 @@ class Game:
             elif self.menu.handle_event(event):
                 continue
                 
-            elif not self.menu.is_active() and not self.results_window.active and event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left mouse button - camera rotation
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                # Handle help overlay clicks first (works even when menu/results are active)
+                if self.help_overlay.handle_click(event.pos):
+                    continue
+                    
+                # Then handle other mouse interactions only if menu/results not active
+                if not self.menu.is_active() and not self.results_window.active:
+                    # Left mouse button - camera rotation
                     self.mouse_rotating = True
                     self.prev_mouse_x, self.prev_mouse_y = event.pos
                     self.auto_rotate = False
                     self.debug_print(f"Mouse rotation started at {event.pos}")
-                elif event.button == 3:  # Right mouse button - cube moves
+                    
+            elif not self.menu.is_active() and not self.results_window.active and event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 3:  # Right mouse button - cube moves
                     self.mouse_cube_moving = True
                     self.mouse_interaction.start_drag(event.pos)
                     self.auto_rotate = False
@@ -594,6 +615,10 @@ class Game:
         # Update results window animation and effects
         if hasattr(self, 'results_window'):
             self.results_window.update()
+            
+        # Update help overlay animation
+        if hasattr(self, 'help_overlay'):
+            self.help_overlay.update()
         
         # Update cursor based on menu/results window state
         mouse_pos = pygame.mouse.get_pos()
@@ -602,8 +627,16 @@ class Game:
         elif hasattr(self, 'results_window') and self.results_window.active:
             self.results_window.update_cursor(mouse_pos)
         else:
-            # Default cursor when in game
-            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+            # Update help overlay hover state and set appropriate cursor
+            if hasattr(self, 'help_overlay'):
+                hover_changed = self.help_overlay.update_hover(mouse_pos)
+                if self.help_overlay.is_hovering:
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                else:
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+            else:
+                # Default cursor when in game
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
         
         # Update banner animation
         self.update_banner()
@@ -780,6 +813,50 @@ class Game:
             glRasterPos2f(0, self.height)
             glPixelZoom(1, 1)  # Flip vertically
             glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+    
+        # Render help overlay efficiently - only when visible and not blocked
+        if (hasattr(self, 'help_overlay') and 
+            not self.menu.is_active() and 
+            not self.results_window.active and
+            (self.help_overlay.active or self.help_overlay.current_alpha > 0.01)):
+            
+            # Only create surface when help panel is actually visible
+            help_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            self.help_overlay.draw(help_surface)
+            
+            # Convert pygame surface to OpenGL texture
+            texture_data = pygame.image.tostring(help_surface, 'RGBA', True)
+            
+            glRasterPos2f(0, self.height)
+            glPixelZoom(1, 1)  # Flip vertically
+            glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+        
+        # Render just the help button when panel is not visible (much more efficient)
+        elif (hasattr(self, 'help_overlay') and 
+              not self.menu.is_active() and 
+              not self.results_window.active):
+            
+            # Create a much smaller surface just for the button area
+            button_margin = 10
+            button_area_size = self.help_overlay.help_button_size + (button_margin * 2)
+            button_surface = pygame.Surface((button_area_size, button_area_size), pygame.SRCALPHA)
+            
+            # Draw button on small surface
+            button_rect = pygame.Rect(button_margin, button_margin, 
+                                    self.help_overlay.help_button_size, 
+                                    self.help_overlay.help_button_size)
+            button_surface.blit(self.help_overlay.button_surface, (button_margin, button_margin))
+            
+            # Convert small surface to OpenGL
+            texture_data = pygame.image.tostring(button_surface, 'RGBA', True)
+            
+            # Position correctly
+            button_x = self.help_overlay.help_button_rect.x - button_margin
+            button_y = self.help_overlay.help_button_rect.y - button_margin
+            
+            glRasterPos2f(button_x, button_y + button_area_size)
+            glPixelZoom(1, 1)
+            glDrawPixels(button_area_size, button_area_size, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
     
         # Restore 3D state
         glDisable(GL_BLEND)
@@ -1250,6 +1327,9 @@ class Game:
             # Update results window dimensions if it exists
             if hasattr(self, 'results_window'):
                 self.results_window.update_dimensions(fallback_width, fallback_height)
+                
+            if hasattr(self, 'help_overlay'):
+                self.help_overlay.update_dimensions(fallback_width, fallback_height)
             
             print(f"Successfully restored to fallback resolution: {fallback_width}x{fallback_height}")
         except Exception as e:

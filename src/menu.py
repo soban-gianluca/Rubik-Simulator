@@ -860,33 +860,34 @@ class Menu:
             
         widgets = self.current_menu.get_widgets()
         currently_hovered = set()
-        
+
         for widget in widgets:
             try:
-                widget_rect = widget.get_rect()
+                # Use to_real_position=True for correct rect in scrollable menus
+                widget_rect = widget.get_rect(to_real_position=True)
                 widget_class_name = widget.__class__.__name__
-                
+
                 # Check if this widget should have hover effects
                 if widget_class_name in ['Button', 'DropSelect', 'ToggleSwitch']:
                     if widget_rect.collidepoint(mouse_pos):
                         currently_hovered.add(widget)
-                        
+
                         # If this is a new hover, apply hover effect
                         if widget not in self.hovered_widgets:
                             self._apply_hover_effect(widget, True)
-                            
+
                             # Play subtle hover sound (with debouncing)
                             if hasattr(self, 'sound_manager'):
                                 self.sound_manager.play_slider_sound("menu_select")
-                    
+
                     elif widget in self.hovered_widgets:
                         # Mouse left this widget, remove hover effect
                         self._apply_hover_effect(widget, False)
-                        
-            except:
+
+            except Exception:
                 # If widget doesn't support get_rect(), skip it
                 continue
-        
+
         # Update the tracked hovered widgets
         self.hovered_widgets = currently_hovered
     
@@ -1008,14 +1009,15 @@ class Menu:
         if self.current_menu:
             # Check if mouse is over any interactive widget
             selected_widget = self.current_menu.get_selected_widget()
-            
+
             # Get the widget under mouse position
             widgets = self.current_menu.get_widgets()
             mouse_over_widget = False
-            
+
             for widget in widgets:
                 try:
-                    widget_rect = widget.get_rect()
+                    # Use to_real_position=True for correct rect in scrollable menus
+                    widget_rect = widget.get_rect(to_real_position=True)
                     if widget_rect.collidepoint(mouse_pos):
                         mouse_over_widget = True
                         # Check if it's an interactive widget by class name
@@ -1033,7 +1035,7 @@ class Menu:
                 except:
                     # If widget doesn't support get_rect(), skip it
                     continue
-            
+
             # If not over any interactive widget, use arrow cursor
             if not mouse_over_widget:
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
@@ -1595,20 +1597,17 @@ class Menu:
             # Add section header
             self.controls_menu.add.label(section_title, font_size=50, font_color=(235, 38, 38), font_name=pygame_menu.font.FONT_FRANCHISE)
             self.controls_menu.add.vertical_margin(10)
-            
             # Add controls with right-aligned key bindings
             for control_desc, key_binding in controls:
                 # Create a formatted string with proper spacing
                 formatted_control = f"{control_desc:<30} {key_binding:>15}"
                 self.controls_menu.add.label(formatted_control, font_size=30, font_color=(255, 255, 255), font_name=pygame_menu.font.FONT_FRANCHISE)
-            
             self.controls_menu.add.vertical_margin(20)
-        
         back_btn = self.controls_menu.add.button("Back", self._back_to_main)
-        
         # Apply custom styling to controls menu
         self._customize_menu_widgets(self.controls_menu)
-        
+        # Ensure the Back button gets hover/cursor styling
+        self._apply_hover_effect(back_btn, False)
         # Set current menu (preserve the current menu state)
         if hasattr(self, 'current_menu'):
             if self.current_menu == self.settings_menu:

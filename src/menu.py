@@ -346,7 +346,7 @@ class Menu:
             },
             "hard": {
                 "name": "Hard",
-                "description": "Complete random scramble",
+                "description": "Completely random scramble",
                 "scramble_moves": -1,  # Special value for total random scramble
                 "timer_enabled": True,
             }
@@ -1241,16 +1241,16 @@ class Menu:
                 
                 if self.personal_best_button_hovered:
                     # Hover state - brighter background and border
-                    pygame.draw.rect(screen, (80, 80, 80, 200), button_rect)  # Brighter background
-                    pygame.draw.rect(screen, (150, 150, 150), button_rect, 3)  # Thicker, brighter border
+                    pygame.draw.rect(screen, (80, 80, 80, 200), button_rect, border_radius=10)  # Brighter background
+                    pygame.draw.rect(screen, (150, 150, 150), button_rect, 3, border_radius=10)  # Thicker, brighter border
                     
                     # Add subtle glow effect
                     glow_rect = pygame.Rect(button_x - 2, button_y - 2, button_width + 4, button_height + 4)
-                    pygame.draw.rect(screen, (120, 120, 120, 100), glow_rect, 1)
+                    pygame.draw.rect(screen, (120, 120, 120, 100), glow_rect, 1, border_radius=10)
                 else:
                     # Normal state
-                    pygame.draw.rect(screen, (50, 50, 50, 180), button_rect)  # Dark semi-transparent background
-                    pygame.draw.rect(screen, (100, 100, 100), button_rect, 2)  # Border
+                    pygame.draw.rect(screen, (50, 50, 50, 180), button_rect, border_radius=10)  # Dark semi-transparent background
+                    pygame.draw.rect(screen, (100, 100, 100), button_rect, 2, border_radius=10)  # Border
                 
                 # Draw the record icon if available
                 if self.record_icon:

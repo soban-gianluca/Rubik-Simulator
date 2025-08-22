@@ -1055,10 +1055,10 @@ class Game:
             banner_surface.fill((0, 0, 0, 0))
             # Banner background (semi-transparent black, rounded)
             background_alpha = int(180 * self.banner_alpha)
-            pygame.draw.rect(banner_surface, (0, 0, 0, background_alpha), (0, 0, banner_width, banner_height), border_radius=12)
+            pygame.draw.rect(banner_surface, (0, 0, 0, background_alpha), (0, 0, banner_width, banner_height), border_radius=10)
             # Banner border (subtle white border, rounded)
             border_alpha = int(100 * self.banner_alpha)
-            pygame.draw.rect(banner_surface, (255, 255, 255, border_alpha), (0, 0, banner_width, banner_height), width=2, border_radius=12)
+            pygame.draw.rect(banner_surface, (255, 255, 255, border_alpha), (0, 0, banner_width, banner_height), width=2, border_radius=10)
             # Apply alpha to text
             text_alpha = int(255 * self.banner_alpha)
             text_surface_alpha = text_surface.copy()
@@ -1209,7 +1209,7 @@ class Game:
         elif difficulty == "easy":
             # Easy: 5 moves scramble
             self.animated_scramble_cube(1)
-            self.debug_print("Easy mode: Scramble with 1 move!")
+            self.debug_print("Easy mode: Scramble with 5 move!")
         elif difficulty == "medium":
             # Medium: 10 moves scramble
             self.animated_scramble_cube(10)

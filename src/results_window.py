@@ -136,7 +136,7 @@ class ResultsWindow:
         
         # Modern styled action buttons - more compact
         self.play_again_btn = self.menu.add.button(
-            '▶ Play Again',
+            'Play Again',
             self.play_again,
             font_size=38,  # Reduced from 45
             background_color=(46, 125, 50, 200),  # Green with transparency
@@ -145,7 +145,7 @@ class ResultsWindow:
         )
         
         self.main_menu_btn = self.menu.add.button(
-            '🏠 Main Menu',
+            'Main Menu',
             self.to_main_menu,
             font_size=38,  # Reduced from 45
             background_color=(66, 66, 66, 200),  # Gray with transparency
@@ -216,12 +216,12 @@ class ResultsWindow:
         self.tps_widget.set_title(f"Speed: {self.results_data['tps']:.2f} TPS")
         
         # Set performance rating with dynamic color and add new record indicators
-        rating_text = f"🌟 {rating}"
+        rating_text = f"{rating}"
         if new_records:
             if new_records.get('is_best_time'):
                 rating_text += "NEW BEST TIME!"
             elif new_records.get('is_best_moves'):
-                rating_text += "NEW BEST MOVES!"
+                rating_text += "NEW LEAST MOVES!"
             elif new_records.get('is_best_tps'):
                 rating_text += "NEW BEST TPS!"
         
@@ -656,20 +656,20 @@ class ResultsWindow:
         rating_color = self.rating_colors.get(rating, (255, 255, 255))
         
         # Update the display widgets with modern formatting
-        self.moves_widget.set_title(f"📊 Moves: {moves}")
-        self.time_widget.set_title(f"⏱️  Time: {solve_time:.2f}s")
-        self.tps_widget.set_title(f"⚡ Speed: {tps:.2f} TPS")
+        self.moves_widget.set_title(f"Moves: {moves}")
+        self.time_widget.set_title(f"Time: {solve_time:.2f}s")
+        self.tps_widget.set_title(f"Speed: {tps:.2f} TPS")
         
         # Set performance rating with dynamic color - check for stored new record indicators
         rating_text = f"🌟 {rating}"
         if 'new_records' in results_data:
             new_records = results_data['new_records']
             if new_records.get('is_best_time'):
-                rating_text += " 🏆 NEW BEST TIME!"
+                rating_text += "NEW BEST TIME!"
             elif new_records.get('is_best_moves'):
-                rating_text += " 🎯 NEW BEST MOVES!"
+                rating_text += "NEW LEAST MOVES!"
             elif new_records.get('is_best_tps'):
-                rating_text += " ⚡ NEW BEST TPS!"
+                rating_text += "NEW BEST TPS!"
         
         self.rating_widget.set_title(rating_text)
         self.rating_widget._font_color = rating_color

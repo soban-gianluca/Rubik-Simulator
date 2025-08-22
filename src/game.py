@@ -917,17 +917,18 @@ class Game:
             fps_text = f"FPS: {fps:.0f}"
             text_surface = self._fps_font.render(fps_text, True, (255, 255, 255))
             
-            # Add a semi-transparent background for better readability
+            # Add a semi-transparent rounded background for better readability
             text_width, text_height = text_surface.get_size()
             bg_surface = pygame.Surface((text_width + 20, text_height + 10), pygame.SRCALPHA)
-            bg_surface.fill((0, 0, 0, 128))  # Semi-transparent black background
-            
+            bg_surface.fill((0, 0, 0, 0))  # Fully transparent first
+            # Draw rounded rectangle background
+            pygame.draw.rect(bg_surface, (0, 0, 0, 128), (0, 0, text_width + 20, text_height + 10), border_radius=8)
+            # Optional: accent border
+            pygame.draw.rect(bg_surface, (100, 150, 255, 100), (0, 0, text_width + 20, text_height + 10), width=2, border_radius=8)
             # Blit text onto background
             bg_surface.blit(text_surface, (10, 5))
-            
             # Convert to OpenGL texture and render
             texture_data = pygame.image.tostring(bg_surface, 'RGBA', True)
-            
             # Position in top-left corner (10 pixels from edges)
             glRasterPos2f(10, text_height + 15)
             glPixelZoom(1, 1)
@@ -989,11 +990,14 @@ class Game:
             bg_width = max_width + (padding * 2)
             bg_height = total_height + (padding * 2) + (line_spacing * (len(text_lines) - 1))
             
-            # Create background surface with alpha
+            # Create background surface with alpha and rounded corners
             bg_surface = pygame.Surface((bg_width, bg_height), pygame.SRCALPHA)
+            bg_surface.fill((0, 0, 0, 0))
             bg_alpha = int(128 * alpha)  # Apply alpha to background
-            bg_surface.fill((0, 0, 0, bg_alpha))  # Semi-transparent black background
-            
+            # Draw rounded rectangle background
+            pygame.draw.rect(bg_surface, (0, 0, 0, bg_alpha), (0, 0, bg_width, bg_height), border_radius=10)
+            # Optional: accent border
+            pygame.draw.rect(bg_surface, (100, 150, 255, int(80 * alpha)), (0, 0, bg_width, bg_height), width=2, border_radius=10)
             # Blit text lines onto background with alpha
             y_offset = padding
             for text_surface in text_surfaces:
@@ -1003,10 +1007,8 @@ class Game:
                     text_surface.set_alpha(int(255 * alpha))
                 bg_surface.blit(text_surface, (padding, y_offset))
                 y_offset += line_height + line_spacing
-            
             # Convert to OpenGL texture and render
             texture_data = pygame.image.tostring(bg_surface, 'RGBA', True)
-            
             # Position in bottom-left corner (10 pixels from edges)
             y_position = self.height - bg_height - 10
             glRasterPos2f(10, y_position + bg_height)
@@ -1040,31 +1042,25 @@ class Game:
             banner_x = (self.width - banner_width) // 2
             banner_y = 50  # Distance from top of screen
 
-            # Create banner surface with alpha
+            # Create banner surface with alpha and rounded corners
             banner_surface = pygame.Surface((banner_width, banner_height), pygame.SRCALPHA)
-            
-            # Banner background (semi-transparent black)
-            background_alpha = int(180 * self.banner_alpha)  # 180 max alpha for background
-            banner_surface.fill((0, 0, 0, background_alpha))
-            
-            # Banner border (subtle white border)
+            banner_surface.fill((0, 0, 0, 0))
+            # Banner background (semi-transparent black, rounded)
+            background_alpha = int(180 * self.banner_alpha)
+            pygame.draw.rect(banner_surface, (0, 0, 0, background_alpha), (0, 0, banner_width, banner_height), border_radius=12)
+            # Banner border (subtle white border, rounded)
             border_alpha = int(100 * self.banner_alpha)
-            pygame.draw.rect(banner_surface, (255, 255, 255, border_alpha), 
-                           (0, 0, banner_width, banner_height), width=2)
-            
+            pygame.draw.rect(banner_surface, (255, 255, 255, border_alpha), (0, 0, banner_width, banner_height), width=2, border_radius=12)
             # Apply alpha to text
             text_alpha = int(255 * self.banner_alpha)
             text_surface_alpha = text_surface.copy()
             text_surface_alpha.set_alpha(text_alpha)
-            
             # Blit text to banner
             text_x = (banner_width - text_width) // 2
             text_y = (banner_height - text_height) // 2
             banner_surface.blit(text_surface_alpha, (text_x, text_y))
-            
             # Convert to OpenGL texture and render
             texture_data = pygame.image.tostring(banner_surface, 'RGBA', True)
-            
             glRasterPos2f(banner_x, banner_y + banner_height)
             glPixelZoom(1, 1)
             glDrawPixels(banner_width, banner_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)

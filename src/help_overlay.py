@@ -15,9 +15,9 @@ class HelpOverlay:
         self.target_alpha = 0.0
         self.current_alpha = 0.0
         
-        # Button dimensions and position
-        self.help_button_size = 50
-        self.help_button_margin = 20
+        # Button dimensions and position - make it responsive to screen size
+        self.help_button_size = max(40, min(60, int(width * 0.045)))  # 4.5% of screen width, min 40px, max 60px
+        self.help_button_margin = max(12, int(width * 0.015))  # 1.5% of screen width, min 12px
         self.help_button_rect = pygame.Rect(
             self.width - self.help_button_size - self.help_button_margin,
             self.help_button_margin,
@@ -25,19 +25,32 @@ class HelpOverlay:
             self.help_button_size
         )
         
-        # Load help icon
+        # Load help icon with high quality scaling
         try:
-            self.help_icon = pygame.image.load(resource_path("utils/icons/help_icon.png"))
-            self.help_icon = pygame.transform.scale(self.help_icon, (self.help_button_size, self.help_button_size))
+            # Load the original icon at a higher resolution for better quality
+            original_icon = pygame.image.load(resource_path("utils/icons/help_icon.png"))
+            
+            # Use smoothscale for better quality when scaling down
+            # Scale to 2x the button size first, then scale down for anti-aliasing effect
+            high_res_size = self.help_button_size * 2
+            high_res_icon = pygame.transform.smoothscale(original_icon, (high_res_size, high_res_size))
+            self.help_icon = pygame.transform.smoothscale(high_res_icon, (self.help_button_size, self.help_button_size))
         except:
-            # Create a fallback icon if the image fails to load
+            # Create a high-quality fallback icon if the image fails to load
             self.help_icon = pygame.Surface((self.help_button_size, self.help_button_size), pygame.SRCALPHA)
-            pygame.draw.circle(self.help_icon, (255, 255, 255, 200), 
-                             (self.help_button_size//2, self.help_button_size//2), 
-                             self.help_button_size//2 - 2, 2)
-            font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 28)
-            text = font.render("?", True, (255, 255, 255))
-            text_rect = text.get_rect(center=(self.help_button_size//2, self.help_button_size//2))
+            
+            # Create a smooth circular background
+            center = self.help_button_size // 2
+            radius = center - 3
+            
+            # Draw anti-aliased circle
+            pygame.draw.circle(self.help_icon, (255, 255, 255, 220), (center, center), radius)
+            pygame.draw.circle(self.help_icon, (200, 200, 200, 150), (center, center), radius, 2)
+            
+            # Create high-quality question mark
+            font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, int(self.help_button_size * 0.6))
+            text = font.render("?", True, (60, 60, 60))
+            text_rect = text.get_rect(center=(center, center))
             self.help_icon.blit(text, text_rect)
         
         # Help panel properties - bigger to accommodate larger fonts
@@ -154,10 +167,18 @@ class HelpOverlay:
                         (0, 0, self.help_button_size, self.help_button_size), 
                         width=1, border_radius=6)
         
-        # Scale and blit the help icon
-        icon_size = self.help_button_size - 8  # Add some padding
-        scaled_icon = pygame.transform.scale(self.help_icon, (icon_size, icon_size))
-        self.button_surface.blit(scaled_icon, (4, 4))
+        # Center the help icon properly with padding
+        icon_padding = 6  # Padding from edges
+        icon_size = self.help_button_size - (icon_padding * 2)
+        
+        # Use smoothscale for high-quality scaling
+        scaled_icon = pygame.transform.smoothscale(self.help_icon, (icon_size, icon_size))
+        
+        # Calculate centered position
+        icon_x = (self.help_button_size - icon_size) // 2
+        icon_y = (self.help_button_size - icon_size) // 2
+        
+        self.button_surface.blit(scaled_icon, (icon_x, icon_y))
         
         # Hover state button
         self.button_surface_hover = pygame.Surface((self.help_button_size, self.help_button_size), pygame.SRCALPHA)
@@ -188,13 +209,15 @@ class HelpOverlay:
                         (0, 0, self.help_button_size, self.help_button_size), 
                         width=2, border_radius=6)
         
-        # Scale and blit the help icon (slightly brighter for hover)
+        # Scale and center the help icon for hover state (slightly brighter)
         scaled_icon_hover = scaled_icon.copy()
         # Add a slight brightness boost to the icon on hover
         bright_overlay = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
         bright_overlay.fill((255, 255, 255, 30))
         scaled_icon_hover.blit(bright_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
-        self.button_surface_hover.blit(scaled_icon_hover, (4, 4))
+        
+        # Use the same centered position for hover state
+        self.button_surface_hover.blit(scaled_icon_hover, (icon_x, icon_y))
         
     def update_hover(self, mouse_pos):
         """Update hover state based on mouse position"""
@@ -291,6 +314,10 @@ class HelpOverlay:
         """Update dimensions when screen size changes"""
         self.width = width
         self.height = height
+        
+        # Update responsive button size and margin
+        self.help_button_size = max(40, min(60, int(width * 0.045)))  # 4.5% of screen width, min 40px, max 60px
+        self.help_button_margin = max(12, int(width * 0.015))  # 1.5% of screen width, min 12px
         
         # Update help button position
         self.help_button_rect = pygame.Rect(

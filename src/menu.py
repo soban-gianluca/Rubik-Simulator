@@ -89,6 +89,10 @@ class Menu:
         # Initialize hover tracking
         self.hovered_widgets = set()  # Track which widgets are currently hovered
         
+        # Personal records button hover state
+        self.personal_best_button_hovered = False
+        self.personal_best_rect = None  # Will be set when drawing the button
+        
         # Initialize difficulty button animation tracking
         self.difficulty_buttons = {}  # Store difficulty buttons with their metadata
         self.button_animations = {}  # Track animation state for each button
@@ -1052,6 +1056,20 @@ class Menu:
         if not self.active:
             return
         
+        # Check if mouse is over Personal Records button (only on main menu)
+        if (self.current_menu == self.main_menu and 
+            hasattr(self, 'personal_best_rect') and 
+            self.personal_best_rect):
+            
+            if self.personal_best_rect.collidepoint(mouse_pos):
+                self.personal_best_button_hovered = True
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                return
+            else:
+                self.personal_best_button_hovered = False
+        else:
+            self.personal_best_button_hovered = False
+        
         if self.current_menu:
             # Check if mouse is over any interactive widget
             selected_widget = self.current_menu.get_selected_widget()
@@ -1218,10 +1236,21 @@ class Menu:
                 button_x = screen.get_width() - button_width - margin
                 button_y = screen.get_height() - button_height - margin
                 
-                # Create button background
+                # Create button background with hover effects
                 button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
-                pygame.draw.rect(screen, (50, 50, 50, 180), button_rect)  # Dark semi-transparent background
-                pygame.draw.rect(screen, (100, 100, 100), button_rect, 2)  # Border
+                
+                if self.personal_best_button_hovered:
+                    # Hover state - brighter background and border
+                    pygame.draw.rect(screen, (80, 80, 80, 200), button_rect)  # Brighter background
+                    pygame.draw.rect(screen, (150, 150, 150), button_rect, 3)  # Thicker, brighter border
+                    
+                    # Add subtle glow effect
+                    glow_rect = pygame.Rect(button_x - 2, button_y - 2, button_width + 4, button_height + 4)
+                    pygame.draw.rect(screen, (120, 120, 120, 100), glow_rect, 1)
+                else:
+                    # Normal state
+                    pygame.draw.rect(screen, (50, 50, 50, 180), button_rect)  # Dark semi-transparent background
+                    pygame.draw.rect(screen, (100, 100, 100), button_rect, 2)  # Border
                 
                 # Draw the record icon if available
                 if self.record_icon:
@@ -1232,16 +1261,20 @@ class Menu:
                 else:
                     text_x = button_x + 10
                 
-                # Draw the text using the menu's font
+                # Draw the text using the menu's font with hover effects
                 try:
                     # Use the same font as the menu widgets
-                    menu_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, 24)
-                    text_surface = menu_font.render("Personal Records", True, (255, 255, 255))
+                    font_size = 26 if self.personal_best_button_hovered else 24
+                    menu_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, font_size)
+                    
+                    # Text color changes on hover
+                    text_color = (255, 255, 255) if not self.personal_best_button_hovered else (255, 255, 180)
+                    text_surface = menu_font.render("Personal Records", True, text_color)
                     text_y = button_y + (button_height - text_surface.get_height()) // 2
                     
                     # Add shadow effect like the menu
                     shadow_surface = menu_font.render("Personal Records", True, (0, 0, 0))
-                    shadow_offset = 1
+                    shadow_offset = 2 if self.personal_best_button_hovered else 1
                     screen.blit(shadow_surface, (text_x + shadow_offset, text_y + shadow_offset))
                     screen.blit(text_surface, (text_x, text_y))
                 except:
@@ -1825,7 +1858,7 @@ class Menu:
                 total_solves = records["total_solves"]
                 
                 # Create aligned row with even wider spacing to match headers
-                data_row = f"{diff_name:<25}│{best_time:^36}│{best_moves:^40}│{total_solves:^35}"
+                data_row = f"{diff_name:<21}│{best_time:^36}│{best_moves:^40}│{total_solves:^35}"
                 
                 # Add row with difficulty color
                 self.personal_best_menu.add.label(

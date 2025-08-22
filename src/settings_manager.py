@@ -3,7 +3,7 @@ import os
 from utils.path_helper import resource_path
 
 class SettingsManager:
-    def __init__(self, settings_file="settings.json"):
+    def __init__(self, settings_file=None):
         # default settings
         self.default_settings = {
             "resolution": {
@@ -31,8 +31,11 @@ class SettingsManager:
             }
         }
 
-        # Path to settings file
-        self.settings_file = resource_path(settings_file)
+        # Always use a single fixed settings file in src/
+        if settings_file is None:
+            self.settings_file = os.path.join(os.path.dirname(__file__), "settings.json")
+        else:
+            self.settings_file = settings_file
 
         # Load settings from file or use defaults
         self.load_settings()

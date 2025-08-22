@@ -21,7 +21,7 @@ We've used 100% Python for the cube logic, the move management and user interfac
 For our game we utilize Pygame and OpenGl for the 3D rendering
 
 * To run the game:
-Execute the main.py file from command line or from any editor
+Execute the RubikSimulator.exe and enjoy the game!
 
 ## Credits
 

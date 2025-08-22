@@ -2,6 +2,7 @@ import os
 import pygame
 import time
 import random
+from utils.path_helper import resource_path
 
 class SoundManager:
     """Manages sound effects for the game"""
@@ -29,31 +30,31 @@ class SoundManager:
                 self.is_enabled = False
         
         # Create sound effects directory if it doesn't exist
-        sfx_dir = os.path.join("utils", "sfx")
+        sfx_dir = resource_path("utils/sfx")
         if not os.path.exists(sfx_dir):
             print("Error: Sound effects directory does not exist.")
         
         # Load sound effects
         try:
-            self.sounds["menu_open"] = pygame.mixer.Sound(os.path.join(sfx_dir, "menu", "menu_open.mp3"))
-            self.sounds["menu_select"] = pygame.mixer.Sound(os.path.join(sfx_dir, "menu", "menu_select.mp3"))
-            self.sounds["menu_apply"] = pygame.mixer.Sound(os.path.join(sfx_dir, "menu", "menu_close.mp3"))
-            
+            self.sounds["menu_open"] = pygame.mixer.Sound(resource_path("utils/sfx/menu/menu_open.mp3"))
+            self.sounds["menu_select"] = pygame.mixer.Sound(resource_path("utils/sfx/menu/menu_select.mp3"))
+            self.sounds["menu_apply"] = pygame.mixer.Sound(resource_path("utils/sfx/menu/menu_close.mp3"))
+
             # Load cube movement sound effects
-            cube_sfx_dir = os.path.join(sfx_dir, "cube_sfx")
+            cube_sfx_dir = resource_path("utils/sfx/cube_sfx")
             self.cube_sounds = []
             for i in range(1, 7):  # Load cube_sfx_1.mp3 to cube_sfx_6.mp3
-                cube_sound_path = os.path.join(cube_sfx_dir, f"cube_sfx_{i}.mp3")
+                cube_sound_path = resource_path(f"utils/sfx/cube_sfx/cube_sfx_{i}.mp3")
                 if os.path.exists(cube_sound_path):
                     cube_sound = pygame.mixer.Sound(cube_sound_path)
                     cube_sound.set_volume(0.4 * self.effects_volume * self.master_volume)  # Set moderate volume for cube sounds
                     self.cube_sounds.append(cube_sound)
-            
+
             # Set default volumes based on sound type
             self.sounds["menu_open"].set_volume(0.5 * self.menu_volume * self.master_volume)
             self.sounds["menu_select"].set_volume(0.3 * self.menu_volume * self.master_volume)
             self.sounds["menu_apply"].set_volume(0.4 * self.menu_volume * self.master_volume)
-            
+
         except Exception as e:
             print(f"Error loading sound effects: {e}")
             self.is_enabled = False

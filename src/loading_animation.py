@@ -5,6 +5,7 @@ import time
 import threading
 from pygame.locals import *
 from OpenGL.GL import *
+from utils.path_helper import resource_path
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -57,7 +58,7 @@ class LoadingAnimation:
         
         # Load cube icon for animation
         try:
-            self.cube_icon = pygame.image.load("utils/rubiksCube_Icon.ico")
+            self.cube_icon = pygame.image.load(resource_path("utils/rubiksCube_Icon.ico"))
             self.cube_icon = pygame.transform.scale(self.cube_icon, (120, 120))
             pygame.display.set_icon(self.cube_icon)
         except:
@@ -88,7 +89,7 @@ class LoadingAnimation:
     def preload_game_resources(self):
         """Preload game resources in background thread"""
         # Import here to avoid circular imports
-        from game import Game
+        from src.game import Game
         
         # Simulate resource loading with detailed steps
         total_steps = len(self.loading_steps) - 1  # -1 because last step is "Ready to play!"

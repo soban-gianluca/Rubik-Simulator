@@ -1,0 +1,25 @@
+{
+  "resolution": {
+    "width": 1024,
+    "height": 768,
+    "index": 0
+  },
+  "fullscreen": false,
+  "show_fps": false,
+  "volume": 50,
+  "audio": {
+    "master_volume": 50,
+    "music_volume": 70,
+    "effects_volume": 60,
+    "menu_volume": 50
+  },
+  "auto_rotate": true,
+  "auto_rotate_speed": 0.2,
+  "background": "skybox",
+  "difficulty_skyboxes": {
+    "freeplay": "utils/skyboxes/skybox_freeplay.png",
+    "easy": "utils/skyboxes/skybox_easy.jpg",
+    "medium": "utils/skyboxes/skybox_medium.jpg",
+    "hard": "utils/skyboxes/skybox_hard.jpg"
+  }
+}

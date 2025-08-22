@@ -5,8 +5,9 @@ from pygame_menu.locals import *  # Import all constants including alignment
 import os
 import time
 import math
-from settings_manager import SettingsManager
-from sound_manager import SoundManager
+from src.settings_manager import SettingsManager
+from src.sound_manager import SoundManager
+from utils.path_helper import resource_path
 
 class Menu:
     def __init__(self, screen_width, screen_height, game_instance=None):
@@ -158,7 +159,7 @@ class Menu:
         """Load the main menu background image"""
         try:
             # Load the main menu background image
-            background_path = os.path.join("utils", "main_menu_background.png")
+            background_path = resource_path("utils/main_menu_background.png")
             if os.path.exists(background_path):
                 self.main_menu_background = pygame.image.load(background_path)
                 print(f"Loaded main menu background: {background_path}")
@@ -173,7 +174,7 @@ class Menu:
         """Load the Rubik's Cube logo image"""
         try:
             # Load the logo image
-            logo_path = os.path.join("utils", "rubiks_logo.png")
+            logo_path = resource_path("utils/rubiks_logo.png")
             if os.path.exists(logo_path):
                 self.logo_image = pygame.image.load(logo_path)
                 # Scale the logo to an appropriate size for the menu
@@ -1316,7 +1317,7 @@ class Menu:
         )
         
         # Add custom logo image as title if available, otherwise use text
-        logo_path = os.path.join("utils", "rubiks_logo.png")
+        logo_path = resource_path("utils/rubiks_logo.png")
         if os.path.exists(logo_path):
             # Calculate appropriate scale based on screen size - smaller scale for compact design
             logo_scale_width = self.width * 0.30 / 400  # Reduced from 0.4 to 0.25 for smaller logo

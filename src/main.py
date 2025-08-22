@@ -1,8 +1,10 @@
 import pygame
 import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from pygame.locals import *
-from loading_animation import LoadingAnimation
-from game import Game
+from src.loading_animation import LoadingAnimation
+from src.game import Game
 
 def main():
     print("Initializing the game...")
@@ -10,7 +12,7 @@ def main():
     pygame.init()
     
     # Load game settings to use the same resolution
-    from settings_manager import SettingsManager
+    from src.settings_manager import SettingsManager
     settings = SettingsManager()
     width = settings.settings["resolution"]["width"]
     height = settings.settings["resolution"]["height"]

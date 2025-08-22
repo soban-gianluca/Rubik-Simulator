@@ -1,2 +1,6 @@
 __pycache__/
 src/settings.json
+build/
+dist/
+*.spec
+build_game.bat

@@ -2,6 +2,7 @@ import pygame
 import pygame_menu
 import time
 from OpenGL.GL import *
+from utils.path_helper import resource_path
 
 class HelpOverlay:
     def __init__(self, width, height):
@@ -26,7 +27,7 @@ class HelpOverlay:
         
         # Load help icon
         try:
-            self.help_icon = pygame.image.load("utils/icons/help_icon.png")
+            self.help_icon = pygame.image.load(resource_path("utils/icons/help_icon.png"))
             self.help_icon = pygame.transform.scale(self.help_icon, (self.help_button_size, self.help_button_size))
         except:
             # Create a fallback icon if the image fails to load

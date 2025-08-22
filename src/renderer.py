@@ -3,8 +3,10 @@ from pygame.locals import *
 import numpy as np
 import math
 import time
+import os
 from OpenGL.GL import *
 from OpenGL.GLU import *
+from utils.path_helper import resource_path
 
 class Renderer:
     def __init__(self, width=1024, height=768, cube_path="utils/cube.obj"):
@@ -13,17 +15,17 @@ class Renderer:
         self.height = height
         self.cube_path = cube_path
         self.fov = 60 # Field of view for perspective projection
-        
+
         # OpenGL cube data
         self.obj_vertices = []
         self.obj_faces = []
         self.single_cube_display_list = None
-        
+
         # 3x3x3 cube positions and colors
         self.cube_size = 1.2  # Larger size for better appearance
         self.cube_spacing = 0.52  # Negative spacing to make cubes overlap slightly
         self.cubes = []
-        
+
         # Animation system
         self.is_animating = False
         self.animation_start_time = 0
@@ -34,12 +36,12 @@ class Renderer:
         self.animation_clockwise = True
         self.animation_cubes = []  # Cubes that are part of the rotating face
         self.pending_move = None  # Move to execute when animation completes
-        
+
         # Skybox properties
         self.skybox_texture = None
         self.skybox_display_list = None
         self.skybox_size = 20.0  # Large size to encompass the scene
-        
+
         # Rubik's cube face colors - define colors before initializing cubes
         self.cube_colors = {
             'white': (1.0, 1.0, 1.0),     # Top
@@ -50,33 +52,33 @@ class Renderer:
             'green': (0.0, 1.0, 0.0),     # Back
             'black': (0.1, 0.1, 0.1)      # Internal faces
         }
-        
+
         # Import and initialize the Rubik's cube logic
-        from rubiks_cube import RubiksCube
+        from src.rubiks_cube import RubiksCube
         self.rubiks_cube = RubiksCube()
-        
+
         # Import settings manager to get current skybox
-        from settings_manager import SettingsManager
+        from src.settings_manager import SettingsManager
         self.settings_manager = SettingsManager()
-        
+
         # Now initialize cubes after colors are defined
         self.initialize_cubes()
-        
+
         # Load the single cube model
-        self.load_obj(cube_path)
-        
+        self.load_obj(resource_path(self.cube_path))
+
         # Initialize OpenGL settings
         self.setup_opengl()
-        
+
         # Load skybox texture from settings and create spherical skybox
         # Use freeplay difficulty as default on initialization
         skybox_path = self.settings_manager.get_skybox_by_difficulty("freeplay")
-        self.load_skybox_texture(skybox_path)
+        self.load_skybox_texture(resource_path(skybox_path))
         self.create_spherical_skybox_display_list()  # Using spherical skybox for full panoramic image
-        
+
         # Create optimized display list for single cube
         self.create_display_list()
-        
+
         # Store camera rotation for manual control
         self.rotation_x = 0
         self.rotation_y = 0
@@ -85,7 +87,7 @@ class Renderer:
         """Load skybox texture from image file"""
         try:
             # Load image using pygame
-            skybox_image = pygame.image.load(image_path)
+            skybox_image = pygame.image.load(resource_path(image_path))
             skybox_image = pygame.transform.flip(skybox_image, False, True)  # Flip vertically for OpenGL
             
             # Get image data
@@ -154,7 +156,7 @@ class Renderer:
                 self.skybox_display_list = None
             
             # Load new texture
-            self.load_skybox_texture(new_image_path)
+            self.load_skybox_texture(resource_path(new_image_path))
             
             # Recreate display list with new texture
             self.create_spherical_skybox_display_list()
@@ -162,7 +164,7 @@ class Renderer:
         except Exception as e:
             print(f"Failed to reload skybox texture: {e}")
             # Fallback to default texture
-            self.load_skybox_texture("utils/skybox.jpg")
+            self.load_skybox_texture(resource_path("utils/skybox.jpg"))
             self.create_spherical_skybox_display_list()
 
     def create_spherical_skybox_display_list(self):
@@ -367,7 +369,7 @@ class Renderer:
         vertices = []
         faces = []
         normals = []
-        
+
         with open(filename, 'r') as file:
             for line in file:
                 if line.startswith('v '):
@@ -387,7 +389,7 @@ class Renderer:
                         vertex_index = int(vertex_data.split('/')[0]) - 1
                         face.append(vertex_index)
                     faces.append(face)
-        
+
         self.obj_vertices = vertices
         self.obj_faces = faces
         

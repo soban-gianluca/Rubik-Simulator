@@ -5,13 +5,15 @@ import random
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
-from menu import Menu
-from renderer import Renderer
-from settings_manager import SettingsManager
-from sound_manager import SoundManager
-from results_window import ResultsWindow
-from mouse_interaction import MouseInteraction
-from help_overlay import HelpOverlay
+from src.menu import Menu
+from src.renderer import Renderer
+from src.settings_manager import SettingsManager
+from src.sound_manager import SoundManager
+from src.results_window import ResultsWindow
+from src.mouse_interaction import MouseInteraction
+from src.help_overlay import HelpOverlay
+from utils.path_helper import resource_path
+from src.rubiks_cube import RubiksCube
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -52,10 +54,10 @@ class Game:
         
         # Initialize music
         self.playlist = [
-            "utils/soundtrack/dark_bar.mp3",
-            "utils/soundtrack/lounge_layers.mp3",
-            "utils/soundtrack/midnight_simmetry.mp3",
-            "utils/soundtrack/the_fifth_color.mp3"
+            resource_path("utils/soundtrack/dark_bar.mp3"),
+            resource_path("utils/soundtrack/lounge_layers.mp3"),
+            resource_path("utils/soundtrack/midnight_simmetry.mp3"),
+            resource_path("utils/soundtrack/the_fifth_color.mp3")
         ]
         self.current_song = random.randint(0, len(self.playlist) - 1)  # Start with random song
         self.MUSIC_END_EVENT = pygame.USEREVENT + 1
@@ -71,7 +73,7 @@ class Game:
             print(f"Background music error: {e}")
     
         try:
-            icon = pygame.image.load("utils/rubiksCube_Icon.ico")
+            icon = pygame.image.load(resource_path("utils/rubiksCube_Icon.ico"))
             pygame.display.set_icon(icon)
         except:
             print("Icon not found")
@@ -1169,7 +1171,6 @@ class Game:
         game_mode_config = self.menu.get_game_mode_config(difficulty)
         
         # ALWAYS reset the cube to solved state first before applying any difficulty-specific scrambling
-        from rubiks_cube import RubiksCube
         self.renderer.rubiks_cube = RubiksCube()
         self.debug_print("Cube reset to solved state")
         

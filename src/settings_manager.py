@@ -1,9 +1,10 @@
 import json
 import os
+from utils.path_helper import resource_path
 
 class SettingsManager:
     def __init__(self, settings_file="settings.json"):
-        #default settings
+        # default settings
         self.default_settings = {
             "resolution": {
                 "width": 1024,
@@ -25,15 +26,15 @@ class SettingsManager:
             "difficulty_skyboxes": {
                 "freeplay": "utils/skyboxes/skybox_freeplay.png",
                 "easy": "utils/skyboxes/skybox_easy.jpg",
-                "medium": "utils/skyboxes/skybox_medium.jpg", 
+                "medium": "utils/skyboxes/skybox_medium.jpg",
                 "hard": "utils/skyboxes/skybox_hard.jpg"
             }
         }
 
-        #Path to settings file
-        self.settings_file = os.path.join(os.path.dirname(__file__), settings_file)
+        # Path to settings file
+        self.settings_file = resource_path(settings_file)
 
-        #Load settings from file or use defaults
+        # Load settings from file or use defaults
         self.load_settings()
 
     def load_settings(self):

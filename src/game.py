@@ -930,9 +930,9 @@ class Game:
             bg_surface = pygame.Surface((text_width + 20, text_height + 10), pygame.SRCALPHA)
             bg_surface.fill((0, 0, 0, 0))  # Fully transparent first
             # Draw rounded rectangle background
-            pygame.draw.rect(bg_surface, (0, 0, 0, 128), (0, 0, text_width + 20, text_height + 10), border_radius=8)
+            pygame.draw.rect(bg_surface, (0, 0, 0, 128), (0, 0, text_width + 20, text_height + 10), border_radius=10)
             # Optional: accent border
-            pygame.draw.rect(bg_surface, (100, 150, 255, 100), (0, 0, text_width + 20, text_height + 10), width=2, border_radius=8)
+            pygame.draw.rect(bg_surface, (100, 150, 255, 100), (0, 0, text_width + 20, text_height + 10), width=2, border_radius=10)
             # Blit text onto background
             bg_surface.blit(text_surface, (10, 5))
             # Convert to OpenGL texture and render

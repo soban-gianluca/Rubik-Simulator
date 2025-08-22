@@ -217,12 +217,12 @@ class HelpOverlay:
         button_color = (40, 40, 40, 200)
         pygame.draw.rect(self.help_button_surface, button_color, 
                         (0, 0, self.help_button_size, self.help_button_size), 
-                        border_radius=6)
+                        border_radius=10)
         
         # Normal border
         pygame.draw.rect(self.help_button_surface, (100, 150, 255, 150), 
                         (0, 0, self.help_button_size, self.help_button_size), 
-                        width=1, border_radius=6)
+                        width=1, border_radius=10)
         
         # Center the help icon properly with padding
         icon_padding = 6  # Padding from edges
@@ -285,12 +285,12 @@ class HelpOverlay:
         button_color = (40, 40, 40, 200)
         pygame.draw.rect(self.menu_button_surface, button_color, 
                         (0, 0, self.help_button_size, self.help_button_size), 
-                        border_radius=6)
+                        border_radius=10)
         
         # Normal border (green-ish for menu)
         pygame.draw.rect(self.menu_button_surface, (100, 200, 100, 150), 
                         (0, 0, self.help_button_size, self.help_button_size), 
-                        width=1, border_radius=6)
+                        width=1, border_radius=10)
         
         # Center the menu icon properly with padding
         icon_padding = 6  # Padding from edges

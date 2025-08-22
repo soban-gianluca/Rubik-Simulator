@@ -1873,13 +1873,6 @@ class Menu:
             total_solves = self.personal_best_manager.get_total_solves()
             if total_solves > 0:
                 self.personal_best_menu.add.label(
-                    "Overall Statistics",
-                    font_size=50,
-                    font_color=(255, 255, 255),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                self.personal_best_menu.add.vertical_margin(10)
-                self.personal_best_menu.add.label(
                     f"Total Solves: {total_solves}",
                     font_size=40,
                     font_color=(255, 215, 0),

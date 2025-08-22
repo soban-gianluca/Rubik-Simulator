@@ -5,8 +5,8 @@ from utils.path_helper import resource_path
 
 def get_user_settings_path() -> str:
     """
-    Path where user-modifiable settings are stored: 
-    C:\Users\<User>\AppData\Roaming\RubiksCube
+    Path where user-modifiable settings are stored.
+    Example: C:/Users/<User>/AppData/Roaming/RubiksCube/settings.json
     """
     base = os.getenv("APPDATA") or os.path.expanduser("~")
     user_dir = os.path.join(base, "RubiksCube")

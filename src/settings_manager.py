@@ -1,10 +1,45 @@
-import json
 import os
+import json
 from utils.path_helper import resource_path
+
+
+def get_user_settings_path() -> str:
+    """
+    Path where user-modifiable settings are stored: 
+    C:\Users\<User>\AppData\Roaming\RubiksCube
+    """
+    base = os.getenv("APPDATA") or os.path.expanduser("~")
+    user_dir = os.path.join(base, "RubiksCube")
+    os.makedirs(user_dir, exist_ok=True)
+    return os.path.join(user_dir, "settings.json")
+
+
+def load_settings() -> dict:
+    """
+    Load user settings if available, otherwise load defaults from bundled JSON.
+    """
+    user_settings = get_user_settings_path()
+    if os.path.exists(user_settings):
+        with open(user_settings, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    # fallback: load bundled default settings
+    default_path = resource_path("src/settings.json")
+    with open(default_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_settings(data: dict) -> None:
+    """
+    Save settings to the user's local AppData folder (never to the bundled file).
+    """
+    with open(get_user_settings_path(), "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+
 
 class SettingsManager:
     def __init__(self, settings_file=None):
-        # default settings
+        # default settings - keep for backward compatibility methods
         self.default_settings = {
             "resolution": {
                 "width": 1024,
@@ -31,31 +66,25 @@ class SettingsManager:
             }
         }
 
-        # Always use a single fixed settings file in src/
-        if settings_file is None:
-            self.settings_file = os.path.join(os.path.dirname(__file__), "settings.json")
-        else:
-            self.settings_file = settings_file
-
-        # Load settings from file or use defaults
+        # Load settings using new logic
         self.load_settings()
 
     def load_settings(self):
-        """Load settings from the JSON file, or use default settings if file does not exist."""
+        """Load settings using the new read logic."""
         try:
-            if os.path.exists(self.settings_file):
-                with open(self.settings_file, 'r') as file:
-                    self.settings = json.load(file)
+            self.settings = load_settings()
+            
+            # Ensure audio settings exist for backward compatibility
+            if "audio" not in self.settings:
+                self.settings["audio"] = self.default_settings["audio"].copy()
+                # Migrate old volume setting if it exists
+                if "volume" in self.settings:
+                    self.settings["audio"]["master_volume"] = self.settings["volume"]
+                self.save_settings()
                 
-                # Ensure audio settings exist for backward compatibility
-                if "audio" not in self.settings:
-                    self.settings["audio"] = self.default_settings["audio"].copy()
-                    # Migrate old volume setting if it exists
-                    if "volume" in self.settings:
-                        self.settings["audio"]["master_volume"] = self.settings["volume"]
-                    self.save_settings()
-            else:
-                self.settings = self.default_settings.copy()
+            # Ensure difficulty_skyboxes exist for backward compatibility
+            if "difficulty_skyboxes" not in self.settings:
+                self.settings["difficulty_skyboxes"] = self.default_settings["difficulty_skyboxes"].copy()
                 self.save_settings()
 
         except Exception as e:
@@ -63,10 +92,9 @@ class SettingsManager:
             self.settings = self.default_settings.copy()
 
     def save_settings(self):
-        """Save current settings to JSON file"""
+        """Save current settings using the new write logic."""
         try:
-            with open(self.settings_file, 'w') as f:
-                json.dump(self.settings, f, indent=2)
+            save_settings(self.settings)
         except Exception as e:
             print(f"Error saving settings: {e}")
     

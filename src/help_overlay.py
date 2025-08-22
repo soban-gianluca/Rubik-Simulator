@@ -41,8 +41,8 @@ class HelpOverlay:
             self.help_icon.blit(text, text_rect)
         
         # Help panel properties - bigger to accommodate larger fonts
-        self.panel_width = min(800, self.width - 100)
-        self.panel_height = min(650, self.height - 100)
+        self.panel_width = min(650, self.width - 100)
+        self.panel_height = min(500, self.height - 100)
         self.panel_x = (self.width - self.panel_width) // 2
         self.panel_y = (self.height - self.panel_height) // 2
         
@@ -66,12 +66,9 @@ class HelpOverlay:
             {
                 "title": "Cube Moves",
                 "items": [
-                    "R  ->  Right",
-                    "L  ->  Left",
-                    "U  ->  Up",
-                    "D  ->  Down",
-                    "F  ->  Front",
-                    "B  ->  Back",
+                    "L  ->  Left    | R  ->  Right",
+                    "U  ->  Up      | D  ->  Down",
+                    "F  ->  Front   | B  ->  Back",
                     "M  ->  Middle",
                     "E  ->  Equator",
                     "S  ->  Slice"
@@ -80,7 +77,8 @@ class HelpOverlay:
             {
                 "title": "Game Controls",
                 "items": [
-                    "ESC: Main menu",
+                    "ESC  ->  Main menu",
+                    "T  ->  Reset view",
                     "Z  ->  Undo",
                     "X  ->  Scramble (freeplay)"
                 ]
@@ -265,7 +263,7 @@ class HelpOverlay:
             section_y = y_offset + (i // 2) * 140
             
             # Section title
-            section_text = self.section_font.render(section["title"], True, (200, 220, 255))
+            section_text = self.section_font.render(section["title"], True, (235, 38, 38))
             self.panel_surface.blit(section_text, (col_x, section_y))
             
             # Section items

@@ -18,7 +18,18 @@ class HelpOverlay:
         # Button dimensions and position - make it responsive to screen size
         self.help_button_size = max(40, min(50, int(width * 0.045)))  # 4.5% of screen width, min 40px, max 60px
         self.help_button_margin = max(12, int(width * 0.015))  # 1.5% of screen width, min 12px
+        self.button_spacing = 8  # Space between buttons
+        
+        # Help button position (leftmost)
         self.help_button_rect = pygame.Rect(
+            self.width - (self.help_button_size * 2) - self.help_button_margin - self.button_spacing,
+            self.help_button_margin,
+            self.help_button_size,
+            self.help_button_size
+        )
+        
+        # Menu button position (rightmost)
+        self.menu_button_rect = pygame.Rect(
             self.width - self.help_button_size - self.help_button_margin,
             self.help_button_margin,
             self.help_button_size,
@@ -53,6 +64,38 @@ class HelpOverlay:
             text_rect = text.get_rect(center=(center, center))
             self.help_icon.blit(text, text_rect)
         
+        # Load menu icon with high quality scaling
+        try:
+            # Load the original menu icon at a higher resolution for better quality
+            original_menu_icon = pygame.image.load(resource_path("utils/icons/menu_icon.png"))
+            
+            # Use smoothscale for better quality when scaling down
+            # Scale to 2x the button size first, then scale down for anti-aliasing effect
+            high_res_size = self.help_button_size * 2
+            high_res_menu_icon = pygame.transform.smoothscale(original_menu_icon, (high_res_size, high_res_size))
+            self.menu_icon = pygame.transform.smoothscale(high_res_menu_icon, (self.help_button_size, self.help_button_size))
+        except:
+            # Create a high-quality fallback menu icon if the image fails to load
+            self.menu_icon = pygame.Surface((self.help_button_size, self.help_button_size), pygame.SRCALPHA)
+            
+            # Create a hamburger menu icon
+            center = self.help_button_size // 2
+            line_width = int(self.help_button_size * 0.6)
+            line_height = max(2, int(self.help_button_size * 0.08))
+            line_spacing = int(self.help_button_size * 0.2)
+            
+            # Draw three horizontal lines for hamburger menu
+            start_x = (self.help_button_size - line_width) // 2
+            for i in range(3):
+                y = center - line_spacing + (i * line_spacing)
+                pygame.draw.rect(self.menu_icon, (255, 255, 255, 220), 
+                               (start_x, y - line_height//2, line_width, line_height))
+        
+        # Button state tracking
+        self.is_hovering_help = False
+        self.is_hovering_menu = False
+        self.game_callback = None  # Will be set from game instance
+        
         # Help panel properties - bigger to accommodate larger fonts
         self.panel_width = min(650, self.width - 100)
         self.panel_height = min(500, self.height - 100)
@@ -65,14 +108,16 @@ class HelpOverlay:
         self.section_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 40)
         self.text_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 35)
         
-        # Performance optimization - cache surfaces
+        # Performance optimization - cache surfaces for both buttons
         self.text_cache = {}
         self.panel_surface = None
         self.panel_dirty = True
-        self.button_surface = None
-        self.button_surface_hover = None
-        self.is_hovering = False
-        self._create_button_surface()
+        self.help_button_surface = None
+        self.help_button_surface_hover = None
+        self.menu_button_surface = None
+        self.menu_button_surface_hover = None
+        self.is_hovering = False  # For backward compatibility (help button)
+        self._create_button_surfaces()
         
         # Help content - more compact layout
         self.help_sections = [
@@ -139,9 +184,14 @@ class HelpOverlay:
         return True  # Always render the button at minimum
         
     def handle_click(self, mouse_pos):
-        """Handle mouse clicks on the help button"""
+        """Handle mouse clicks on both buttons"""
         if self.help_button_rect.collidepoint(mouse_pos):
             self.toggle()
+            return True
+        elif self.menu_button_rect.collidepoint(mouse_pos):
+            # Handle menu button click
+            if self.game_callback:
+                self.game_callback('toggle_menu')
             return True
         elif self.active and self.current_alpha > 0.5:
             # Click outside help panel to close
@@ -151,19 +201,26 @@ class HelpOverlay:
                 return True
         return False
         
-    def _create_button_surface(self):
-        """Create the cached button surfaces for normal and hover states"""
+    def _create_button_surfaces(self):
+        """Create the cached button surfaces for both help and menu buttons"""
+        # Create help button surfaces
+        self._create_help_button_surface()
+        # Create menu button surfaces
+        self._create_menu_button_surface()
+    
+    def _create_help_button_surface(self):
+        """Create the cached help button surfaces for normal and hover states"""
         # Normal state button
-        self.button_surface = pygame.Surface((self.help_button_size, self.help_button_size), pygame.SRCALPHA)
+        self.help_button_surface = pygame.Surface((self.help_button_size, self.help_button_size), pygame.SRCALPHA)
         
         # Normal button background
         button_color = (40, 40, 40, 200)
-        pygame.draw.rect(self.button_surface, button_color, 
+        pygame.draw.rect(self.help_button_surface, button_color, 
                         (0, 0, self.help_button_size, self.help_button_size), 
                         border_radius=6)
         
         # Normal border
-        pygame.draw.rect(self.button_surface, (100, 150, 255, 150), 
+        pygame.draw.rect(self.help_button_surface, (100, 150, 255, 150), 
                         (0, 0, self.help_button_size, self.help_button_size), 
                         width=1, border_radius=6)
         
@@ -178,19 +235,19 @@ class HelpOverlay:
         icon_x = (self.help_button_size - icon_size) // 2
         icon_y = (self.help_button_size - icon_size) // 2
         
-        self.button_surface.blit(scaled_icon, (icon_x, icon_y))
+        self.help_button_surface.blit(scaled_icon, (icon_x, icon_y))
         
         # Hover state button
-        self.button_surface_hover = pygame.Surface((self.help_button_size, self.help_button_size), pygame.SRCALPHA)
+        self.help_button_surface_hover = pygame.Surface((self.help_button_size, self.help_button_size), pygame.SRCALPHA)
         
         # Hover button background (brighter)
         hover_button_color = (60, 60, 70, 230)
-        pygame.draw.rect(self.button_surface_hover, hover_button_color, 
+        pygame.draw.rect(self.help_button_surface_hover, hover_button_color, 
                         (0, 0, self.help_button_size, self.help_button_size), 
                         border_radius=6)
         
         # Hover border (brighter and thicker)
-        pygame.draw.rect(self.button_surface_hover, (120, 170, 255, 200), 
+        pygame.draw.rect(self.help_button_surface_hover, (120, 170, 255, 200), 
                         (0, 0, self.help_button_size, self.help_button_size), 
                         width=2, border_radius=6)
         
@@ -199,13 +256,13 @@ class HelpOverlay:
         pygame.draw.rect(glow_surface, (120, 170, 255, 40), 
                         (0, 0, self.help_button_size + 4, self.help_button_size + 4), 
                         border_radius=8)
-        self.button_surface_hover.blit(glow_surface, (-2, -2))
+        self.help_button_surface_hover.blit(glow_surface, (-2, -2))
         
         # Blit the button content on top
-        pygame.draw.rect(self.button_surface_hover, hover_button_color, 
+        pygame.draw.rect(self.help_button_surface_hover, hover_button_color, 
                         (0, 0, self.help_button_size, self.help_button_size), 
                         border_radius=6)
-        pygame.draw.rect(self.button_surface_hover, (120, 170, 255, 200), 
+        pygame.draw.rect(self.help_button_surface_hover, (120, 170, 255, 200), 
                         (0, 0, self.help_button_size, self.help_button_size), 
                         width=2, border_radius=6)
         
@@ -217,20 +274,104 @@ class HelpOverlay:
         scaled_icon_hover.blit(bright_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
         
         # Use the same centered position for hover state
-        self.button_surface_hover.blit(scaled_icon_hover, (icon_x, icon_y))
+        self.help_button_surface_hover.blit(scaled_icon_hover, (icon_x, icon_y))
+    
+    def _create_menu_button_surface(self):
+        """Create the cached menu button surfaces for normal and hover states"""
+        # Normal state button
+        self.menu_button_surface = pygame.Surface((self.help_button_size, self.help_button_size), pygame.SRCALPHA)
+        
+        # Normal button background (slightly different color for distinction)
+        button_color = (40, 40, 40, 200)
+        pygame.draw.rect(self.menu_button_surface, button_color, 
+                        (0, 0, self.help_button_size, self.help_button_size), 
+                        border_radius=6)
+        
+        # Normal border (green-ish for menu)
+        pygame.draw.rect(self.menu_button_surface, (100, 200, 100, 150), 
+                        (0, 0, self.help_button_size, self.help_button_size), 
+                        width=1, border_radius=6)
+        
+        # Center the menu icon properly with padding
+        icon_padding = 6  # Padding from edges
+        icon_size = self.help_button_size - (icon_padding * 2)
+        
+        # Use smoothscale for high-quality scaling
+        scaled_menu_icon = pygame.transform.smoothscale(self.menu_icon, (icon_size, icon_size))
+        
+        # Calculate centered position
+        icon_x = (self.help_button_size - icon_size) // 2
+        icon_y = (self.help_button_size - icon_size) // 2
+        
+        self.menu_button_surface.blit(scaled_menu_icon, (icon_x, icon_y))
+        
+        # Hover state button
+        self.menu_button_surface_hover = pygame.Surface((self.help_button_size, self.help_button_size), pygame.SRCALPHA)
+        
+        # Hover button background (brighter)
+        hover_button_color = (60, 60, 70, 230)
+        pygame.draw.rect(self.menu_button_surface_hover, hover_button_color, 
+                        (0, 0, self.help_button_size, self.help_button_size), 
+                        border_radius=6)
+        
+        # Hover border (brighter green and thicker)
+        pygame.draw.rect(self.menu_button_surface_hover, (120, 220, 120, 200), 
+                        (0, 0, self.help_button_size, self.help_button_size), 
+                        width=2, border_radius=6)
+        
+        # Add a subtle glow effect (green-ish)
+        glow_surface = pygame.Surface((self.help_button_size + 4, self.help_button_size + 4), pygame.SRCALPHA)
+        pygame.draw.rect(glow_surface, (120, 220, 120, 40), 
+                        (0, 0, self.help_button_size + 4, self.help_button_size + 4), 
+                        border_radius=8)
+        self.menu_button_surface_hover.blit(glow_surface, (-2, -2))
+        
+        # Blit the button content on top
+        pygame.draw.rect(self.menu_button_surface_hover, hover_button_color, 
+                        (0, 0, self.help_button_size, self.help_button_size), 
+                        border_radius=6)
+        pygame.draw.rect(self.menu_button_surface_hover, (120, 220, 120, 200), 
+                        (0, 0, self.help_button_size, self.help_button_size), 
+                        width=2, border_radius=6)
+        
+        # Scale and center the menu icon for hover state (slightly brighter)
+        scaled_menu_icon_hover = scaled_menu_icon.copy()
+        # Add a slight brightness boost to the icon on hover
+        bright_overlay = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+        bright_overlay.fill((255, 255, 255, 30))
+        scaled_menu_icon_hover.blit(bright_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+        
+        # Use the same centered position for hover state
+        self.menu_button_surface_hover.blit(scaled_menu_icon_hover, (icon_x, icon_y))
         
     def update_hover(self, mouse_pos):
-        """Update hover state based on mouse position"""
-        was_hovering = self.is_hovering
-        self.is_hovering = self.help_button_rect.collidepoint(mouse_pos)
-        return was_hovering != self.is_hovering  # Return True if hover state changed
+        """Update hover state based on mouse position for both buttons"""
+        was_hovering_help = self.is_hovering_help
+        was_hovering_menu = self.is_hovering_menu
+        
+        self.is_hovering_help = self.help_button_rect.collidepoint(mouse_pos)
+        self.is_hovering_menu = self.menu_button_rect.collidepoint(mouse_pos)
+        
+        # For backward compatibility
+        self.is_hovering = self.is_hovering_help
+        
+        # Return True if any hover state changed
+        return (was_hovering_help != self.is_hovering_help or 
+                was_hovering_menu != self.is_hovering_menu)
         
     def draw_help_button(self, surface):
         """Draw the help button using cached surface with hover effects"""
-        if self.is_hovering:
-            surface.blit(self.button_surface_hover, self.help_button_rect.topleft)
+        if self.is_hovering_help:
+            surface.blit(self.help_button_surface_hover, self.help_button_rect.topleft)
         else:
-            surface.blit(self.button_surface, self.help_button_rect.topleft)
+            surface.blit(self.help_button_surface, self.help_button_rect.topleft)
+    
+    def draw_menu_button(self, surface):
+        """Draw the menu button using cached surface with hover effects"""
+        if self.is_hovering_menu:
+            surface.blit(self.menu_button_surface_hover, self.menu_button_rect.topleft)
+        else:
+            surface.blit(self.menu_button_surface, self.menu_button_rect.topleft)
         
     def draw_help_panel(self, surface):
         """Draw the help panel with caching for performance"""
@@ -303,8 +444,9 @@ class HelpOverlay:
         
     def draw(self, surface):
         """Draw the complete help overlay efficiently"""
-        # Always draw the help button (it's cached)
+        # Always draw both buttons (they're cached)
         self.draw_help_button(surface)
+        self.draw_menu_button(surface)
         
         # Only draw help panel if it's actually visible
         if (self.active or self.current_alpha > 0) and self.current_alpha > 0.01:
@@ -318,9 +460,18 @@ class HelpOverlay:
         # Update responsive button size and margin
         self.help_button_size = max(40, min(60, int(width * 0.045)))  # 4.5% of screen width, min 40px, max 60px
         self.help_button_margin = max(12, int(width * 0.015))  # 1.5% of screen width, min 12px
+        self.button_spacing = 8  # Space between buttons
         
-        # Update help button position
+        # Update help button position (leftmost)
         self.help_button_rect = pygame.Rect(
+            self.width - (self.help_button_size * 2) - self.help_button_margin - self.button_spacing,
+            self.help_button_margin,
+            self.help_button_size,
+            self.help_button_size
+        )
+        
+        # Update menu button position (rightmost)
+        self.menu_button_rect = pygame.Rect(
             self.width - self.help_button_size - self.help_button_margin,
             self.help_button_margin,
             self.help_button_size,
@@ -335,4 +486,8 @@ class HelpOverlay:
         self.panel_dirty = True  # Mark for re-rendering
         
         # Recreate button surfaces for new dimensions
-        self._create_button_surface()
+        self._create_button_surfaces()
+
+    def set_game_callback(self, callback):
+        """Set the callback function for game actions"""
+        self.game_callback = callback

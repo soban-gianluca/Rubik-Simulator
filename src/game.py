@@ -114,6 +114,7 @@ class Game:
         
         # Initialize help overlay
         self.help_overlay = HelpOverlay(self.width, self.height)
+        self.help_overlay.set_game_callback(self.handle_overlay_callback)
         
         # Game state
         self.running = True
@@ -643,7 +644,7 @@ class Game:
             # Update help overlay hover state and set appropriate cursor
             if hasattr(self, 'help_overlay'):
                 hover_changed = self.help_overlay.update_hover(mouse_pos)
-                if self.help_overlay.is_hovering:
+                if self.help_overlay.is_hovering_help or self.help_overlay.is_hovering_menu:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
                 else:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
@@ -846,32 +847,43 @@ class Game:
             glPixelZoom(1, 1)  # Flip vertically
             glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
         
-        # Render just the help button when panel is not visible (much more efficient)
+        # Render just the buttons when panel is not visible (much more efficient)
         elif (hasattr(self, 'help_overlay') and 
               not self.menu.is_active() and 
               not self.results_window.active):
             
-            # Create a much smaller surface just for the button area
+            # Calculate total area needed for both buttons
             button_margin = 10
-            button_area_size = self.help_overlay.help_button_size + (button_margin * 2)
-            button_surface = pygame.Surface((button_area_size, button_area_size), pygame.SRCALPHA)
+            total_width = (self.help_overlay.help_button_size * 2) + self.help_overlay.button_spacing + (button_margin * 2)
+            button_area_height = self.help_overlay.help_button_size + (button_margin * 2)
+            button_surface = pygame.Surface((total_width, button_area_height), pygame.SRCALPHA)
             
-            # Draw button on small surface
-            button_rect = pygame.Rect(button_margin, button_margin, 
-                                    self.help_overlay.help_button_size, 
-                                    self.help_overlay.help_button_size)
-            button_surface.blit(self.help_overlay.button_surface, (button_margin, button_margin))
+            # Draw help button (left)
+            help_x = button_margin
+            help_y = button_margin
+            if self.help_overlay.is_hovering_help:
+                button_surface.blit(self.help_overlay.help_button_surface_hover, (help_x, help_y))
+            else:
+                button_surface.blit(self.help_overlay.help_button_surface, (help_x, help_y))
             
-            # Convert small surface to OpenGL
+            # Draw menu button (right)
+            menu_x = button_margin + self.help_overlay.help_button_size + self.help_overlay.button_spacing
+            menu_y = button_margin
+            if self.help_overlay.is_hovering_menu:
+                button_surface.blit(self.help_overlay.menu_button_surface_hover, (menu_x, menu_y))
+            else:
+                button_surface.blit(self.help_overlay.menu_button_surface, (menu_x, menu_y))
+            
+            # Convert surface to OpenGL
             texture_data = pygame.image.tostring(button_surface, 'RGBA', True)
             
-            # Position correctly
-            button_x = self.help_overlay.help_button_rect.x - button_margin
-            button_y = self.help_overlay.help_button_rect.y - button_margin
+            # Position correctly (align with help button position, which is now leftmost)
+            buttons_x = self.help_overlay.help_button_rect.x - button_margin
+            buttons_y = self.help_overlay.help_button_rect.y - button_margin
             
-            glRasterPos2f(button_x, button_y + button_area_size)
+            glRasterPos2f(buttons_x, buttons_y + button_area_height)
             glPixelZoom(1, 1)
-            glDrawPixels(button_area_size, button_area_size, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+            glDrawPixels(total_width, button_area_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
     
         # Restore 3D state
         glDisable(GL_BLEND)
@@ -1233,6 +1245,24 @@ class Game:
             # Force a new background capture with the current cube state
             self.menu.force_background_recapture()
         # 'continue_playing' is handled by just closing the results window
+    
+    def handle_overlay_callback(self, action):
+        """Handle callbacks from the help overlay (UI buttons)"""
+        if action == 'toggle_menu':
+            # Toggle the main menu
+            if self.menu.is_active():
+                self.menu.toggle()  # Close menu
+            else:
+                # Clear the old blurred background to force a fresh capture of current cube state
+                self.menu.background_capture = None
+                self.menu.blurred_background = None
+                
+                # Show the main menu (ensure we're at main menu, not difficulty selection)
+                self.menu.current_menu = self.menu.main_menu
+                self.menu.toggle()  # Open menu
+                
+                # Force a new background capture with the current cube state
+                self.menu.force_background_recapture()
     
     def _render_game_info(self):
         """Render game information (FPS, moves, time)"""

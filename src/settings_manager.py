@@ -2,7 +2,6 @@ import os
 import json
 from utils.path_helper import resource_path
 
-
 def get_user_settings_path() -> str:
     """
     Path where user-modifiable settings are stored.
@@ -12,7 +11,6 @@ def get_user_settings_path() -> str:
     user_dir = os.path.join(base, "RubiksCube")
     os.makedirs(user_dir, exist_ok=True)
     return os.path.join(user_dir, "settings.json")
-
 
 def load_settings() -> dict:
     """
@@ -28,14 +26,12 @@ def load_settings() -> dict:
     with open(default_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
 def save_settings(data: dict) -> None:
     """
     Save settings to the user's local AppData folder (never to the bundled file).
     """
     with open(get_user_settings_path(), "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
-
 
 class SettingsManager:
     def __init__(self, settings_file=None):

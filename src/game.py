@@ -676,9 +676,11 @@ class Game:
                 if show_fps is not None:
                     self.show_fps = show_fps
                 
-                volume = self.menu.get_setting('volume')
-                if volume is not None and pygame.mixer.music.get_busy():
-                    pygame.mixer.music.set_volume(volume / 100)
+                # Use both music_volume and master_volume for correct volume after resolution change
+                music_volume = self.settings.get_audio_volume("music_volume") / 100
+                master_volume = self.settings.get_audio_volume("master_volume") / 100
+                if pygame.mixer.music.get_busy():
+                    pygame.mixer.music.set_volume(music_volume * master_volume)
                 
                 # Reset the flag after successfully applying settings
                 self.menu.reset_resolution_changed()

@@ -7,6 +7,7 @@ import time
 import math
 from src.settings_manager import SettingsManager
 from src.sound_manager import SoundManager
+from src.personal_best_manager import PersonalBestManager
 from utils.path_helper import resource_path
 
 class Menu:
@@ -18,6 +19,9 @@ class Menu:
         
         # Initialize settings manager directly
         self.settings_manager = SettingsManager()
+        
+        # Initialize personal best manager
+        self.personal_best_manager = PersonalBestManager()
         
         # Initialize sound manager for menu sounds
         self.sound_manager = SoundManager()
@@ -54,6 +58,10 @@ class Menu:
         # Load the logo image for the main menu title
         self.logo_image = None
         self._load_logo_image()
+        
+        # Load the record icon for the personal best button
+        self.record_icon = None
+        self._load_record_icon()
         
         # Available resolutions
         self.available_resolutions = [
@@ -188,6 +196,24 @@ class Menu:
         except Exception as e:
             print(f"Error loading logo image: {e}")
             self.logo_image = None
+    
+    def _load_record_icon(self):
+        """Load the record icon for the personal best button"""
+        try:
+            # Load the record icon
+            record_icon_path = resource_path("utils/icons/record_icon.png")
+            if os.path.exists(record_icon_path):
+                self.record_icon = pygame.image.load(record_icon_path)
+                # Scale the icon to a suitable size (32x32 pixels)
+                icon_size = 32
+                self.record_icon = pygame.transform.scale(self.record_icon, (icon_size, icon_size))
+                print(f"Loaded record icon: {record_icon_path} (scaled to {icon_size}x{icon_size})")
+            else:
+                print(f"Record icon not found: {record_icon_path}")
+                self.record_icon = None
+        except Exception as e:
+            print(f"Error loading record icon: {e}")
+            self.record_icon = None
     
     def _customize_button_appearance(self, button):
         """Apply custom styling to a button widget - remove backgrounds"""
@@ -401,6 +427,14 @@ class Menu:
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.controls_menu
+    
+    def _open_personal_best(self):
+        """Open personal best submenu"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
+        # Refresh the personal best content before showing
+        self._create_personal_best_content()
+        self.current_menu = self.personal_best_menu
     
     def _open_audio_settings(self):
         """Open audio settings submenu"""
@@ -820,6 +854,18 @@ class Menu:
         # Clear hover effects on mouse button clicks to prevent sticky hover
         if event.type in [pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP]:
             self._clear_all_hover_effects()
+            
+            # Check if click is on Personal Records button in bottom right (only on main menu)
+            if (event.type == pygame.MOUSEBUTTONDOWN and 
+                self.current_menu == self.main_menu and 
+                hasattr(self, 'personal_best_rect')):
+                
+                mouse_x, mouse_y = event.pos
+                
+                # Check if click is within the Personal Records button area
+                if self.personal_best_rect.collidepoint(mouse_x, mouse_y):
+                    self._open_personal_best()
+                    return True
         
         # Handle menu navigation
         if self.current_menu and self.current_menu.is_enabled():
@@ -1159,6 +1205,54 @@ class Menu:
                 menu_surface.set_alpha(int(255 * current_alpha))
             
             screen.blit(menu_surface, (0, 0))
+            
+            # Draw Personal Records button in bottom right corner (only on main menu)
+            if (self.current_menu == self.main_menu and 
+                hasattr(self, 'record_icon')):  # Only need to check if we have the icon loaded
+                
+                # Position the Personal Records button in bottom right
+                button_width = 200
+                button_height = 80
+                margin = 20
+                
+                button_x = screen.get_width() - button_width - margin
+                button_y = screen.get_height() - button_height - margin
+                
+                # Create button background
+                button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
+                pygame.draw.rect(screen, (50, 50, 50, 180), button_rect)  # Dark semi-transparent background
+                pygame.draw.rect(screen, (100, 100, 100), button_rect, 2)  # Border
+                
+                # Draw the record icon if available
+                if self.record_icon:
+                    icon_x = button_x + 10
+                    icon_y = button_y + (button_height - 32) // 2
+                    screen.blit(self.record_icon, (icon_x, icon_y))
+                    text_x = icon_x + 40  # Position text after icon
+                else:
+                    text_x = button_x + 10
+                
+                # Draw the text using the menu's font
+                try:
+                    # Use the same font as the menu widgets
+                    menu_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, 24)
+                    text_surface = menu_font.render("Personal Records", True, (255, 255, 255))
+                    text_y = button_y + (button_height - text_surface.get_height()) // 2
+                    
+                    # Add shadow effect like the menu
+                    shadow_surface = menu_font.render("Personal Records", True, (0, 0, 0))
+                    shadow_offset = 1
+                    screen.blit(shadow_surface, (text_x + shadow_offset, text_y + shadow_offset))
+                    screen.blit(text_surface, (text_x, text_y))
+                except:
+                    # Fallback to basic font if menu font fails
+                    font = pygame.font.Font(None, 24)
+                    text_surface = font.render("Personal Records", True, (255, 255, 255))
+                    text_y = button_y + (button_height - text_surface.get_height()) // 2
+                    screen.blit(text_surface, (text_x, text_y))
+                
+                # Store button rectangle for click detection
+                self.personal_best_rect = button_rect
     
     def _draw_background_effects(self, screen, alpha=1.0):
         """Draw simplified background effects for better performance"""
@@ -1272,6 +1366,8 @@ class Menu:
             
             # Apply custom styling to main menu
             self._customize_menu_widgets(self.main_menu)
+            
+            # Personal Best button will be drawn manually in draw() method
     
     def _create_menus(self):
         """Create or recreate menus with current dimensions"""
@@ -1374,6 +1470,8 @@ class Menu:
         
         # Apply custom styling to main menu
         self._customize_menu_widgets(self.main_menu)
+        
+        # Personal Best button will be drawn manually in draw() method
         
         # Create difficulty selection menu with ACTUAL dimensions
         self.difficulty_menu = pygame_menu.Menu(
@@ -1608,6 +1706,18 @@ class Menu:
         self._customize_menu_widgets(self.controls_menu)
         # Ensure the Back button gets hover/cursor styling
         self._apply_hover_effect(back_btn, False)
+        
+        # Create personal best menu with ACTUAL dimensions
+        self.personal_best_menu = pygame_menu.Menu(
+            "Personal Best Records",
+            self.width,
+            self.height,
+            theme=self.sub_theme
+        )
+        
+        # Create personal best menu content
+        self._create_personal_best_content()
+        
         # Set current menu (preserve the current menu state)
         if hasattr(self, 'current_menu'):
             if self.current_menu == self.settings_menu:
@@ -1618,7 +1728,136 @@ class Menu:
                 self.current_menu = self.controls_menu
             elif self.current_menu == self.difficulty_menu:
                 self.current_menu = self.difficulty_menu
+            elif self.current_menu == self.personal_best_menu:
+                self.current_menu = self.personal_best_menu
             else:
                 self.current_menu = self.main_menu
         else:
             self.current_menu = self.main_menu
+    
+    def _create_personal_best_content(self):
+        """Create or refresh personal best menu content"""
+        # Clear existing content except title
+        widgets = self.personal_best_menu.get_widgets()
+        widgets_to_remove = []
+        
+        # Remove all widgets except the title (first widget)
+        for i, widget in enumerate(widgets):
+            if i > 0:  # Keep only the first widget (title)
+                widgets_to_remove.append(widget)
+        
+        for widget in widgets_to_remove:
+            self.personal_best_menu.remove_widget(widget)
+        
+        # Check if there are any records
+        has_any_records = self.personal_best_manager.has_records()
+        
+        if not has_any_records:
+            # No records message
+            self.personal_best_menu.add.vertical_margin(50)
+            self.personal_best_menu.add.label(
+                "No records yet!",
+                font_size=45,
+                font_color=(255, 215, 0),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(20)
+            self.personal_best_menu.add.label(
+                "Complete a cube solve in any difficulty",
+                font_size=32,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.label(
+                "to start tracking your personal bests!",
+                font_size=32,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+        else:
+            # Display records in table format
+            self.personal_best_menu.add.vertical_margin(30)
+                        
+            # Table column headers with separators
+            header_row = "DIFFICULTY           │           BEST TIME           │          LEAST MOVES          │     SOLVES"
+            self.personal_best_menu.add.label(
+                header_row,
+                font_size=45,
+                font_color=(255, 255, 255),  # Brighter white for headers
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            
+            # Separator line
+            separator = "=" * 95  # Adjusted for even wider spacing
+            self.personal_best_menu.add.label(
+                separator,
+                font_size=30,  # Increased font size for better visibility
+                font_color=(200, 200, 200),  # Brighter color for better visibility
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(5)
+            
+            # Table data rows
+            difficulties = ["easy", "medium", "hard"]
+            difficulty_names = {"easy": "Easy", "medium": "Medium", "hard": "Hard"}
+            difficulty_colors = {
+                "easy": (33, 148, 33),      # Green
+                "medium": (199, 106, 26),   # Orange  
+                "hard": (176, 28, 28)       # Red
+            }
+            
+            for difficulty in difficulties:
+                records = self.personal_best_manager.get_records(difficulty)
+                
+                # Format the data for each column
+                diff_name = difficulty_names[difficulty]
+                
+                if records["best_time"] is not None:
+                    best_time = f"{records['best_time']:.3f}s"
+                else:
+                    best_time = "---"
+                
+                if records["best_moves"] is not None:
+                    best_moves = f"{records['best_moves']}"
+                else:
+                    best_moves = "---"
+                
+                total_solves = records["total_solves"]
+                
+                # Create aligned row with even wider spacing to match headers
+                data_row = f"{diff_name:<25}│{best_time:^36}│{best_moves:^40}│{total_solves:^35}"
+                
+                # Add row with difficulty color
+                self.personal_best_menu.add.label(
+                    data_row,
+                    font_size=45,
+                    font_color=difficulty_colors[difficulty] if records["total_solves"] > 0 else (100, 100, 100),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+            
+            # Overall statistics
+            self.personal_best_menu.add.vertical_margin(30)
+            total_solves = self.personal_best_manager.get_total_solves()
+            if total_solves > 0:
+                self.personal_best_menu.add.label(
+                    "Overall Statistics",
+                    font_size=50,
+                    font_color=(255, 255, 255),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                self.personal_best_menu.add.vertical_margin(10)
+                self.personal_best_menu.add.label(
+                    f"Total Solves: {total_solves}",
+                    font_size=40,
+                    font_color=(255, 215, 0),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+        
+        # Add spacing and back button
+        self.personal_best_menu.add.vertical_margin(40)
+        back_btn = self.personal_best_menu.add.button("Back", self._back_to_main)
+        
+        # Apply custom styling to personal best menu
+        self._customize_menu_widgets(self.personal_best_menu)
+        # Ensure the Back button gets hover/cursor styling
+        self._apply_hover_effect(back_btn, False)

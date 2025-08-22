@@ -12,6 +12,7 @@ from src.sound_manager import SoundManager
 from src.results_window import ResultsWindow
 from src.mouse_interaction import MouseInteraction
 from src.help_overlay import HelpOverlay
+from src.personal_best_manager import PersonalBestManager
 from utils.path_helper import resource_path
 from src.rubiks_cube import RubiksCube
 
@@ -98,6 +99,12 @@ class Game:
         self.menu = Menu(self.width, self.height)
         self.menu.set_game_instance(self)
         
+        # Initialize personal best manager
+        self.personal_best_manager = PersonalBestManager()
+        
+        # Set the personal best manager in the menu to use the same instance
+        self.menu.personal_best_manager = self.personal_best_manager
+        
         # Load audio settings into menu's sound manager
         self.menu.sound_manager.load_volumes_from_settings(self.settings)
         
@@ -111,6 +118,7 @@ class Game:
         self.results_window = ResultsWindow(self.width, self.height)
         self.results_window.set_game_callback(self.handle_results_callback)
         self.results_window.set_sound_manager(self.sound_manager)
+        self.results_window.set_personal_best_manager(self.personal_best_manager)
         
         # Initialize help overlay
         self.help_overlay = HelpOverlay(self.width, self.height)
@@ -747,7 +755,7 @@ class Game:
                         print(f"🎉 CUBE SOLVED! 🎉")
                         
                         # Show results window
-                        self.results_window.show_results(self.move_counter, solve_time, tps)
+                        self.results_window.show_results(self.move_counter, solve_time, tps, current_difficulty)
             
             # Update animation state
             self.renderer._last_animation_state = self.renderer.is_animating

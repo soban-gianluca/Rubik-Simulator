@@ -16,6 +16,9 @@ class ResultsWindow:
         # Initialize sound manager for winning effects
         self.sound_manager = None  # Will be set from game instance
         
+        # Initialize personal best manager
+        self.personal_best_manager = None  # Will be set from game instance
+        
         # Results window state
         self.active = False
         self.results_data = {}
@@ -185,12 +188,22 @@ class ResultsWindow:
         except:
             pass
     
-    def show_results(self, moves, solve_time, tps=None):
+    def show_results(self, moves, solve_time, tps=None, difficulty=None):
         """Display the results window with the given data and trigger celebration"""
+        
+        # Update personal best records if personal best manager is available and difficulty is specified
+        new_records = {}
+        if self.personal_best_manager and difficulty and difficulty != "freeplay":
+            new_records = self.personal_best_manager.update_record(
+                difficulty, solve_time, moves, tps or (moves / solve_time if solve_time > 0 else 0)
+            )
+        
         self.results_data = {
             'moves': moves,
             'time': solve_time,
-            'tps': tps or (moves / solve_time if solve_time > 0 else 0)
+            'tps': tps or (moves / solve_time if solve_time > 0 else 0),
+            'difficulty': difficulty,
+            'new_records': new_records
         }
         
         # Calculate performance rating and get color
@@ -198,12 +211,21 @@ class ResultsWindow:
         rating_color = self.rating_colors.get(rating, (255, 255, 255))
         
         # Update the display widgets with modern formatting
-        self.moves_widget.set_title(f"📊 Moves: {moves}")
-        self.time_widget.set_title(f"⏱️  Time: {solve_time:.2f}s")
-        self.tps_widget.set_title(f"⚡ Speed: {self.results_data['tps']:.2f} TPS")
+        self.moves_widget.set_title(f"Moves: {moves}")
+        self.time_widget.set_title(f" Time: {solve_time:.2f}s")
+        self.tps_widget.set_title(f"Speed: {self.results_data['tps']:.2f} TPS")
         
-        # Set performance rating with dynamic color
-        self.rating_widget.set_title(f"🌟 {rating}")
+        # Set performance rating with dynamic color and add new record indicators
+        rating_text = f"🌟 {rating}"
+        if new_records:
+            if new_records.get('is_best_time'):
+                rating_text += "NEW BEST TIME!"
+            elif new_records.get('is_best_moves'):
+                rating_text += "NEW BEST MOVES!"
+            elif new_records.get('is_best_tps'):
+                rating_text += "NEW BEST TPS!"
+        
+        self.rating_widget.set_title(rating_text)
         self.rating_widget._font_color = rating_color
         
         # Start celebration effects
@@ -638,8 +660,18 @@ class ResultsWindow:
         self.time_widget.set_title(f"⏱️  Time: {solve_time:.2f}s")
         self.tps_widget.set_title(f"⚡ Speed: {tps:.2f} TPS")
         
-        # Set performance rating with dynamic color
-        self.rating_widget.set_title(f"🌟 {rating}")
+        # Set performance rating with dynamic color - check for stored new record indicators
+        rating_text = f"🌟 {rating}"
+        if 'new_records' in results_data:
+            new_records = results_data['new_records']
+            if new_records.get('is_best_time'):
+                rating_text += " 🏆 NEW BEST TIME!"
+            elif new_records.get('is_best_moves'):
+                rating_text += " 🎯 NEW BEST MOVES!"
+            elif new_records.get('is_best_tps'):
+                rating_text += " ⚡ NEW BEST TPS!"
+        
+        self.rating_widget.set_title(rating_text)
         self.rating_widget._font_color = rating_color
         
         # Store the data
@@ -648,3 +680,7 @@ class ResultsWindow:
     def set_sound_manager(self, sound_manager):
         """Set the sound manager instance for playing winning sounds"""
         self.sound_manager = sound_manager
+    
+    def set_personal_best_manager(self, personal_best_manager):
+        """Set the personal best manager instance for tracking records"""
+        self.personal_best_manager = personal_best_manager

@@ -16,7 +16,7 @@ class HelpOverlay:
         self.current_alpha = 0.0
         
         # Button dimensions and position - make it responsive to screen size
-        self.help_button_size = max(40, min(60, int(width * 0.045)))  # 4.5% of screen width, min 40px, max 60px
+        self.help_button_size = max(40, min(50, int(width * 0.045)))  # 4.5% of screen width, min 40px, max 60px
         self.help_button_margin = max(12, int(width * 0.015))  # 1.5% of screen width, min 12px
         self.help_button_rect = pygame.Rect(
             self.width - self.help_button_size - self.help_button_margin,

@@ -61,6 +61,7 @@ class Game:
         ]
         self.current_song = random.randint(0, len(self.playlist) - 1)  # Start with random song
         self.MUSIC_END_EVENT = pygame.USEREVENT + 1
+        self.MUSIC_RESTORE_EVENT = pygame.USEREVENT + 10  # Event for restoring music volume after ducking
         
         try:
             pygame.mixer.init()
@@ -109,6 +110,7 @@ class Game:
         # Initialize results window
         self.results_window = ResultsWindow(self.width, self.height)
         self.results_window.set_game_callback(self.handle_results_callback)
+        self.results_window.set_sound_manager(self.sound_manager)
         
         # Initialize help overlay
         self.help_overlay = HelpOverlay(self.width, self.height)
@@ -433,6 +435,13 @@ class Game:
                     pygame.mixer.music.play()
                 except Exception as e:
                     self.debug_print(f"Music error: {e}")
+            
+            elif event.type == self.MUSIC_RESTORE_EVENT:
+                # Restore music volume after ducking
+                if hasattr(self, 'sound_manager'):
+                    self.sound_manager.restore_music_volume()
+                # Cancel the timer to prevent repeated calls
+                pygame.time.set_timer(self.MUSIC_RESTORE_EVENT, 0)
                 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:

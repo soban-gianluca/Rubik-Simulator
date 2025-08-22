@@ -5,12 +5,16 @@ from pygame_menu.locals import *
 import time
 import math
 import random
+from src.sound_manager import SoundManager
 
 class ResultsWindow:
     def __init__(self, screen_width, screen_height):
         self.width = screen_width
         self.height = screen_height
         self.screen = pygame.display.get_surface()
+        
+        # Initialize sound manager for winning effects
+        self.sound_manager = None  # Will be set from game instance
         
         # Results window state
         self.active = False
@@ -204,6 +208,10 @@ class ResultsWindow:
         
         # Start celebration effects
         self._start_celebration()
+        
+        # Play winning sound effect with music ducking
+        if self.sound_manager:
+            self.sound_manager.play_with_music_duck("winning")
         
         # Show window immediately without fade animation
         self.active = True
@@ -636,3 +644,7 @@ class ResultsWindow:
         
         # Store the data
         self.results_data = results_data
+    
+    def set_sound_manager(self, sound_manager):
+        """Set the sound manager instance for playing winning sounds"""
+        self.sound_manager = sound_manager

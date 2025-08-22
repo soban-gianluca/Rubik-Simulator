@@ -20,6 +20,12 @@ class SoundManager:
         self.effects_volume = 1.0
         self.menu_volume = 1.0
         
+        # Music ducking settings
+        self.original_music_volume = None
+        self.is_music_ducked = False
+        self.duck_volume_ratio = 0.3  # Reduce music to 30% when ducking
+        self.duck_fade_duration = 200  # 200ms fade time
+        
         # Check if pygame mixer is initialized
         if not pygame.mixer.get_init():
             try:
@@ -39,6 +45,9 @@ class SoundManager:
             self.sounds["menu_open"] = pygame.mixer.Sound(resource_path("utils/sfx/menu/menu_open.mp3"))
             self.sounds["menu_select"] = pygame.mixer.Sound(resource_path("utils/sfx/menu/menu_select.mp3"))
             self.sounds["menu_apply"] = pygame.mixer.Sound(resource_path("utils/sfx/menu/menu_close.mp3"))
+            
+            # Load winning sound effect
+            self.sounds["winning"] = pygame.mixer.Sound(resource_path("utils/sfx/winning_screen/winningSFX.mp3"))
 
             # Load cube movement sound effects
             cube_sfx_dir = resource_path("utils/sfx/cube_sfx")
@@ -54,6 +63,7 @@ class SoundManager:
             self.sounds["menu_open"].set_volume(0.5 * self.menu_volume * self.master_volume)
             self.sounds["menu_select"].set_volume(0.3 * self.menu_volume * self.master_volume)
             self.sounds["menu_apply"].set_volume(0.4 * self.menu_volume * self.master_volume)
+            self.sounds["winning"].set_volume(1 * self.effects_volume * self.master_volume)
 
         except Exception as e:
             print(f"Error loading sound effects: {e}")
@@ -174,6 +184,10 @@ class SoundManager:
         if self.is_enabled and hasattr(self, 'cube_sounds') and self.cube_sounds:
             for cube_sound in self.cube_sounds:
                 cube_sound.set_volume(0.4 * self.effects_volume * self.master_volume)
+        
+        # Update winning sound volume
+        if self.is_enabled and hasattr(self, 'sounds') and "winning" in self.sounds:
+            self.sounds["winning"].set_volume(0.7 * self.effects_volume * self.master_volume)
     
     def enable(self, enabled=True):
         """Enable or disable sound effects"""
@@ -186,6 +200,60 @@ class SoundManager:
         self.effects_volume = settings_manager.get_effects_volume() / 100.0
         self.menu_volume = settings_manager.get_menu_volume() / 100.0
         self._update_all_volumes()
+    
+    def duck_music(self):
+        """Temporarily lower the music volume for important sound effects"""
+        if pygame.mixer.get_init() and pygame.mixer.music.get_busy() and not self.is_music_ducked:
+            self.original_music_volume = pygame.mixer.music.get_volume()
+            target_volume = self.original_music_volume * self.duck_volume_ratio
+            pygame.mixer.music.set_volume(target_volume)
+            self.is_music_ducked = True
+    
+    def restore_music_volume(self):
+        """Restore the original music volume after ducking"""
+        if pygame.mixer.get_init() and self.is_music_ducked and self.original_music_volume is not None:
+            pygame.mixer.music.set_volume(self.original_music_volume)
+            self.is_music_ducked = False
+            self.original_music_volume = None
+    
+    def play_with_music_duck(self, sound_name, duck_duration=None):
+        """Play a sound effect with music ducking and automatic restore"""
+        if not self.is_enabled or sound_name not in self.sounds:
+            return False
+        
+        # Check if enough time has passed since last play
+        current_time = time.time()
+        if sound_name in self.last_play_time:
+            time_since_last = current_time - self.last_play_time[sound_name]
+            if time_since_last < self.min_interval:
+                return False  # Too soon, don't play
+        
+        try:
+            # Duck the music first
+            self.duck_music()
+            
+            # Play the sound
+            sound_channel = self.sounds[sound_name].play()
+            self.last_play_time[sound_name] = current_time
+            
+            # Calculate restore time based on sound duration or provided duration
+            if duck_duration is None and sound_channel:
+                # Get the sound duration and add a small buffer
+                sound_length = self.sounds[sound_name].get_length()
+                duck_duration = sound_length + 0.5  # Add 500ms buffer
+            elif duck_duration is None:
+                duck_duration = 3.0  # Default 3 seconds if we can't get sound length
+            
+            # Schedule music volume restore using pygame's timer
+            # Use USEREVENT + 10 which should match MUSIC_RESTORE_EVENT in game.py
+            pygame.time.set_timer(pygame.USEREVENT + 10, int(duck_duration * 1000))
+            return True
+            
+        except Exception as e:
+            print(f"Error playing sound with music duck {sound_name}: {e}")
+            # Make sure to restore music even if sound fails
+            self.restore_music_volume()
+            return False
         
     def test_sounds(self):
         """Test if sounds are working"""

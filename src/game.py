@@ -628,6 +628,10 @@ class Game:
         # Update help overlay animation
         if hasattr(self, 'help_overlay'):
             self.help_overlay.update()
+            
+        # Update sound manager music fade
+        if hasattr(self, 'sound_manager'):
+            self.sound_manager.update_music_fade()
         
         # Update cursor based on menu/results window state
         mouse_pos = pygame.mouse.get_pos()

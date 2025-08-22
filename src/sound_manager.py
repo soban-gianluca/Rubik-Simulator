@@ -26,6 +26,12 @@ class SoundManager:
         self.duck_volume_ratio = 0.3  # Reduce music to 30% when ducking
         self.duck_fade_duration = 200  # 200ms fade time
         
+        # Music fade-in settings
+        self.is_fading_in = False
+        self.fade_start_time = None
+        self.fade_in_duration = 2.0  # 2 seconds fade-in duration
+        self.fade_target_volume = None
+        
         # Check if pygame mixer is initialized
         if not pygame.mixer.get_init():
             try:
@@ -210,11 +216,50 @@ class SoundManager:
             self.is_music_ducked = True
     
     def restore_music_volume(self):
-        """Restore the original music volume after ducking"""
+        """Start fading the music volume back to original level after ducking"""
         if pygame.mixer.get_init() and self.is_music_ducked and self.original_music_volume is not None:
-            pygame.mixer.music.set_volume(self.original_music_volume)
+            # Start fade-in process instead of instant restore
+            self.fade_target_volume = self.original_music_volume
+            self.fade_start_time = time.time()
+            self.is_fading_in = True
+            # Set initial volume to ducked level
+            current_ducked_volume = self.original_music_volume * self.duck_volume_ratio
+            pygame.mixer.music.set_volume(current_ducked_volume)
+            
+            # Reset ducking state but keep fade state active
             self.is_music_ducked = False
-            self.original_music_volume = None
+    
+    def update_music_fade(self):
+        """Update the music fade-in process - should be called regularly in game loop"""
+        if not self.is_fading_in or self.fade_start_time is None:
+            return
+        
+        current_time = time.time()
+        elapsed_time = current_time - self.fade_start_time
+        
+        if elapsed_time >= self.fade_in_duration:
+            # Fade complete - set final volume and clean up
+            if pygame.mixer.get_init() and self.fade_target_volume is not None:
+                pygame.mixer.music.set_volume(self.fade_target_volume)
+            self._finish_fade_in()
+        else:
+            # Calculate current fade volume using smooth easing
+            fade_progress = elapsed_time / self.fade_in_duration
+            # Apply easing function for smoother fade (ease-out curve)
+            eased_progress = 1 - (1 - fade_progress) ** 2
+            
+            if pygame.mixer.get_init() and self.fade_target_volume is not None:
+                # Calculate volume between ducked level and target
+                ducked_volume = self.fade_target_volume * self.duck_volume_ratio
+                current_volume = ducked_volume + (self.fade_target_volume - ducked_volume) * eased_progress
+                pygame.mixer.music.set_volume(current_volume)
+    
+    def _finish_fade_in(self):
+        """Clean up after fade-in is complete"""
+        self.is_fading_in = False
+        self.fade_start_time = None
+        self.fade_target_volume = None
+        self.original_music_volume = None
     
     def play_with_music_duck(self, sound_name, duck_duration=None):
         """Play a sound effect with music ducking and automatic restore"""

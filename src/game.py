@@ -169,10 +169,8 @@ class Game:
 
     def set_auto_rotation_by_difficulty(self, difficulty):
         """Set auto-rotation based on difficulty level"""
-        if difficulty == "freeplay":
-            self.auto_rotate = True
-        else:
-            self.auto_rotate = False
+        # Auto-rotation disabled for all difficulties including freeplay
+        self.auto_rotate = False
 
     def request_new_game(self):
         """Request a new game to be started (triggers scrambling)"""

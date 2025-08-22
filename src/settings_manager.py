@@ -20,7 +20,7 @@ class SettingsManager:
                 "effects_volume": 60,
                 "menu_volume": 50
             },
-            "auto_rotate": True,
+            "auto_rotate": False,
             "auto_rotate_speed": 0.2,
             "background": "skybox",
             "difficulty_skyboxes": {

@@ -6,6 +6,8 @@ import threading
 from pygame.locals import *
 from OpenGL.GL import *
 from utils.path_helper import resource_path
+import random
+from src.settings_manager import SettingsManager
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -85,6 +87,27 @@ class LoadingAnimation:
             "Finalizing setup...",
             "Ready to play!"
         ]
+
+        # --- Start background music for loading animation ---
+        try:
+            settings = SettingsManager()
+            playlist = [
+                resource_path("utils/soundtrack/dark_bar.mp3"),
+                resource_path("utils/soundtrack/lounge_layers.mp3"),
+                resource_path("utils/soundtrack/midnight_simmetry.mp3"),
+                resource_path("utils/soundtrack/the_fifth_color.mp3")
+            ]
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            # Only start music if not already playing
+            if not pygame.mixer.music.get_busy():
+                volume_level = settings.get_music_volume() / 100 * settings.get_master_volume() / 100
+                pygame.mixer.music.set_volume(volume_level)
+                song = random.choice(playlist)
+                pygame.mixer.music.load(song)
+                pygame.mixer.music.play(-1)  # Loop during loading
+        except Exception as e:
+            print(f"Loading screen music error: {e}")
         
     def preload_game_resources(self):
         """Preload game resources in background thread"""

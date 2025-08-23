@@ -309,6 +309,27 @@ class Menu:
                     back_btn.draw = lambda surface, *a, **k: draw_rounded_button(back_btn, surface, *a, **k)
         except Exception:
             pass
+
+    def _style_difficulty_buttons(self):
+        """Apply rounded backgrounds and custom colors to difficulty selection buttons."""
+        import pygame
+        for button, info in self.difficulty_buttons.items():
+            def draw_rounded_difficulty(widget, surface, *args, **kwargs):
+                rect = widget.get_rect(to_real_position=True)
+                color = widget._background_color if hasattr(widget, '_background_color') else info['base_color']
+                border_radius = 18
+                pygame.draw.rect(surface, color, rect, border_radius=border_radius)
+                pygame.draw.rect(surface, (120, 120, 120, 180), rect, width=2, border_radius=border_radius)
+                if hasattr(widget, 'get_title') and hasattr(widget, '_font'):
+                    text = widget.get_title()
+                    font = widget._font
+                    font_color = widget._font_color if hasattr(widget, '_font_color') else (255, 255, 255)
+                    text_surf = font.render(text, True, font_color)
+                    text_rect = text_surf.get_rect(center=rect.center)
+                    surface.blit(text_surf, text_rect)
+            if not hasattr(button, '_original_draw'):
+                button._original_draw = button.draw
+                button.draw = lambda surface, *a, btn=button, **k: draw_rounded_difficulty(btn, surface, *a, **k)
     
     def _update_apply_button_state(self):
         """Update the apply button's appearance based on settings_changed state"""
@@ -1578,6 +1599,9 @@ class Menu:
         
         # Apply custom styling to difficulty menu
         self._customize_menu_widgets(self.difficulty_menu)
+
+        # Apply rounded styling to difficulty buttons
+        self._style_difficulty_buttons()
         
         # Create settings menu with ACTUAL dimensions
         self.settings_menu = pygame_menu.Menu(

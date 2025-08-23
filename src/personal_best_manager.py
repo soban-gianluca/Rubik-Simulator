@@ -43,6 +43,24 @@ class PersonalBestManager:
                 "average_time": None,
                 "average_moves": None,
                 "last_solve_date": None
+            },
+            "limited_time": {
+                "best_time": None,
+                "best_moves": None,
+                "best_tps": None,
+                "total_solves": 0,
+                "average_time": None,
+                "average_moves": None,
+                "last_solve_date": None
+            },
+            "limited_moves": {
+                "best_time": None,
+                "best_moves": None,
+                "best_tps": None,
+                "total_solves": 0,
+                "average_time": None,
+                "average_moves": None,
+                "last_solve_date": None
             }
         }
         self.records = self.load_records()

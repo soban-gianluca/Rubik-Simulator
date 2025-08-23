@@ -58,7 +58,9 @@ class SettingsManager:
                 "freeplay": "utils/skyboxes/skybox_freeplay.png",
                 "easy": "utils/skyboxes/skybox_easy.jpg",
                 "medium": "utils/skyboxes/skybox_medium.jpg",
-                "hard": "utils/skyboxes/skybox_hard.jpg"
+                "hard": "utils/skyboxes/skybox_hard.jpg",
+                "limited_time": "utils/skyboxes/skybox_hard.jpg",  # Use hard skybox for challenge
+                "limited_moves": "utils/skyboxes/skybox_medium.jpg"  # Use medium skybox for challenge
             }
         }
 

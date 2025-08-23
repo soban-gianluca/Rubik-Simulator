@@ -153,6 +153,12 @@ class Game:
         self.start_time = None
         self.cube_solved = False
         
+        # Challenge mode variables
+        self.time_limit = None  # Time limit in seconds for limited time mode
+        self.move_limit = None  # Move limit for limited moves mode
+        self.game_over = False  # Track if game is over due to limits
+        self.game_over_reason = None  # Reason for game over ("time_up", "moves_exceeded")
+        
         # Banner notification system
         self.banner_active = False
         self.banner_text = ""
@@ -196,6 +202,24 @@ class Game:
         self.move_counter = 0  # Reset move counter
         self.start_time = None  # Reset timer
         self.cube_solved = False  # Reset solved state
+        
+        # Reset challenge mode variables
+        self.time_limit = None
+        self.move_limit = None
+        self.game_over = False
+        self.game_over_reason = None
+        
+        # Set limits based on current difficulty
+        current_difficulty = self.menu.get_selected_difficulty()
+        game_mode_config = self.menu.get_game_mode_config(current_difficulty)
+        
+        if "time_limit" in game_mode_config:
+            self.time_limit = game_mode_config["time_limit"]
+            self.debug_print(f"Time limit set to {self.time_limit} seconds")
+        
+        if "move_limit" in game_mode_config:
+            self.move_limit = game_mode_config["move_limit"]
+            self.debug_print(f"Move limit set to {self.move_limit} moves")
 
     def increment_difficulty_change_count(self):
         """Increment the difficulty change count"""
@@ -672,6 +696,24 @@ class Game:
         # Update animated scrambling
         self.update_animated_scramble()
         
+        # Check time limit in limited time mode
+        if (self.time_limit is not None and 
+            self.start_time is not None and 
+            not self.cube_solved and 
+            not self.game_over):
+            elapsed_time = time.time() - self.start_time
+            if elapsed_time >= self.time_limit:
+                self.game_over = True
+                self.game_over_reason = "time_up"
+                self.show_banner("Time's up! Game Over!")
+                # Show game over screen
+                self.results_window.show_game_over(
+                    self.move_counter, 
+                    elapsed_time, 
+                    "time_up", 
+                    self.menu.get_selected_difficulty()
+                )
+        
         # Check for game start (when menu becomes inactive for the first time OR new game is requested)
         if not self.menu.is_active():
             if not self.game_started or self.new_game_requested:
@@ -747,9 +789,9 @@ class Game:
             # Check if animation just finished
             if self.renderer._last_animation_state and not self.renderer.is_animating:
                 # Check if solved after move (move is already executed in renderer)
-                if self.renderer.rubiks_cube.is_solved():
+                if self.renderer.rubiks_cube.is_solved() and not self.cube_solved:
                     self.cube_solved = True
-                    solve_time = time.time() - self.start_time
+                    solve_time = time.time() - self.start_time if self.start_time else 0
                     tps = self.move_counter / solve_time if solve_time > 0 else 0
                     
                     # Get current difficulty to determine if we should show results
@@ -757,9 +799,23 @@ class Game:
                     
                     # Only show win messages and results window if not in freeplay mode
                     if current_difficulty != "freeplay":
-                        # Print to terminal for debug purposes
-                        print(f"🎉 CUBE SOLVED! 🎉")
+                        # Clear game over state if solved in time/moves
+                        self.game_over = False
+                        self.game_over_reason = None
                         
+                        # Special messages for challenge modes
+                        if current_difficulty == "limited_time":
+                            remaining_time = max(0, self.time_limit - solve_time)
+                            self.show_banner(f"SOLVED! With {remaining_time:.1f}s to spare!")
+                        elif current_difficulty == "limited_moves":
+                            remaining_moves = max(0, self.move_limit - self.move_counter)
+                            self.show_banner(f"SOLVED! With {remaining_moves} moves to spare!")
+                        else:
+                            self.show_banner("CUBE SOLVED!")
+
+                        # Print to terminal for debug purposes
+                        print(f"CUBE SOLVED!")
+
                         # Show results window
                         self.results_window.show_results(self.move_counter, solve_time, tps, current_difficulty)
             
@@ -965,24 +1021,59 @@ class Game:
             
             # Prepare text lines
             text_lines = []
+            urgent_color = False  # Flag for urgent coloring (red text)
             
-            # Add moves counter
-            text_lines.append(f"Moves: {self.move_counter}")
-            
-            # Check if timer is enabled for current game mode
+            # Get current game mode configuration
             current_difficulty = self.menu.get_selected_difficulty()
             game_mode_config = self.menu.get_game_mode_config(current_difficulty)
+            
+            # Add moves counter with limit info if applicable
+            if self.move_limit is not None:
+                remaining_moves = max(0, self.move_limit - self.move_counter)
+                text_lines.append(f"Moves: {self.move_counter}/{self.move_limit} ({remaining_moves} left)")
+                if remaining_moves <= 3:  # Show red when only 3 moves left
+                    urgent_color = True
+            else:
+                text_lines.append(f"Moves: {self.move_counter}")
+            
+            # Check if timer is enabled for current game mode
             timer_enabled = game_mode_config.get("timer_enabled", True)  # Default to True for compatibility
             
-            # Add timer only if enabled
+            # Add timer with countdown if applicable
             if timer_enabled:
                 if self.start_time is not None:
                     elapsed = time.time() - self.start_time
-                    minutes = int(elapsed // 60)
-                    seconds = int(elapsed % 60)
-                    text_lines.append(f"Time: {minutes:02d}:{seconds:02d}")
+                    
+                    if self.time_limit is not None:
+                        # Countdown mode for limited time
+                        remaining_time = max(0, self.time_limit - elapsed)
+                        if remaining_time <= 0:
+                            # Time's up!
+                            if not self.game_over:
+                                self.game_over = True
+                                self.game_over_reason = "time_up"
+                                self.show_banner("Time's up! Game Over!")
+                            text_lines.append("Time: 00:00 (TIME UP!)")
+                            urgent_color = True
+                        else:
+                            minutes = int(remaining_time // 60)
+                            seconds = int(remaining_time % 60)
+                            text_lines.append(f"Time: {minutes:02d}:{seconds:02d} remaining")
+                            if remaining_time <= 30:  # Show red when 30 seconds or less
+                                urgent_color = True
+                    else:
+                        # Regular timer mode
+                        minutes = int(elapsed // 60)
+                        seconds = int(elapsed % 60)
+                        text_lines.append(f"Time: {minutes:02d}:{seconds:02d}")
                 else:
-                    text_lines.append("Time: 00:00")
+                    if self.time_limit is not None:
+                        # Show initial time limit
+                        minutes = int(self.time_limit // 60)
+                        seconds = int(self.time_limit % 60)
+                        text_lines.append(f"Time: {minutes:02d}:{seconds:02d} remaining")
+                    else:
+                        text_lines.append("Time: 00:00")
             
             # Calculate dimensions for background
             text_surfaces = []
@@ -990,8 +1081,11 @@ class Game:
             total_height = 0
             line_height = 0
             
+            # Choose text color based on urgency
+            text_color = (255, 80, 80) if urgent_color else (255, 255, 255)  # Red if urgent, white otherwise
+            
             for line in text_lines:
-                text_surface = self._stats_font.render(line, True, (255, 255, 255))
+                text_surface = self._stats_font.render(line, True, text_color)
                 text_surfaces.append(text_surface)
                 width, height = text_surface.get_size()
                 max_width = max(max_width, width)
@@ -1090,8 +1184,27 @@ class Game:
 
     def execute_cube_move(self, move_notation):
         """Execute a Rubik's cube move with animation"""
-        # Don't allow new moves while animating
-        if self.renderer.is_animating:
+        # Don't allow new moves while animating or if game is over
+        if self.renderer.is_animating or self.game_over:
+            return
+        
+        # Check move limit before executing move
+        if (self.move_limit is not None and 
+            not hasattr(self, 'is_scrambling') and 
+            not self.is_scrambling and 
+            self.move_counter >= self.move_limit):
+            # Game over due to move limit exceeded
+            self.game_over = True
+            self.game_over_reason = "moves_exceeded"
+            self.show_banner("Game Over! Move limit exceeded!")
+            # Show game over screen
+            solve_time = time.time() - self.start_time if self.start_time else 0
+            self.results_window.show_game_over(
+                self.move_counter, 
+                solve_time, 
+                "moves_exceeded", 
+                self.menu.get_selected_difficulty()
+            )
             return
         
         # Only start timer if not scrambling
@@ -1114,6 +1227,13 @@ class Game:
             if not hasattr(self, 'is_scrambling') or not self.is_scrambling:
                 self.move_counter += 1
                 self.debug_print(f"Move {self.move_counter}: {move_notation} (animating)")
+                
+                # Check if we've reached the move limit after incrementing
+                if (self.move_limit is not None and 
+                    self.move_counter >= self.move_limit and 
+                    not self.cube_solved):
+                    # Show warning when reaching move limit
+                    self.show_banner(f"Move limit reached! ({self.move_counter}/{self.move_limit})")
             else:
                 self.debug_print(f"Scramble move: {move_notation} (animating)")
     
@@ -1209,13 +1329,28 @@ class Game:
         self.renderer.rubiks_cube = RubiksCube()
         self.debug_print("Cube reset to solved state")
         
+        # Reset challenge mode variables
+        self.time_limit = None
+        self.move_limit = None
+        self.game_over = False
+        self.game_over_reason = None
+        
+        # Set up challenge limits based on game mode
+        if "time_limit" in game_mode_config:
+            self.time_limit = game_mode_config["time_limit"]
+            self.debug_print(f"Time limit set to {self.time_limit} seconds")
+        
+        if "move_limit" in game_mode_config:
+            self.move_limit = game_mode_config["move_limit"]
+            self.debug_print(f"Move limit set to {self.move_limit} moves")
+        
         if difficulty == "freeplay":
             # Free play: Keep cube solved (no scrambling)
             self.debug_print("Free play mode: Cube ready for practice!")
         elif difficulty == "easy":
             # Easy: 5 moves scramble
-            self.animated_scramble_cube(1)
-            self.debug_print("Easy mode: Scramble with 5 move!")
+            self.animated_scramble_cube(5)
+            self.debug_print("Easy mode: Scramble with 5 moves!")
         elif difficulty == "medium":
             # Medium: 10 moves scramble
             self.animated_scramble_cube(10)
@@ -1226,6 +1361,14 @@ class Game:
             scramble_moves = random.randint(30, 70)  # Generate random number between 30-70
             self.animated_scramble_cube(scramble_moves)
             self.debug_print(f"Hard mode: Completely random scramble!")
+        elif difficulty == "limited_time":
+            # Limited Time: Medium scramble with time pressure
+            self.animated_scramble_cube(1)
+            self.debug_print(f"Limited Time mode: Scramble with 15 moves! You have {self.time_limit} seconds!")
+        elif difficulty == "limited_moves":
+            # Limited Moves: Medium scramble with move restriction
+            self.animated_scramble_cube(1)
+            self.debug_print(f"Limited Moves mode: Scramble with 15 moves! Max {self.move_limit} moves allowed!")
         else:
             # Default case (fallback)
             self.animated_scramble_cube(20)

@@ -241,6 +241,44 @@ class ResultsWindow:
         self.current_alpha = 1.0
         self.target_alpha = 1.0
     
+    def show_game_over(self, moves, solve_time, reason="time_up", difficulty=None):
+        """Display game over screen for failed challenges"""
+        
+        self.results_data = {
+            'moves': moves,
+            'time': solve_time,
+            'tps': moves / solve_time if solve_time > 0 else 0,
+            'difficulty': difficulty,
+            'game_over': True,
+            'reason': reason,
+            'new_records': {}
+        }
+        
+        # Update the display widgets for game over
+        self.moves_widget.set_title(f"Moves: {moves}")
+        self.time_widget.set_title(f" Time: {solve_time:.2f}s")
+        self.tps_widget.set_title(f"Speed: {self.results_data['tps']:.2f} TPS")
+        
+        # Set game over message with red color
+        if reason == "time_up":
+            rating_text = "TIME'S UP!"
+        elif reason == "moves_exceeded":
+            rating_text = "TOO MANY MOVES!"
+        else:
+            rating_text = "GAME OVER!"
+        
+        self.rating_widget.set_title(rating_text)
+        self.rating_widget._font_color = (255, 80, 80)  # Red color for game over
+        
+        # Show window immediately without celebration
+        self.active = True
+        self.is_animating = False
+        self.current_alpha = 1.0
+        self.target_alpha = 1.0
+        
+        # No celebration for game over
+        self.celebration_active = False
+    
     def _start_celebration(self):
         """Start celebration particle effects"""
         self.celebration_active = True

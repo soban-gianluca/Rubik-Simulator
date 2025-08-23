@@ -389,6 +389,22 @@ class Menu:
                 "description": "Completely random scramble",
                 "scramble_moves": -1,  # Special value for total random scramble
                 "timer_enabled": True,
+            },
+            "limited_time": {
+                "name": "Limited Time",
+                "description": "Solve the cube before time runs out! (3 minutes)",
+                "scramble_moves": 15,
+                "timer_enabled": True,
+                "time_limit": 180,  # 3 minutes in seconds
+                "countdown_mode": True,
+            },
+            "limited_moves": {
+                "name": "Limited Moves",
+                "description": "Solve the cube with limited moves! (25 moves max)",
+                "scramble_moves": 15,
+                "timer_enabled": True,
+                "move_limit": 25,
+                "countdown_moves": True,
             }
         }
     
@@ -1672,7 +1688,9 @@ class Menu:
             "freeplay": (22, 57, 161, 200),  # Blue (original color)
             "easy": (33, 148, 33, 200),      # Green
             "medium": (199, 106, 26, 200),   # Orange
-            "hard": (176, 28, 28, 200)      # Red
+            "hard": (176, 28, 28, 200),      # Red
+            "limited_time": (138, 43, 226, 200),   # Purple
+            "limited_moves": (255, 20, 147, 200),  # Deep Pink
         }
         
         # First, add Free Play button separately at the top
@@ -1753,6 +1771,56 @@ class Menu:
                 
                 # Initialize animation state for this button
                 self.button_animations[difficulty_button] = {
+                    'is_hovering': False,
+                    'animation_start_time': 0,
+                    'glow_intensity': 0.0
+                }
+        
+        # Add spacing before the second horizontal row for new game modes
+        self.difficulty_menu.add.vertical_margin(25)
+        
+        # Create second horizontal layout for Limited Time and Limited Moves
+        challenge_frame = self.difficulty_menu.add.frame_h(
+            width=self.width * 0.9,
+            height=180,
+            align=ALIGN_CENTER,
+            margin=(0, 10)
+        )
+        
+        # Add Limited Time and Limited Moves buttons horizontally
+        challenge_modes = ["limited_time", "limited_moves"]
+        for mode_key in challenge_modes:
+            if mode_key in game_modes:
+                mode_config = game_modes[mode_key]
+                button_text = mode_config['name']
+                button_action = lambda difficulty=mode_key: self._start_game(difficulty)
+                bg_color = difficulty_colors.get(mode_key, (40, 60, 90, 200))
+                
+                challenge_button = challenge_frame.pack(
+                    self.difficulty_menu.add.button(
+                        button_text, 
+                        button_action,
+                        font_size=35,  # Slightly smaller font for longer text
+                        font_name=pygame_menu.font.FONT_FRANCHISE,
+                        background_color=bg_color,
+                        padding=(25, 50),  # Adjusted padding
+                        button_id=f'difficulty_{mode_key}',
+                        margin=(0, 0)  # No margin on individual buttons when packed
+                    ),
+                    align=ALIGN_CENTER,
+                    margin=(25, 0)  # Add margin to the packed item instead
+                )
+                
+                # Store difficulty button for animation tracking and tooltip
+                self.difficulty_buttons[challenge_button] = {
+                    'difficulty': mode_key,
+                    'original_color': bg_color,
+                    'base_color': bg_color,
+                    'description': mode_config['description']
+                }
+                
+                # Initialize animation state for this button
+                self.button_animations[challenge_button] = {
                     'is_hovering': False,
                     'animation_start_time': 0,
                     'glow_intensity': 0.0

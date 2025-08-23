@@ -270,16 +270,14 @@ class Menu:
             pass
     
     def _style_settings_buttons(self, apply_btn, back_btn):
-        """Apply specific colors and rounded backgrounds to the settings buttons"""
+        """Apply specific colors and rounded backgrounds to the settings buttons, directly drawing rounded buttons."""
         import pygame
-        def rounded_draw_patch(widget, surface, *args, **kwargs):
+        def draw_rounded_button(widget, surface, *args, **kwargs):
             rect = widget.get_rect(to_real_position=True)
             color = widget._background_color if hasattr(widget, '_background_color') else (80, 80, 80, 150)
             border_radius = 16
-            # Draw only the rounded rectangle background and border directly on the main surface
             pygame.draw.rect(surface, color, rect, border_radius=border_radius)
             pygame.draw.rect(surface, (120, 120, 120, 180), rect, width=2, border_radius=border_radius)
-            # Now draw the button text centered in the rect
             if hasattr(widget, 'get_title') and hasattr(widget, '_font'):
                 text = widget.get_title()
                 font = widget._font
@@ -288,7 +286,6 @@ class Menu:
                 text_rect = text_surf.get_rect(center=rect.center)
                 surface.blit(text_surf, text_rect)
         try:
-            # Style the Apply Changes button based on whether there are changes
             if hasattr(apply_btn, 'set_background_color'):
                 if self.settings_changed:
                     apply_btn.set_background_color((46, 125, 50, 200))  # Green color
@@ -302,16 +299,15 @@ class Menu:
                         apply_btn.is_enabled = False
                     if hasattr(apply_btn, '_font_color'):
                         apply_btn._font_color = (150, 150, 150)
-                # Patch the draw method for rounded corners
                 if not hasattr(apply_btn, '_original_draw'):
                     apply_btn._original_draw = apply_btn.draw
-                    apply_btn.draw = lambda surface, *a, **k: rounded_draw_patch(apply_btn, surface, *a, **k)
+                    apply_btn.draw = lambda surface, *a, **k: draw_rounded_button(apply_btn, surface, *a, **k)
             if hasattr(back_btn, 'set_background_color'):
                 back_btn.set_background_color((66, 66, 66, 200))
                 if not hasattr(back_btn, '_original_draw'):
                     back_btn._original_draw = back_btn.draw
-                    back_btn.draw = lambda surface, *a, **k: rounded_draw_patch(back_btn, surface, *a, **k)
-        except Exception as e:
+                    back_btn.draw = lambda surface, *a, **k: draw_rounded_button(back_btn, surface, *a, **k)
+        except Exception:
             pass
     
     def _update_apply_button_state(self):

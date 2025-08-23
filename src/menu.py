@@ -1480,15 +1480,14 @@ class Menu:
         # Add custom logo image as title if available, otherwise use text
         logo_path = resource_path("utils/rubiks_logo.png")
         if os.path.exists(logo_path):
-            # Calculate appropriate scale based on screen size - smaller scale for compact design
-            logo_scale_width = self.width * 0.30 / 400  # Reduced from 0.4 to 0.25 for smaller logo
-            logo_scale_height = logo_scale_width  # Keep aspect ratio
+            logo_scale_width = self.width * 0.25 / 400
+            logo_scale_height = logo_scale_width
             self.main_menu.add.image(
                 logo_path,
                 angle=0,
                 scale=(logo_scale_width, logo_scale_height),
                 align=ALIGN_CENTER,
-                margin=(0, 0)  # Remove top and bottom margins
+                margin=(0, 2)
             )
         else:
             # Fallback to text title if logo fails to load
@@ -1501,7 +1500,7 @@ class Menu:
                 font_shadow_color=(0, 0, 0),
                 font_shadow_offset=3,
                 align=ALIGN_CENTER,
-                margin=(0, 0)  # Remove top and bottom margins
+                margin=(0, 2)
             )
         
         
@@ -1520,21 +1519,19 @@ class Menu:
         
         # Add main menu buttons - behavior changes based on difficulty change count
         if hasattr(self, "game") and self.game and self.game.get_difficulty_change_count() >= 1:
-            # Once difficulty has been changed, "Play" just closes menu and "Change Difficulty" opens difficulty menu
             play_btn = self.main_menu.add.button("Play", self._play_current_difficulty)
             change_difficulty_btn = self.main_menu.add.button("Change Difficulty", self._open_difficulty_select)
         else:
-            # Initially, "Play" opens difficulty selection menu
             play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
-        
         settings_btn = self.main_menu.add.button("Settings", self._open_settings)
         controls_btn = self.main_menu.add.button("Controls", self._open_controls)
         quit_btn = self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
-        
+        for widget in self.main_menu.get_widgets():
+            if hasattr(widget, 'set_margin'):
+                widget.set_margin(0, 2)
+        self.main_menu.add.vertical_margin(self.height // 10)
         # Apply custom styling to main menu
         self._customize_menu_widgets(self.main_menu)
-        
-        # Personal Best button will be drawn manually in draw() method
         
         # Create difficulty selection menu with ACTUAL dimensions
         self.difficulty_menu = pygame_menu.Menu(

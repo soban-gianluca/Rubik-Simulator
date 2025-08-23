@@ -97,6 +97,16 @@ class Menu:
         self.difficulty_buttons = {}  # Store difficulty buttons with their metadata
         self.button_animations = {}  # Track animation state for each button
         
+        # Tooltip system for difficulty buttons
+        self.tooltip_active = False
+        self.tooltip_text = ""
+        self.tooltip_start_time = 0
+        self.tooltip_delay = 0.5  # 500ms delay before showing tooltip
+        self.tooltip_font = None
+        self.tooltip_surface = None
+        self.tooltip_rect = None
+        self.current_tooltip_button = None
+        
         # Create custom fancy theme with improved styling
         self._create_custom_theme()
         
@@ -695,6 +705,9 @@ class Menu:
         # Always update button animations regardless of menu animation state
         self._update_button_animations()
         
+        # Update tooltip state
+        self._update_tooltip()
+        
         if not self.is_animating:
             return
             
@@ -928,10 +941,13 @@ class Menu:
         return updated or self.active
     
     def _clear_all_hover_effects(self):
-        """Clear hover effects from all widgets"""
+        """Clear hover effects from all widgets and hide tooltips"""
         for widget in self.hovered_widgets.copy():
             self._apply_hover_effect(widget, False)
         self.hovered_widgets.clear()
+        
+        # Hide any active tooltips
+        self._hide_tooltip()
     
     def _update_hover_effects(self, mouse_pos):
         """Update hover effects for widgets based on mouse position"""
@@ -1005,7 +1021,7 @@ class Menu:
             pass
     
     def _animate_difficulty_button(self, button, is_hovered):
-        """Apply animated hover effect to difficulty buttons"""
+        """Apply animated hover effect to difficulty buttons and handle tooltips"""
         if button not in self.button_animations:
             return
             
@@ -1017,11 +1033,114 @@ class Menu:
                 # Start hover animation
                 animation_state['is_hovering'] = True
                 animation_state['animation_start_time'] = current_time
+                
+                # Start tooltip timer
+                self._start_tooltip(button)
         else:
             if animation_state['is_hovering']:
                 # Start unhover animation
                 animation_state['is_hovering'] = False
                 animation_state['animation_start_time'] = current_time
+                
+                # Hide tooltip
+                self._hide_tooltip()
+    
+    def _start_tooltip(self, button):
+        """Start tooltip timer for a difficulty button"""
+        if button in self.difficulty_buttons:
+            self.current_tooltip_button = button
+            self.tooltip_start_time = time.time()
+            self.tooltip_text = self.difficulty_buttons[button]['description']
+            # Tooltip will become active after delay in update method
+    
+    def _hide_tooltip(self):
+        """Hide the current tooltip"""
+        self.tooltip_active = False
+        self.current_tooltip_button = None
+        self.tooltip_text = ""
+        self.tooltip_surface = None
+        self.tooltip_rect = None
+    
+    def _update_tooltip(self):
+        """Update tooltip state and create tooltip surface if needed"""
+        if not self.current_tooltip_button or not self.tooltip_text:
+            return
+            
+        # Check if enough time has passed to show tooltip
+        current_time = time.time()
+        if (current_time - self.tooltip_start_time >= self.tooltip_delay and 
+            not self.tooltip_active):
+            self.tooltip_active = True
+            self._create_tooltip_surface()
+    
+    def _create_tooltip_surface(self):
+        """Create the tooltip surface with description text"""
+        if not self.tooltip_text:
+            return
+            
+        # Initialize tooltip font if needed
+        if not self.tooltip_font:
+            try:
+                self.tooltip_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, 28)
+            except:
+                # Fallback to default font if franchise font fails
+                self.tooltip_font = pygame.font.Font(None, 28)
+        
+        # Create tooltip surface
+        padding = 15
+        text_color = (255, 255, 255)
+        bg_color = (20, 20, 30, 240)  # Dark semi-transparent background
+        border_color = (100, 150, 200, 255)  # Light blue border
+        
+        # Render text
+        text_surface = self.tooltip_font.render(self.tooltip_text, True, text_color)
+        text_width, text_height = text_surface.get_size()
+        
+        # Create tooltip background
+        tooltip_width = text_width + (padding * 2)
+        tooltip_height = text_height + (padding * 2)
+        
+        self.tooltip_surface = pygame.Surface((tooltip_width, tooltip_height), pygame.SRCALPHA)
+        
+        # Draw background with rounded corners
+        pygame.draw.rect(self.tooltip_surface, bg_color, 
+                        (0, 0, tooltip_width, tooltip_height), border_radius=8)
+        pygame.draw.rect(self.tooltip_surface, border_color, 
+                        (0, 0, tooltip_width, tooltip_height), width=2, border_radius=8)
+        
+        # Draw text
+        self.tooltip_surface.blit(text_surface, (padding, padding))
+        
+        # Calculate tooltip position (centered below mouse, but keep on screen)
+        mouse_pos = pygame.mouse.get_pos()
+        tooltip_x = mouse_pos[0] - tooltip_width // 2
+        tooltip_y = mouse_pos[1] + 20  # 20px below cursor
+        
+        # Keep tooltip on screen
+        if tooltip_x < 10:
+            tooltip_x = 10
+        elif tooltip_x + tooltip_width > self.width - 10:
+            tooltip_x = self.width - tooltip_width - 10
+            
+        if tooltip_y + tooltip_height > self.height - 10:
+            tooltip_y = mouse_pos[1] - tooltip_height - 10  # Show above cursor instead
+        
+        self.tooltip_rect = pygame.Rect(tooltip_x, tooltip_y, tooltip_width, tooltip_height)
+    
+    def _draw_tooltip(self, screen):
+        """Draw the tooltip if active"""
+        if (self.tooltip_active and self.tooltip_surface and self.tooltip_rect and 
+            self.current_menu == self.difficulty_menu):  # Only show in difficulty menu
+            
+            # Apply menu alpha to tooltip
+            current_alpha = self.get_current_alpha()
+            if current_alpha > 0.0:
+                if current_alpha < 1.0:
+                    tooltip_surface = self.tooltip_surface.copy()
+                    tooltip_surface.set_alpha(int(255 * current_alpha))
+                    screen.blit(tooltip_surface, self.tooltip_rect.topleft)
+                else:
+                    screen.blit(self.tooltip_surface, self.tooltip_rect.topleft)
     
     def _update_button_animations(self):
         """Update all button animations"""
@@ -1316,6 +1435,9 @@ class Menu:
                 
                 # Store button rectangle for click detection
                 self.personal_best_rect = button_rect
+        
+        # Draw tooltip if active (must be last to appear on top)
+        self._draw_tooltip(screen)
     
     def _draw_background_effects(self, screen, alpha=1.0):
         """Draw simplified background effects for better performance"""
@@ -1553,42 +1675,88 @@ class Menu:
             "hard": (176, 28, 28, 200)      # Red
         }
         
-        for mode_key, mode_config in game_modes.items():
-            # Add some spacing before each difficulty
-            self.difficulty_menu.add.vertical_margin(20)
+        # First, add Free Play button separately at the top
+        self.difficulty_menu.add.vertical_margin(20)
+        
+        if "freeplay" in game_modes:
+            mode_config = game_modes["freeplay"]
+            button_text = mode_config['name']
+            button_action = lambda difficulty="freeplay": self._start_game(difficulty)
+            bg_color = difficulty_colors.get("freeplay", (40, 60, 90, 200))
             
-            # Combine name and description in one button with proper spacing
-            button_text = f"{mode_config['name']} | {mode_config['description']}"
-            button_action = lambda difficulty=mode_key: self._start_game(difficulty)
-            
-            # Get the appropriate background color for this difficulty
-            bg_color = difficulty_colors.get(mode_key, (40, 60, 90, 200))
-            
-            difficulty_button = self.difficulty_menu.add.button(
+            freeplay_button = self.difficulty_menu.add.button(
                 button_text, 
                 button_action,
                 font_size=40,
                 font_name=pygame_menu.font.FONT_FRANCHISE,
-                background_color=bg_color,  # Difficulty-specific colored background box
-                padding=(30, 25)  # More padding for a taller box
+                background_color=bg_color,
+                padding=(30, 200)  # (wide buttons)
             )
             
-            # Store difficulty button for animation tracking
-            self.difficulty_buttons[difficulty_button] = {
-                'difficulty': mode_key,
+            # Store difficulty button for animation tracking and tooltip
+            self.difficulty_buttons[freeplay_button] = {
+                'difficulty': "freeplay",
                 'original_color': bg_color,
-                'base_color': bg_color
+                'base_color': bg_color,
+                'description': mode_config['description']
             }
             
             # Initialize animation state for this button
-            self.button_animations[difficulty_button] = {
+            self.button_animations[freeplay_button] = {
                 'is_hovering': False,
                 'animation_start_time': 0,
                 'glow_intensity': 0.0
             }
-            
-            # Add spacing after each difficulty
-            self.difficulty_menu.add.vertical_margin(10)
+        
+        # Add spacing before the horizontal row
+        self.difficulty_menu.add.vertical_margin(30)
+        
+        # Create horizontal layout for Easy, Medium, Hard using frame
+        horizontal_frame = self.difficulty_menu.add.frame_h(
+            width=self.width * 0.9,
+            height=180,
+            align=ALIGN_CENTER,
+            margin=(0, 10)
+        )
+        
+        # Add Easy, Medium, Hard buttons horizontally
+        horizontal_difficulties = ["easy", "medium", "hard"]
+        for i, mode_key in enumerate(horizontal_difficulties):
+            if mode_key in game_modes:
+                mode_config = game_modes[mode_key]
+                button_text = mode_config['name']
+                button_action = lambda difficulty=mode_key: self._start_game(difficulty)
+                bg_color = difficulty_colors.get(mode_key, (40, 60, 90, 200))
+                
+                difficulty_button = horizontal_frame.pack(
+                    self.difficulty_menu.add.button(
+                        button_text, 
+                        button_action,
+                        font_size=40,
+                        font_name=pygame_menu.font.FONT_FRANCHISE,
+                        background_color=bg_color,
+                        padding=(30, 50),  # Adjusted padding (wide buttons)
+                        button_id=f'difficulty_{mode_key}',
+                        margin=(0, 0)  # No margin on individual buttons when packed
+                    ),
+                    align=ALIGN_CENTER,
+                    margin=(15, 0)  # Add margin to the packed item instead
+                )
+                
+                # Store difficulty button for animation tracking and tooltip
+                self.difficulty_buttons[difficulty_button] = {
+                    'difficulty': mode_key,
+                    'original_color': bg_color,
+                    'base_color': bg_color,
+                    'description': mode_config['description']
+                }
+                
+                # Initialize animation state for this button
+                self.button_animations[difficulty_button] = {
+                    'is_hovering': False,
+                    'animation_start_time': 0,
+                    'glow_intensity': 0.0
+                }
         
         # Add final spacing and back button
         self.difficulty_menu.add.vertical_margin(20)

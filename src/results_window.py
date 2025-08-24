@@ -118,8 +118,8 @@ class ResultsWindow:
         # Add some top spacing
         self.menu.add.vertical_margin(30)
         
-        # Add celebration emoji/symbols
-        self.menu.add.label("🎉 CUBE SOLVED! 🎉", font_size=50, font_color=(255, 215, 0))
+        # Add celebration emoji/symbols - store as title_widget for dynamic updates
+        self.title_widget = self.menu.add.label("CUBE SOLVED!", font_size=50, font_color=(255, 215, 0))
         self.menu.add.vertical_margin(15)
         
         # Performance stats with modern styling
@@ -256,15 +256,15 @@ class ResultsWindow:
         
         # Update title widget for game over
         if reason == "time_up":
-            self.title_widget.set_title("⏰ TIME'S UP! ⏰")
+            self.title_widget.set_title("TIME'S UP!")
             self.title_widget._font_color = (255, 80, 80)  # Red
             rating_text = "CHALLENGE FAILED!"
         elif reason == "moves_exceeded":
-            self.title_widget.set_title("🚫 MOVE LIMIT EXCEEDED! 🚫")
+            self.title_widget.set_title("MOVE LIMIT EXCEEDED!")
             self.title_widget._font_color = (255, 80, 80)  # Red
             rating_text = "CHALLENGE FAILED!"
         else:
-            self.title_widget.set_title("💀 GAME OVER! 💀")
+            self.title_widget.set_title("GAME OVER!")
             self.title_widget._font_color = (255, 80, 80)  # Red
             rating_text = "CHALLENGE FAILED!"
         

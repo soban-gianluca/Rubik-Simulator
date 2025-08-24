@@ -749,6 +749,11 @@ class Game:
                     self.scramble_cube_by_difficulty(difficulty)
                     self._ever_started = True
                 
+                # Start timer immediately for limited time mode
+                if self.time_limit is not None and self.start_time is None:
+                    self.start_time = time.time()
+                    self.debug_print(f"Timer started for limited time mode: {self.time_limit}s")
+                
                 self.new_game_requested = False  # Reset the flag
         
         # Note: We no longer reset game_started when menu is opened

@@ -813,15 +813,14 @@ class Game:
             if self.renderer._last_animation_state and not self.renderer.is_animating:
                 # Check if solved after move (move is already executed in renderer)
                 if self.renderer.rubiks_cube.is_solved() and not self.cube_solved:
-                    self.cube_solved = True
-                    solve_time = time.time() - self.start_time if self.start_time else 0
-                    tps = self.move_counter / solve_time if solve_time > 0 else 0
-                    
                     # Get current difficulty to determine if we should show results
                     current_difficulty = self.menu.get_selected_difficulty()
                     
-                    # Only show win messages and results window if not in freeplay mode
+                    # Only mark as solved and show win messages if not in freeplay mode
                     if current_difficulty != "freeplay":
+                        self.cube_solved = True
+                        solve_time = time.time() - self.start_time if self.start_time else 0
+                        tps = self.move_counter / solve_time if solve_time > 0 else 0
                         # Clear game over state if solved in time/moves
                         self.game_over = False
                         self.game_over_reason = None

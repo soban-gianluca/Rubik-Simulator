@@ -8,6 +8,7 @@ from OpenGL.GL import *
 from utils.path_helper import resource_path
 import random
 from src.settings_manager import SettingsManager
+from src.game import Game
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -53,7 +54,7 @@ class LoadingAnimation:
         
         # Loading state
         self.loading_complete = False
-        self.min_display_time = 4.0  # Minimum time to show animation in seconds
+        self.min_display_time = 4.0
         
         # Set caption and icon
         pygame.display.set_caption("Rubik's Cube Simulator")
@@ -88,7 +89,7 @@ class LoadingAnimation:
             "Ready to play!"
         ]
 
-        # --- Start background music for loading animation ---
+        # Start background music for loading animation
         try:
             settings = SettingsManager()
             playlist = [
@@ -111,9 +112,6 @@ class LoadingAnimation:
         
     def preload_game_resources(self):
         """Preload game resources in background thread"""
-        # Import here to avoid circular imports
-        from src.game import Game
-        
         # Simulate resource loading with detailed steps
         total_steps = len(self.loading_steps) - 1  # -1 because last step is "Ready to play!"
         

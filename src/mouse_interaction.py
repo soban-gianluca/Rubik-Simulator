@@ -1,23 +1,3 @@
-"""
-Dual-Mode Face Interaction System for Rubik's Cube
-
-This advanced system allows 6 different moves when looking at any face:
-- 3 Horizontal moves: Top row, middle row, bottom row (moving left/right)
-- 3 Vertical moves: Left column, middle column, right column (moving up/down)
-
-Using a 3x3 grid dual-mode system where each zone can perform both horizontal
-and vertical moves based on drag direction. This provides balanced access to
-all movement types from any position on the face.
-
-Features:
-- 3x3 dual-mode grid overlay
-- Direction-based move detection
-- Visual feedback with dual-direction arrows
-- Intuitive drag directions for each zone
-- Camera-aware movement interpretation
-- Enhanced usability and balance
-"""
-
 import math
 import numpy as np
 from OpenGL.GL import *
@@ -46,7 +26,7 @@ class MouseInteraction:
         self.show_grid_overlay = True
         
         # Movement settings
-        self.move_sensitivity = 15  # pixels (very responsive for larger zones)
+        self.move_sensitivity = 15  # pixels
         self.cube_spacing = 1.0
         
         # Define the 3x3 dual-mode zones - each zone can do both horizontal and vertical moves
@@ -74,9 +54,6 @@ class MouseInteraction:
             rx -= 360
         if ry > 180:
             ry -= 360
-        
-        # Debug output (temporary)
-        # print(f"🔍 Camera rotation: rx={rx:.1f}°, ry={ry:.1f}°")
         
         # Determine primary face based on rotation
         # Only detect the 4 main faces (front, back, left, right) for cleaner interaction
@@ -237,18 +214,18 @@ class MouseInteraction:
         if zone in ['top_left', 'top_center', 'top_right']:
             # Top row (U moves) - simplified direction logic
             if self.detected_face in ['front']:
-                return "U'" if direction == 'right' else 'U'  # Fixed: flipped for front face top row
+                return "U'" if direction == 'right' else 'U'
             elif self.detected_face == 'right':
-                return "U'" if direction == 'right' else 'U'  # Fixed: flipped for right face top row
+                return "U'" if direction == 'right' else 'U'
             else:  # back, left - flip direction
                 return "U'" if direction == 'right' else 'U'
                 
         elif zone in ['middle_left', 'middle_center', 'middle_right']:
             # Middle row (E moves) - simplified direction logic
             if self.detected_face in ['front']:
-                return "E'" if direction == 'right' else 'E'  # Fixed: flipped for front face middle row
+                return "E'" if direction == 'right' else 'E'
             elif self.detected_face == 'right':
-                return "E'" if direction == 'right' else 'E'  # Fixed: flipped for right face middle row
+                return "E'" if direction == 'right' else 'E'
             else:  # back, left - flip direction
                 return "E'" if direction == 'right' else 'E'
                 
@@ -265,35 +242,35 @@ class MouseInteraction:
         if zone in ['top_left', 'middle_left', 'bottom_left']:
             # Left column - different moves depending on viewing face
             if self.detected_face == 'front':
-                return 'L' if direction == 'down' else "L'"  # Fixed: flipped for front face left column
+                return 'L' if direction == 'down' else "L'"  
             elif self.detected_face == 'back':
-                return 'R' if direction == 'down' else "R'"  # Fixed: back face left column should control R (visually reversed)
+                return 'R' if direction == 'down' else "R'"
             elif self.detected_face == 'right':
-                return 'F' if direction == 'down' else "F'"  # Fixed: flipped for right face left column
+                return 'F' if direction == 'down' else "F'"
             else:  # left
-                return 'B' if direction == 'down' else "B'"  # Left view: left = B slice (flipped)
+                return 'B' if direction == 'down' else "B'"
                 
         elif zone in ['top_center', 'middle_center', 'bottom_center']:
             # Middle column - different moves depending on viewing face
             if self.detected_face == 'front':
-                return "M'" if direction == 'down' else 'M'  # Fixed: reverted back for front face middle column
+                return "M'" if direction == 'down' else 'M'
             elif self.detected_face == 'back':
-                return 'M' if direction == 'down' else "M'"  # Flipped for back view
+                return 'M' if direction == 'down' else "M'" 
             elif self.detected_face == 'right':
-                return "S'" if direction == 'down' else 'S'  # Right view: center = S slice
+                return "S'" if direction == 'down' else 'S' 
             else:  # left
-                return 'S' if direction == 'down' else "S'"  # Left view: center = S slice (flipped)
+                return 'S' if direction == 'down' else "S'"
                 
         else:  # right column
             # Right column - different moves depending on viewing face
             if self.detected_face == 'front':
-                return "R'" if direction == 'down' else 'R'  # Fixed: reverted back for front face right column
+                return "R'" if direction == 'down' else 'R'
             elif self.detected_face == 'back':
-                return "L'" if direction == 'down' else 'L'  # Fixed: back face right column should control L' (flipped)
+                return "L'" if direction == 'down' else 'L'
             elif self.detected_face == 'right':
-                return "B'" if direction == 'down' else 'B'  # Fixed: flipped for right face right column
+                return "B'" if direction == 'down' else 'B'
             else:  # left
-                return "F'" if direction == 'down' else 'F'  # Left view: right = F slice
+                return "F'" if direction == 'down' else 'F'
 
     def update_hover(self, mouse_pos):
         """Update hover detection for revolutionary zones"""

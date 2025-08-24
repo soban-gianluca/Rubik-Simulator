@@ -39,7 +39,7 @@ class Renderer:
         # Skybox properties
         self.skybox_texture = None
         self.skybox_display_list = None
-        self.skybox_size = 20.0  # Large size to encompass the scene
+        self.skybox_size = 20.0
 
         # Rubik's cube face colors - define colors before initializing cubes
         self.cube_colors = {

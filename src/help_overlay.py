@@ -36,9 +36,9 @@ class HelpOverlay:
             self.help_button_size
         )
         
-        # Load help icon with high quality scaling
+        # Load help icon
         try:
-            # Load the original icon at a higher resolution for better quality
+            # Load the original icon
             original_icon = pygame.image.load(resource_path("utils/icons/help_icon.png"))
             
             # Use smoothscale for better quality when scaling down
@@ -64,9 +64,9 @@ class HelpOverlay:
             text_rect = text.get_rect(center=(center, center))
             self.help_icon.blit(text, text_rect)
         
-        # Load menu icon with high quality scaling
+        # Load menu icon
         try:
-            # Load the original menu icon at a higher resolution for better quality
+            # Load the original menu icon
             original_menu_icon = pygame.image.load(resource_path("utils/icons/menu_icon.png"))
             
             # Use smoothscale for better quality when scaling down
@@ -96,13 +96,13 @@ class HelpOverlay:
         self.is_hovering_menu = False
         self.game_callback = None  # Will be set from game instance
         
-        # Help panel properties - bigger to accommodate larger fonts
+        # Help panel properties
         self.panel_width = min(650, self.width - 100)
         self.panel_height = min(500, self.height - 100)
         self.panel_x = (self.width - self.panel_width) // 2
         self.panel_y = (self.height - self.panel_height) // 2
         
-        # Initialize fonts (same as menu for consistency) - bigger sizes
+        # Initialize fonts (same as menu for consistency)
         pygame.font.init()
         self.title_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 50)
         self.section_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 40)
@@ -119,7 +119,7 @@ class HelpOverlay:
         self.is_hovering = False  # For backward compatibility (help button)
         self._create_button_surfaces()
         
-        # Help content - more compact layout
+        # Help content
         self.help_sections = [
             {
                 "title": "Cube Moves",
@@ -417,7 +417,7 @@ class HelpOverlay:
         pygame.draw.line(self.panel_surface, (100, 150, 255, 180), 
                         (40, line_y), (self.panel_width - 40, line_y), 2)
         
-        # Content in two columns for compact layout - adjusted spacing for bigger fonts
+        # Content in two columns for compact layout
         y_offset = line_y + 25
         col_width = (self.panel_width - 60) // 2
         
@@ -457,7 +457,6 @@ class HelpOverlay:
         self.width = width
         self.height = height
         
-        # Update responsive button size and margin
         self.help_button_size = max(40, min(60, int(width * 0.045)))  # 4.5% of screen width, min 40px, max 60px
         self.help_button_margin = max(12, int(width * 0.015))  # 1.5% of screen width, min 12px
         self.button_spacing = 8  # Space between buttons

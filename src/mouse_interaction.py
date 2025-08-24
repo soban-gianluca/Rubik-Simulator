@@ -19,7 +19,6 @@ Features:
 """
 
 import math
-import pygame
 import numpy as np
 from OpenGL.GL import *
 from OpenGL.GLU import *

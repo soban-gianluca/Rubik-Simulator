@@ -3,7 +3,6 @@ from pygame.locals import *
 import numpy as np
 import math
 import time
-import os
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from utils.path_helper import resource_path

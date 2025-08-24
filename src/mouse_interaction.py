@@ -29,6 +29,7 @@ class MouseInteraction:
     
     def __init__(self, renderer):
         self.renderer = renderer
+        self.game = None  # Reference to game instance for checking move availability
         self.is_dragging = False
         self.drag_start_pos = None
         self.drag_current_pos = None
@@ -169,6 +170,10 @@ class MouseInteraction:
     def update_drag(self, mouse_pos):
         """Update drag and detect moves - ENHANCED with dual-mode detection"""
         if not self.is_dragging or self.move_executed:
+            return None
+        
+        # Check if moves are allowed in the current game state
+        if self.game and not self.game.can_make_move():
             return None
         
         self.drag_current_pos = mouse_pos
@@ -352,3 +357,7 @@ class MouseInteraction:
         self.renderer = new_renderer
         # Reset any ongoing interactions since the coordinate system has changed
         self.reset_interaction()
+    
+    def set_game_reference(self, game):
+        """Set reference to game instance for checking move availability"""
+        self.game = game

@@ -100,6 +100,7 @@ class Game:
         
         # Initialize mouse cube interaction system
         self.mouse_interaction = MouseInteraction(self.renderer)
+        self.mouse_interaction.set_game_reference(self)
         
         # Initialize menu
         self.menu = Menu(self.width, self.height)
@@ -639,6 +640,13 @@ class Game:
                         debug_info = self.mouse_interaction.get_debug_info()
                         self.debug_print(f"   Face: {debug_info['detected_face']}, Zone: {debug_info['detected_zone']}")
                         self.execute_cube_move(detected_move)
+                    else:
+                        # Check if the move was blocked due to move limit
+                        if (self.move_limit is not None and self.move_counter >= self.move_limit and 
+                            not hasattr(self, 'is_scrambling') and not self.is_scrambling and 
+                            not self.game_over):
+                            # Show a brief message that moves are blocked
+                            self.show_banner("Move limit reached! Press Z to undo moves.")
                 
                 # Update hover detection when not doing anything else
                 else:
@@ -1030,9 +1038,13 @@ class Game:
             # Add moves counter with limit info if applicable
             if self.move_limit is not None:
                 remaining_moves = max(0, self.move_limit - self.move_counter)
-                text_lines.append(f"Moves: {self.move_counter}/{self.move_limit} ({remaining_moves} left)")
-                if remaining_moves <= 3:  # Show red when only 3 moves left
+                if remaining_moves == 0:
+                    text_lines.append(f"Moves: {self.move_counter}/{self.move_limit} (LIMIT REACHED)")
                     urgent_color = True
+                else:
+                    text_lines.append(f"Moves: {self.move_counter}/{self.move_limit} ({remaining_moves} left)")
+                    if remaining_moves <= 3:  # Show red when only 3 moves left
+                        urgent_color = True
             else:
                 text_lines.append(f"Moves: {self.move_counter}")
             
@@ -1182,29 +1194,47 @@ class Game:
             if self.debug_mode:
                 print(f"Game stats rendering error: {e}")
 
-    def execute_cube_move(self, move_notation):
-        """Execute a Rubik's cube move with animation"""
+    def can_make_move(self):
+        """Check if the player is allowed to make a move (considering move limits)"""
         # Don't allow new moves while animating or if game is over
         if self.renderer.is_animating or self.game_over:
-            return
+            return False
         
-        # Check move limit before executing move
-        if (self.move_limit is not None and 
-            not hasattr(self, 'is_scrambling') and 
-            not self.is_scrambling and 
-            self.move_counter >= self.move_limit):
-            # Game over due to move limit exceeded
-            self.game_over = True
-            self.game_over_reason = "moves_exceeded"
-            self.show_banner("Game Over! Move limit exceeded!")
-            # Show game over screen
-            solve_time = time.time() - self.start_time if self.start_time else 0
-            self.results_window.show_game_over(
-                self.move_counter, 
-                solve_time, 
-                "moves_exceeded", 
-                self.menu.get_selected_difficulty()
-            )
+        # Allow moves during scrambling
+        if hasattr(self, 'is_scrambling') and self.is_scrambling:
+            return True
+        
+        # Check if cube is already solved
+        if self.cube_solved:
+            return False
+        
+        # Check move limit
+        if self.move_limit is not None and self.move_counter >= self.move_limit:
+            return False
+        
+        return True
+    
+    def execute_cube_move(self, move_notation):
+        """Execute a Rubik's cube move with animation"""
+        # Check if move is allowed before executing
+        if not self.can_make_move():
+            # If we've reached the move limit, show game over
+            if (self.move_limit is not None and 
+                not hasattr(self, 'is_scrambling') and 
+                not self.is_scrambling and 
+                self.move_counter >= self.move_limit and
+                not self.game_over):  # Only show once
+                self.game_over = True
+                self.game_over_reason = "moves_exceeded"
+                self.show_banner("Game Over! Move limit exceeded!")
+                # Show game over screen
+                solve_time = time.time() - self.start_time if self.start_time else 0
+                self.results_window.show_game_over(
+                    self.move_counter, 
+                    solve_time, 
+                    "moves_exceeded", 
+                    self.menu.get_selected_difficulty()
+                )
             return
         
         # Only start timer if not scrambling
@@ -1239,6 +1269,16 @@ class Game:
     
     def undo_move(self):
         """Undo the last move"""
+        # Don't allow undo if animating
+        if self.renderer.is_animating:
+            return
+        
+        # Allow undo in limited moves mode even when limit is reached (gives player a chance to recover)
+        # But don't allow undo if game is over for other reasons (time limit, etc.)
+        if self.game_over and hasattr(self, 'game_over_reason') and self.game_over_reason != "moves_exceeded":
+            self.debug_print("Cannot undo: Game is over")
+            return
+        
         if self.renderer.rubiks_cube.undo_last_move():
             # Play random cube movement sound for undo
             self.sound_manager.play_random_cube_sound()
@@ -1246,6 +1286,17 @@ class Game:
             self.renderer.update_cube_colors()
             self.move_counter = max(0, self.move_counter - 1)
             self.debug_print(f"Move undone. Move count: {self.move_counter}")
+            
+            # If we were in game over state due to move limit, reset it since we now have moves available
+            if (self.game_over and hasattr(self, 'game_over_reason') and 
+                self.game_over_reason == "moves_exceeded" and 
+                self.move_limit is not None and self.move_counter < self.move_limit):
+                self.game_over = False
+                self.game_over_reason = None
+                # Close results window if it's open
+                if self.results_window.active:
+                    self.results_window.close_results()
+                self.show_banner(f"Moves available again! ({self.move_counter}/{self.move_limit})")
         else:
             self.debug_print("No moves to undo")
     

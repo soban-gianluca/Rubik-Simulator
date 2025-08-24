@@ -1545,7 +1545,7 @@ class Game:
             pygame.display.init()
             
             # Try a standard resolution that should work
-            fallback_width, fallback_height = 1024, 768
+            fallback_width, fallback_height = 1280, 720
             self.width = fallback_width
             self.height = fallback_height
             

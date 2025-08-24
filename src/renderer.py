@@ -8,7 +8,7 @@ from OpenGL.GLU import *
 from utils.path_helper import resource_path
 
 class Renderer:
-    def __init__(self, width=1024, height=768, cube_path="utils/cube.obj"):
+    def __init__(self, width=1280, height=720, cube_path="utils/cube.obj"):
         # Initialize properties
         self.width = width
         self.height = height

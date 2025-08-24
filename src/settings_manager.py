@@ -38,8 +38,8 @@ class SettingsManager:
         # default settings - keep for backward compatibility methods
         self.default_settings = {
             "resolution": {
-                "width": 1024,
-                "height": 768,
+                "width": 1280,
+                "height": 720,
                 "index": 0
             },
             "fullscreen": False,

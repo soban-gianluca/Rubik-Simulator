@@ -51,7 +51,9 @@ class PersonalBestManager:
                 "total_solves": 0,
                 "average_time": None,
                 "average_moves": None,
-                "last_solve_date": None
+                "last_solve_date": None,
+                "wins": 0,
+                "losses": 0
             },
             "limited_moves": {
                 "best_time": None,
@@ -60,7 +62,9 @@ class PersonalBestManager:
                 "total_solves": 0,
                 "average_time": None,
                 "average_moves": None,
-                "last_solve_date": None
+                "last_solve_date": None,
+                "wins": 0,
+                "losses": 0
             }
         }
         self.records = self.load_records()
@@ -123,6 +127,12 @@ class PersonalBestManager:
         # Update total solves and averages
         record["total_solves"] += 1
         
+        # For limited_time and limited_moves, also record as a win
+        if difficulty in ["limited_time", "limited_moves"]:
+            if "wins" not in record:
+                record["wins"] = 0
+            record["wins"] += 1
+        
         # Calculate running averages
         if record["average_time"] is None:
             record["average_time"] = solve_time
@@ -146,6 +156,25 @@ class PersonalBestManager:
             "is_best_moves": record["best_moves"] == moves,
             "is_best_tps": record["best_tps"] == tps
         }
+    
+    def record_loss(self, difficulty: str, moves: int = 0, solve_time: float = 0):
+        """Record a loss (game over) for challenge modes"""
+        if difficulty not in self.records:
+            self.records[difficulty] = self.default_records["easy"].copy()
+        
+        record = self.records[difficulty]
+        
+        # Only record losses for challenge modes
+        if difficulty in ["limited_time", "limited_moves"]:
+            if "losses" not in record:
+                record["losses"] = 0
+            record["losses"] += 1
+            
+            # Update last attempt date
+            record["last_solve_date"] = datetime.now().isoformat()
+            
+            # Save to file
+            self.save_records()
     
     def get_records(self, difficulty: str = None) -> dict:
         """Get personal best records for a specific difficulty or all difficulties"""
@@ -174,6 +203,25 @@ class PersonalBestManager:
         for diff_record in self.records.values():
             total += diff_record.get("total_solves", 0)
         return total
+    
+    def get_wins(self, difficulty: str) -> int:
+        """Get total wins for a difficulty"""
+        return self.records.get(difficulty, {}).get("wins", 0)
+    
+    def get_losses(self, difficulty: str) -> int:
+        """Get total losses for a difficulty"""
+        return self.records.get(difficulty, {}).get("losses", 0)
+    
+    def get_win_rate(self, difficulty: str) -> float:
+        """Get win rate percentage for a difficulty"""
+        wins = self.get_wins(difficulty)
+        losses = self.get_losses(difficulty)
+        total_games = wins + losses
+        
+        if total_games == 0:
+            return 0.0
+        
+        return (wins / total_games) * 100
     
     def has_records(self, difficulty: str = None) -> bool:
         """Check if there are any records for a difficulty or any difficulty"""

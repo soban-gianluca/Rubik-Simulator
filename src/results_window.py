@@ -244,6 +244,10 @@ class ResultsWindow:
     def show_game_over(self, moves, solve_time, reason="time_up", difficulty=None):
         """Display game over screen for failed challenges"""
         
+        # Record loss if personal best manager is available and it's a challenge mode
+        if self.personal_best_manager and difficulty and difficulty in ["limited_time", "limited_moves"]:
+            self.personal_best_manager.record_loss(difficulty, moves, solve_time)
+        
         self.results_data = {
             'moves': moves,
             'time': solve_time,

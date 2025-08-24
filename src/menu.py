@@ -2446,6 +2446,78 @@ class Menu:
                     font_name=pygame_menu.font.FONT_FRANCHISE
                 )
             
+            
+            # Challenge Modes Win/Loss Table
+            self.personal_best_menu.add.vertical_margin(40)
+            
+            # Check if there are any challenge mode records
+            has_challenge_records = (
+                self.personal_best_manager.get_wins("limited_time") > 0 or 
+                self.personal_best_manager.get_losses("limited_time") > 0 or
+                self.personal_best_manager.get_wins("limited_moves") > 0 or 
+                self.personal_best_manager.get_losses("limited_moves") > 0
+            )
+            
+            if has_challenge_records:
+                # Challenge modes title
+                self.personal_best_menu.add.label(
+                    "CHALLENGE MODES STATISTICS",
+                    font_size=50,
+                    font_color=(255, 215, 0),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                
+                self.personal_best_menu.add.vertical_margin(20)
+                
+                # Challenge table headers
+                challenge_header = "MODE                    │        WINS       │       LOSSES      │      WIN RATE"
+                self.personal_best_menu.add.label(
+                    challenge_header,
+                    font_size=40,
+                    font_color=(255, 255, 255),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                
+                # Challenge separator line
+                challenge_separator = "=" * 85
+                self.personal_best_menu.add.label(
+                    challenge_separator,
+                    font_size=25,
+                    font_color=(200, 200, 200),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                
+                self.personal_best_menu.add.vertical_margin(5)
+                
+                # Challenge modes data
+                challenge_modes = ["limited_time", "limited_moves"]
+                challenge_names = {"limited_time": "Limited Time", "limited_moves": "Limited Moves"}
+                challenge_colors = {
+                    "limited_time": (138, 43, 226),   # Purple
+                    "limited_moves": (255, 20, 147)   # Deep Pink
+                }
+                
+                for mode in challenge_modes:
+                    wins = self.personal_best_manager.get_wins(mode)
+                    losses = self.personal_best_manager.get_losses(mode)
+                    win_rate = self.personal_best_manager.get_win_rate(mode)
+                    
+                    # Only show modes that have been played
+                    if wins > 0 or losses > 0:
+                        mode_name = challenge_names[mode]
+                        win_rate_str = f"{win_rate:.1f}%" if win_rate > 0 else "0.0%"
+                        
+                        # Create aligned row
+                        challenge_row = f"{mode_name:<24}│{wins:^19}│{losses:^19}│{win_rate_str:^19}"
+                        
+                        # Add row with mode color
+                        self.personal_best_menu.add.label(
+                            challenge_row,
+                            font_size=40,
+                            font_color=challenge_colors[mode],
+                            font_name=pygame_menu.font.FONT_FRANCHISE
+                        )
+        
             # Overall statistics
             self.personal_best_menu.add.vertical_margin(30)
             total_solves = self.personal_best_manager.get_total_solves()
@@ -2456,7 +2528,6 @@ class Menu:
                     font_color=(255, 215, 0),
                     font_name=pygame_menu.font.FONT_FRANCHISE
                 )
-        
         # Add spacing and back button
         self.personal_best_menu.add.vertical_margin(40)
         back_btn = self.personal_best_menu.add.button("Back", self._back_to_main)

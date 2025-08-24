@@ -1394,8 +1394,8 @@ class Menu:
                 hasattr(self, 'record_icon')):  # Only need to check if we have the icon loaded
                 
                 # Position the Personal Records button in bottom right
-                button_width = 200
-                button_height = 80
+                button_width = 202
+                button_height = 60
                 margin = 20
                 
                 button_x = screen.get_width() - button_width - margin
@@ -1708,7 +1708,7 @@ class Menu:
                 font_size=40,
                 font_name=pygame_menu.font.FONT_FRANCHISE,
                 background_color=bg_color,
-                padding=(30, 200)  # (wide buttons)
+                padding=(20, 370)  # (wide buttons)
             )
             
             # Store difficulty button for animation tracking and tooltip
@@ -1731,10 +1731,10 @@ class Menu:
         
         # Create horizontal layout for Easy, Medium, Hard using frame
         horizontal_frame = self.difficulty_menu.add.frame_h(
-            width=self.width * 0.9,
-            height=180,
+            width=1000,  # Further increased width to accommodate buttons
+            height=130,
             align=ALIGN_CENTER,
-            margin=(0, 10)
+            margin=(0, 0)
         )
         
         # Add Easy, Medium, Hard buttons horizontally
@@ -1753,12 +1753,12 @@ class Menu:
                         font_size=40,
                         font_name=pygame_menu.font.FONT_FRANCHISE,
                         background_color=bg_color,
-                        padding=(30, 50),  # Adjusted padding (wide buttons)
+                        padding=(20, 100),  # Increased padding for wider buttons  
                         button_id=f'difficulty_{mode_key}',
                         margin=(0, 0)  # No margin on individual buttons when packed
                     ),
                     align=ALIGN_CENTER,
-                    margin=(15, 0)  # Add margin to the packed item instead
+                    margin=(10, 0)  # Margin between buttons
                 )
                 
                 # Store difficulty button for animation tracking and tooltip
@@ -1776,15 +1776,12 @@ class Menu:
                     'glow_intensity': 0.0
                 }
         
-        # Add spacing before the second horizontal row for new game modes
-        self.difficulty_menu.add.vertical_margin(25)
-        
         # Create second horizontal layout for Limited Time and Limited Moves
         challenge_frame = self.difficulty_menu.add.frame_h(
-            width=self.width * 0.9,
-            height=180,
+            width=900,  # Further increased width to accommodate buttons
+            height=130,
             align=ALIGN_CENTER,
-            margin=(0, 10)
+            margin=(0, 0)
         )
         
         # Add Limited Time and Limited Moves buttons horizontally
@@ -1800,15 +1797,15 @@ class Menu:
                     self.difficulty_menu.add.button(
                         button_text, 
                         button_action,
-                        font_size=35,  # Slightly smaller font for longer text
+                        font_size=40,
                         font_name=pygame_menu.font.FONT_FRANCHISE,
                         background_color=bg_color,
-                        padding=(25, 50),  # Adjusted padding
+                        padding=(20, 130),  # Increased padding for wider buttons
                         button_id=f'difficulty_{mode_key}',
                         margin=(0, 0)  # No margin on individual buttons when packed
                     ),
                     align=ALIGN_CENTER,
-                    margin=(25, 0)  # Add margin to the packed item instead
+                    margin=(15, 0)  # Reduced margin between the two challenge buttons
                 )
                 
                 # Store difficulty button for animation tracking and tooltip

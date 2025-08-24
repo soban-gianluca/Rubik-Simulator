@@ -2116,7 +2116,7 @@ class Menu:
         self.time_selection_menu.add.vertical_margin(20)
         self.time_selection_menu.add.label(
             "Choose your time limit for the challenge:",
-            font_size=35,
+            font_size=45,
             font_color=(255, 255, 255),
             font_name=pygame_menu.font.FONT_FRANCHISE
         )

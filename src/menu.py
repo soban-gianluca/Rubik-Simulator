@@ -1831,8 +1831,8 @@ class Menu:
             "easy": (33, 148, 33, 200),      # Green
             "medium": (199, 106, 26, 200),   # Orange
             "hard": (176, 28, 28, 200),      # Red
-            "limited_time": (138, 43, 226, 200),   # Purple
-            "limited_moves": (255, 20, 147, 200),  # Deep Pink
+            "limited_time": (240, 198, 38, 200),   # Gold
+            "limited_moves": (240, 198, 38, 200),  # Gold
         }
         
         # First, add Free Play button separately at the top
@@ -1951,7 +1951,7 @@ class Menu:
                         font_size=40,
                         font_name=pygame_menu.font.FONT_FRANCHISE,
                         background_color=bg_color,
-                        padding=(20, 130),  # Increased padding for wider buttons
+                        padding=(20, 80),  # Increased padding for wider buttons
                         button_id=f'difficulty_{mode_key}',
                         margin=(0, 0)  # No margin on individual buttons when packed
                     ),
@@ -2225,8 +2225,8 @@ class Menu:
             self._start_limited_time_game,
             font_size=45,
             font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(138, 43, 226, 200),  # Green
-            padding=(20, 40)
+            background_color=(240, 198, 38, 200),  # Gold
+            padding=(15, 30)
         )
         
         # Make the Start Game button rounded (like difficulty buttons)
@@ -2253,7 +2253,7 @@ class Menu:
             self._back_to_difficulty,
             font_size=45,
             font_name=pygame_menu.font.FONT_FRANCHISE,
-            padding=(20, 40)
+            padding=(15, 30)
         )
         
         # Apply custom styling to time selection menu
@@ -2318,8 +2318,8 @@ class Menu:
             self._start_limited_moves_game,
             font_size=45,
             font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(255, 20, 147, 200),  # Deep Pink (matching limited moves theme)
-            padding=(20, 40)
+            background_color=(240, 198, 38, 200),  # Gold (matching limited moves theme)
+            padding=(15, 30)
         )
         
         # Make the Start Game button rounded (like difficulty buttons)
@@ -2524,8 +2524,8 @@ class Menu:
                 challenge_modes = ["limited_time", "limited_moves"]
                 challenge_names = {"limited_time": "Limited Time", "limited_moves": "Limited Moves"}
                 challenge_colors = {
-                    "limited_time": (138, 43, 226),   # Purple
-                    "limited_moves": (255, 20, 147)   # Deep Pink
+                    "limited_time": (255, 255, 255),   # White
+                    "limited_moves": (255, 255, 255)   # White
                 }
                 
                 for mode in challenge_modes:

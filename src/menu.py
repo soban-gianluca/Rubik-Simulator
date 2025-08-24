@@ -142,8 +142,8 @@ class Menu:
         self.theme.title_font_shadow = True
         self.theme.title_font_shadow_color = (0, 0, 0)
         self.theme.title_font_shadow_offset = 3
-        self.theme.title_background_color = (10, 15, 25, 0)  # Transparent background
-        self.theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_NONE
+        self.theme.title_background_color = (5, 10, 20, 240)  # More opaque dark background for better visibility
+        self.theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_ADAPTIVE
         # Try different title properties to center it
         self.theme.title_alignment = ALIGN_CENTER
         self.theme.title_position = (50, 50)  # Try positioning the title
@@ -1694,9 +1694,9 @@ class Menu:
             
             # Re-add buttons with correct behavior
             if hasattr(self, "game") and self.game and self.game.get_difficulty_change_count() >= 1:
-                # Once difficulty has been changed, "Play" just closes menu and "Change Difficulty" opens difficulty menu
+                # Once difficulty has been changed, "Play" just closes menu and "Change Mode" opens difficulty menu
                 play_btn = self.main_menu.add.button("Play", self._play_current_difficulty)
-                change_difficulty_btn = self.main_menu.add.button("Change Difficulty", self._open_difficulty_select)
+                change_difficulty_btn = self.main_menu.add.button("Change Mode", self._open_difficulty_select)
             else:
                 # Initially, "Play" opens difficulty selection menu
                 play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
@@ -1741,18 +1741,26 @@ class Menu:
         # Create custom fancy theme for main menu (centered title)
         self._create_custom_theme()
         
+        # Create a separate theme for main menu without title bar
+        self.main_theme = self.theme.copy()
+        self.main_theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_NONE
+        self.main_theme.title_background_color = (0, 0, 0, 0)  # Transparent background for main menu
+        
         # Create theme for other menus (left-aligned titles with margin)
         self.sub_theme = self.theme.copy()
         self.sub_theme.title_alignment = ALIGN_LEFT
         # Add left margin to titles to prevent them from being at the window border
-        self.sub_theme.title_offset = (10, 5)  # 10 pixels left margin
+        self.sub_theme.title_offset = (10, 0)  # 10 pixels left margin
+        # Ensure sub-theme also has a solid background for title visibility
+        self.sub_theme.title_background_color = (0, 8, 18, 250)  # More opaque dark background for better visibility
+        self.sub_theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_ADAPTIVE
 
         # Create main menu with ACTUAL dimensions and no title (we'll add custom centered title)
         self.main_menu = pygame_menu.Menu(
             "",  # Empty title - we'll add a custom centered one
             self.width,
             self.height,
-            theme=self.theme,
+            theme=self.main_theme,  # Use the main_theme without title bar
             columns=1,
             rows=None
         )
@@ -1800,7 +1808,7 @@ class Menu:
         # Add main menu buttons - behavior changes based on difficulty change count
         if hasattr(self, "game") and self.game and self.game.get_difficulty_change_count() >= 1:
             play_btn = self.main_menu.add.button("Play", self._play_current_difficulty)
-            change_difficulty_btn = self.main_menu.add.button("Change Difficulty", self._open_difficulty_select)
+            change_difficulty_btn = self.main_menu.add.button("Change Mode", self._open_difficulty_select)
         else:
             play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
         settings_btn = self.main_menu.add.button("Settings", self._open_settings)
@@ -1815,7 +1823,7 @@ class Menu:
         
         # Create difficulty selection menu with ACTUAL dimensions
         self.difficulty_menu = pygame_menu.Menu(
-            "Select Difficulty",
+            "Select Mode",
             self.width,
             self.height,
             theme=self.sub_theme

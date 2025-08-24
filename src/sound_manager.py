@@ -53,7 +53,10 @@ class SoundManager:
             self.sounds["menu_apply"] = pygame.mixer.Sound(resource_path("utils/sfx/menu/menu_close.mp3"))
             
             # Load winning sound effect
-            self.sounds["winning"] = pygame.mixer.Sound(resource_path("utils/sfx/winning_screen/winningSFX.mp3"))
+            self.sounds["winning"] = pygame.mixer.Sound(resource_path("utils/sfx/results_screen/winningSFX.mp3"))
+            
+            # Load fail sound effect
+            self.sounds["fail"] = pygame.mixer.Sound(resource_path("utils/sfx/results_screen/failSFX.mp3"))
 
             # Load cube movement sound effects
             cube_sfx_dir = resource_path("utils/sfx/cube_sfx")
@@ -70,6 +73,7 @@ class SoundManager:
             self.sounds["menu_select"].set_volume(0.3 * self.menu_volume * self.master_volume)
             self.sounds["menu_apply"].set_volume(0.4 * self.menu_volume * self.master_volume)
             self.sounds["winning"].set_volume(1 * self.effects_volume * self.master_volume)
+            self.sounds["fail"].set_volume(0.3 * self.effects_volume * self.master_volume)
 
         except Exception as e:
             print(f"Error loading sound effects: {e}")
@@ -193,6 +197,10 @@ class SoundManager:
         # Update winning sound volume
         if self.is_enabled and hasattr(self, 'sounds') and "winning" in self.sounds:
             self.sounds["winning"].set_volume(0.7 * self.effects_volume * self.master_volume)
+            
+        # Update fail sound volume
+        if self.is_enabled and hasattr(self, 'sounds') and "fail" in self.sounds:
+            self.sounds["fail"].set_volume(0.7 * self.effects_volume * self.master_volume)
     
     def enable(self, enabled=True):
         """Enable or disable sound effects"""

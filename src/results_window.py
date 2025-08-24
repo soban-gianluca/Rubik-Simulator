@@ -271,6 +271,10 @@ class ResultsWindow:
         self.rating_widget.set_title(rating_text)
         self.rating_widget._font_color = (255, 80, 80)  # Red color for game over
         
+        # Play fail sound effect with music ducking
+        if self.sound_manager:
+            self.sound_manager.play_with_music_duck("fail")
+        
         # Show window immediately without celebration
         self.active = True
         self.is_animating = False

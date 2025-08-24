@@ -2,7 +2,6 @@ import pygame
 import sys
 import time
 import random
-import pygame_menu
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -65,7 +64,7 @@ class Game:
         self.MUSIC_END_EVENT = pygame.USEREVENT + 1
         self.MUSIC_RESTORE_EVENT = pygame.USEREVENT + 10  # Event for restoring music volume after ducking
         
-        # Continue music from loading animation without restarting
+        # --- Continue music from loading animation without restarting ---
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
@@ -750,13 +749,8 @@ class Game:
                     self.scramble_cube_by_difficulty(difficulty)
                     self._ever_started = True
                 
-                # Start timer immediately for limited time mode
-                if self.time_limit is not None and self.start_time is None:
-                    self.start_time = time.time()
-                    self.debug_print(f"Timer started for limited time mode: {self.time_limit}s")
-                
                 self.new_game_requested = False  # Reset the flag
-        
+                
         if hasattr(self, 'menu') and self.menu.resolution_changed():
             try:
                 new_width, new_height = self.menu.get_current_resolution()
@@ -1035,6 +1029,8 @@ class Game:
     def _render_game_stats(self, alpha=1.0):
         """Render timer and moves counter in the bottom-left corner"""
         try:
+            # Import pygame_menu to access the font
+            import pygame_menu
             
             # Create font if not exists - use same font as menu
             if not hasattr(self, '_stats_font'):
@@ -1158,6 +1154,9 @@ class Game:
             return
 
         try:
+            # Import pygame_menu to access the font
+            import pygame_menu
+            
             # Create font if not exists - use same font as menu
             if not hasattr(self, '_banner_font'):
                 self._banner_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 35)
@@ -1320,7 +1319,7 @@ class Game:
         
         # Store original animation duration and set faster duration for scrambling
         self.original_animation_duration = self.renderer.animation_duration
-        self.renderer.animation_duration = 0.1
+        self.renderer.animation_duration = 0.1  # Faster animation (100ms instead of 300ms)
         
         # Store the scramble sequence for animated execution
         self.scramble_queue = scramble_sequence.copy()
@@ -1464,6 +1463,9 @@ class Game:
     def _render_game_info(self):
         """Render game information (FPS, moves, time)"""
         try:
+            # Import pygame_menu to access the font
+            import pygame_menu
+            
             # Create font if not exists - use same font as menu
             if not hasattr(self, '_info_font'):
                 self._info_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 35)
@@ -1489,7 +1491,7 @@ class Game:
             
             # Render status if solved
             if self.cube_solved:
-                info_lines.append("🎉 SOLVED! 🎉")
+                info_lines.append("SOLVED!")
             
             # Render each line
             y_offset = 10

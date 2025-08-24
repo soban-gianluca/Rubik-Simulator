@@ -320,14 +320,12 @@ class Menu:
                         apply_btn.is_enabled = False
                     if hasattr(apply_btn, '_font_color'):
                         apply_btn._font_color = (150, 150, 150)
-                if not hasattr(apply_btn, '_original_draw'):
-                    apply_btn._original_draw = apply_btn.draw
-                    apply_btn.draw = lambda surface, *a, **k: draw_rounded_button(apply_btn, surface, *a, **k)
+                apply_btn._original_draw = apply_btn.draw
+                apply_btn.draw = lambda surface, *a, **k: draw_rounded_button(apply_btn, surface, *a, **k)
             if hasattr(back_btn, 'set_background_color'):
                 back_btn.set_background_color((66, 66, 66, 200))
-                if not hasattr(back_btn, '_original_draw'):
-                    back_btn._original_draw = back_btn.draw
-                    back_btn.draw = lambda surface, *a, **k: draw_rounded_button(back_btn, surface, *a, **k)
+                back_btn._original_draw = back_btn.draw
+                back_btn.draw = lambda surface, *a, **k: draw_rounded_button(back_btn, surface, *a, **k)
         except Exception:
             pass
 
@@ -348,9 +346,8 @@ class Menu:
                     text_surf = font.render(text, True, font_color)
                     text_rect = text_surf.get_rect(center=rect.center)
                     surface.blit(text_surf, text_rect)
-            if not hasattr(button, '_original_draw'):
-                button._original_draw = button.draw
-                button.draw = lambda surface, *a, btn=button, **k: draw_rounded_difficulty(btn, surface, *a, **k)
+            button._original_draw = button.draw
+            button.draw = lambda surface, *a, btn=button, **k: draw_rounded_difficulty(btn, surface, *a, **k)
     
     def _update_apply_button_state(self):
         """Update the apply button's appearance based on settings_changed state"""
@@ -2232,6 +2229,23 @@ class Menu:
             padding=(20, 40)
         )
         
+        # Make the Start Game button rounded (like difficulty buttons)
+        def draw_rounded_time(widget, surface, *args, **kwargs):
+            rect = widget.get_rect(to_real_position=True)
+            color = widget._background_color if hasattr(widget, '_background_color') else (138, 43, 226, 200)
+            border_radius = 18
+            pygame.draw.rect(surface, color, rect, border_radius=border_radius)
+            pygame.draw.rect(surface, (120, 120, 120, 180), rect, width=2, border_radius=border_radius)
+            if hasattr(widget, 'get_title') and hasattr(widget, '_font'):
+                text = widget.get_title()
+                font = widget._font
+                font_color = widget._font_color if hasattr(widget, '_font_color') else (255, 255, 255)
+                text_surf = font.render(text, True, font_color)
+                text_rect = text_surf.get_rect(center=rect.center)
+                surface.blit(text_surf, text_rect)
+        start_btn._original_draw = start_btn.draw
+        start_btn.draw = lambda surface, *a, btn=start_btn, **k: draw_rounded_time(btn, surface, *a, **k)
+        
         self.time_selection_menu.add.vertical_margin(10)
         
         back_btn = self.time_selection_menu.add.button(
@@ -2307,6 +2321,23 @@ class Menu:
             background_color=(255, 20, 147, 200),  # Deep Pink (matching limited moves theme)
             padding=(20, 40)
         )
+        
+        # Make the Start Game button rounded (like difficulty buttons)
+        def draw_rounded_moves(widget, surface, *args, **kwargs):
+            rect = widget.get_rect(to_real_position=True)
+            color = widget._background_color if hasattr(widget, '_background_color') else (255, 20, 147, 200)
+            border_radius = 18
+            pygame.draw.rect(surface, color, rect, border_radius=border_radius)
+            pygame.draw.rect(surface, (120, 120, 120, 180), rect, width=2, border_radius=border_radius)
+            if hasattr(widget, 'get_title') and hasattr(widget, '_font'):
+                text = widget.get_title()
+                font = widget._font
+                font_color = widget._font_color if hasattr(widget, '_font_color') else (255, 255, 255)
+                text_surf = font.render(text, True, font_color)
+                text_rect = text_surf.get_rect(center=rect.center)
+                surface.blit(text_surf, text_rect)
+        moves_start_btn._original_draw = moves_start_btn.draw
+        moves_start_btn.draw = lambda surface, *a, btn=moves_start_btn, **k: draw_rounded_moves(btn, surface, *a, **k)
         
         self.moves_selection_menu.add.vertical_margin(10)
         

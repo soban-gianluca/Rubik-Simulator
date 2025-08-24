@@ -1744,10 +1744,12 @@ class Menu:
         # Create custom fancy theme for main menu (centered title)
         self._create_custom_theme()
         
-        # Create theme for other menus (left-aligned titles)
+        # Create theme for other menus (left-aligned titles with margin)
         self.sub_theme = self.theme.copy()
         self.sub_theme.title_alignment = ALIGN_LEFT
-        
+        # Add left margin to titles to prevent them from being at the window border
+        self.sub_theme.title_offset = (10, 5)  # 10 pixels left margin
+
         # Create main menu with ACTUAL dimensions and no title (we'll add custom centered title)
         self.main_menu = pygame_menu.Menu(
             "",  # Empty title - we'll add a custom centered one

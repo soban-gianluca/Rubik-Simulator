@@ -39,8 +39,8 @@ class Menu:
         
         # Limited time mode settings
         self.selected_time_limit = 180  # Default 3 minutes in seconds
-        self.time_limit_options = [60, 120, 180, 240, 300, 420, 600, 720, 900]  # 1, 2, 3, 4, 5, 7, 10, 12, 15 minutes
-        
+        self.time_limit_options = [60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 720, 780, 840, 900]  # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 minutes
+
         # Initialize game modes configuration as instance variable
         self.game_modes = self._initialize_game_modes()
         

@@ -37,6 +37,13 @@ class Menu:
         self.has_difficulty_changed = False  # Track if difficulty has been changed at least once
         self.difficulty_ever_selected = False  # Track if any difficulty has ever been selected
         
+        # Limited time mode settings
+        self.selected_time_limit = 180  # Default 3 minutes in seconds
+        self.time_limit_options = [60, 120, 180, 240, 300, 420, 600, 720, 900]  # 1, 2, 3, 4, 5, 7, 10, 12, 15 minutes
+        
+        # Initialize game modes configuration as instance variable
+        self.game_modes = self._initialize_game_modes()
+        
         # Animation state for smooth transitions
         self.is_animating = False
         self.animation_start_time = 0
@@ -362,8 +369,8 @@ class Menu:
                 # Silently ignore errors
                 pass
     
-    def _get_game_modes(self):
-        """Get available game modes with their configurations.
+    def _initialize_game_modes(self):
+        """Initialize available game modes with their configurations.
         This structure makes it easy to add new difficulties and game modes."""
         return {
             "freeplay": {
@@ -410,8 +417,14 @@ class Menu:
     
     def get_game_mode_config(self, difficulty):
         """Get the configuration for a specific game mode"""
-        game_modes = self._get_game_modes()
-        return game_modes.get(difficulty, game_modes["medium"])
+        # Update limited_time configuration with current selected time limit
+        if difficulty == "limited_time":
+            self.game_modes["limited_time"]["time_limit"] = self.selected_time_limit
+            # Also update the description to reflect current time
+            time_display = self._format_time_display(self.selected_time_limit)
+            self.game_modes["limited_time"]["description"] = f"Solve the cube before time runs out! ({time_display})"
+        
+        return self.game_modes.get(difficulty, self.game_modes["medium"])
     
     def _start_game(self, difficulty="normal"):
         """Start the game (close menu) with specified difficulty"""
@@ -501,6 +514,77 @@ class Menu:
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.audio_settings_menu
+    
+    def _open_time_selection(self):
+        """Open time selection submenu for limited time mode"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
+        self.current_menu = self.time_selection_menu
+    
+    def _on_time_limit_change(self, value):
+        """Handle time limit change from slider"""
+        # Convert slider value (0-6) to actual time in seconds
+        self.selected_time_limit = self.time_limit_options[int(value)]
+        self.sound_manager.play("menu_select")
+    
+    def _on_time_limit_change_and_update_display(self, value):
+        """Handle time limit change from slider and update display"""
+        self._on_time_limit_change(value)
+        # Update the display label
+        if hasattr(self, 'time_display_label'):
+            self.time_display_label.set_title(f"Time Limit: {self._format_time_display(self.selected_time_limit)}")
+    
+    def _back_to_difficulty(self):
+        """Go back to difficulty selection menu"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()
+        self.current_menu = self.difficulty_menu
+    
+    def _format_time_display(self, seconds):
+        """Format time in seconds to display string"""
+        if seconds < 60:
+            return f"{seconds} sec"
+        elif seconds < 3600:
+            minutes = seconds // 60
+            return f"{minutes} min"
+        else:
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            if minutes > 0:
+                return f"{hours}h {minutes}m"
+            return f"{hours}h"
+    
+    def _start_limited_time_game(self):
+        """Start the limited time game with selected time limit - always starts fresh"""
+        self.sound_manager.play("menu_select")
+        # Clear hover effects before starting game
+        self._clear_all_hover_effects()
+        
+        # Always set the difficulty and mark as changed to force new game
+        self.selected_difficulty = "limited_time"
+        self.has_difficulty_changed = True
+        self.difficulty_ever_selected = True
+        
+        # Update game instance and force new game
+        if hasattr(self, "game") and self.game:
+            # Increment difficulty change count to ensure menu shows ESC option
+            self.game.increment_difficulty_change_count()
+            # Refresh main menu buttons to reflect the change
+            self.refresh_main_menu_buttons()
+            
+            # Change skybox based on difficulty
+            skybox_path = self.settings_manager.get_skybox_by_difficulty("limited_time")
+            self.game.renderer.reload_skybox_texture(skybox_path)
+            
+            # Always request a new game when starting from time selection menu
+            self.game.request_new_game()
+            
+            if hasattr(self, "debug_mode") and self.debug_mode:
+                print(f"Starting fresh limited time game with {self.selected_time_limit} seconds")
+        
+        # Start closing animation instead of immediately setting active to False
+        if not self.is_animating:  # Prevent multiple animations
+            self.toggle()
     
     def _on_resolution_change(self, selected_tuple, index):
         """Handle resolution change from dropdown"""
@@ -1680,7 +1764,7 @@ class Menu:
         )
         
         # Dynamically add difficulty options from game modes configuration
-        game_modes = self._get_game_modes()
+        game_modes = self.game_modes
         difficulty_icons = {"easy", "medium", "hard"}
         
         # Define background colors for each difficulty
@@ -1790,7 +1874,13 @@ class Menu:
             if mode_key in game_modes:
                 mode_config = game_modes[mode_key]
                 button_text = mode_config['name']
-                button_action = lambda difficulty=mode_key: self._start_game(difficulty)
+                
+                # Special handling for limited_time mode - open time selection instead of starting game directly
+                if mode_key == "limited_time":
+                    button_action = self._open_time_selection
+                else:
+                    button_action = lambda difficulty=mode_key: self._start_game(difficulty)
+                
                 bg_color = difficulty_colors.get(mode_key, (40, 60, 90, 200))
                 
                 challenge_button = challenge_frame.pack(
@@ -2014,6 +2104,87 @@ class Menu:
         # Create personal best menu content
         self._create_personal_best_content()
         
+        # Create time selection menu for limited time mode
+        self.time_selection_menu = pygame_menu.Menu(
+            "Select Time Limit",
+            self.width,
+            self.height,
+            theme=self.sub_theme
+        )
+        
+        # Add description
+        self.time_selection_menu.add.vertical_margin(20)
+        self.time_selection_menu.add.label(
+            "Choose your time limit for the challenge:",
+            font_size=35,
+            font_color=(255, 255, 255),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        self.time_selection_menu.add.vertical_margin(30)
+        
+        # Create time display label
+        self.time_display_label = self.time_selection_menu.add.label(
+            f"Time Limit: {self._format_time_display(self.selected_time_limit)}",
+            font_size=45,
+            font_color=(240, 198, 38),  # Golden color
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.time_selection_menu.add.vertical_margin(20)
+        
+        # Add time slider with labels
+        time_labels = [self._format_time_display(time) for time in self.time_limit_options]
+        current_index = self.time_limit_options.index(self.selected_time_limit)
+        
+        self.time_slider = self.time_selection_menu.add.range_slider(
+            "",
+            default=current_index,
+            range_values=(0, len(self.time_limit_options) - 1),
+            increment=1,
+            value_format=lambda x: "",
+            rangeslider_id="time_limit_slider",
+            slider_text_value_enabled=False,
+            onchange=self._on_time_limit_change_and_update_display
+        )
+        
+        # Customize slider appearance
+        self.time_slider.set_background_color((60, 60, 60, 200))
+        
+        self.time_selection_menu.add.vertical_margin(30)
+        
+        # Add time option labels below slider in a simple vertical layout
+        time_labels = [self._format_time_display(time) for time in self.time_limit_options]
+        current_index = self.time_limit_options.index(self.selected_time_limit)
+                
+        self.time_selection_menu.add.vertical_margin(40)
+        
+        # Add action buttons without frame to avoid sizing issues
+        start_btn = self.time_selection_menu.add.button(
+            "Start Game",
+            self._start_limited_time_game,
+            font_size=45,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            background_color=(46, 125, 50, 200),  # Green
+            padding=(20, 40)
+        )
+        
+        self.time_selection_menu.add.vertical_margin(10)
+        
+        back_btn = self.time_selection_menu.add.button(
+            "Back",
+            self._back_to_difficulty,
+            font_size=45,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            padding=(20, 40)
+        )
+        
+        # Apply custom styling to time selection menu
+        self._customize_menu_widgets(self.time_selection_menu)
+        
+        # Apply hover effects to buttons
+        self._apply_hover_effect(start_btn, False)
+        self._apply_hover_effect(back_btn, False)
+        
         # Set current menu (preserve the current menu state)
         if hasattr(self, 'current_menu'):
             if self.current_menu == self.settings_menu:
@@ -2026,6 +2197,8 @@ class Menu:
                 self.current_menu = self.difficulty_menu
             elif self.current_menu == self.personal_best_menu:
                 self.current_menu = self.personal_best_menu
+            elif self.current_menu == self.time_selection_menu:
+                self.current_menu = self.time_selection_menu
             else:
                 self.current_menu = self.main_menu
         else:

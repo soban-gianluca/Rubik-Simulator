@@ -640,13 +640,7 @@ class Game:
                         debug_info = self.mouse_interaction.get_debug_info()
                         self.debug_print(f"   Face: {debug_info['detected_face']}, Zone: {debug_info['detected_zone']}")
                         self.execute_cube_move(detected_move)
-                    else:
-                        # Check if the move was blocked due to move limit
-                        if (self.move_limit is not None and self.move_counter >= self.move_limit and 
-                            not hasattr(self, 'is_scrambling') and not self.is_scrambling and 
-                            not self.game_over):
-                            # Show a brief message that moves are blocked
-                            self.show_banner("Move limit reached! Press Z to undo moves.")
+                    # If move is not valid, it will be handled by execute_cube_move's can_make_move check
                 
                 # Update hover detection when not doing anything else
                 else:
@@ -721,6 +715,24 @@ class Game:
                     "time_up", 
                     self.menu.get_selected_difficulty()
                 )
+        
+        # Check move limit in limited moves mode
+        if (self.move_limit is not None and 
+            self.start_time is not None and 
+            not self.cube_solved and 
+            not self.game_over and
+            self.move_counter >= self.move_limit):
+            self.game_over = True
+            self.game_over_reason = "moves_exceeded"
+            self.show_banner("Game Over! Move limit exceeded!")
+            # Show game over screen
+            solve_time = time.time() - self.start_time
+            self.results_window.show_game_over(
+                self.move_counter, 
+                solve_time, 
+                "moves_exceeded", 
+                self.menu.get_selected_difficulty()
+            )
         
         # Check for game start (when menu becomes inactive for the first time OR new game is requested)
         if not self.menu.is_active():
@@ -1218,23 +1230,6 @@ class Game:
         """Execute a Rubik's cube move with animation"""
         # Check if move is allowed before executing
         if not self.can_make_move():
-            # If we've reached the move limit, show game over
-            if (self.move_limit is not None and 
-                not hasattr(self, 'is_scrambling') and 
-                not self.is_scrambling and 
-                self.move_counter >= self.move_limit and
-                not self.game_over):  # Only show once
-                self.game_over = True
-                self.game_over_reason = "moves_exceeded"
-                self.show_banner("Game Over! Move limit exceeded!")
-                # Show game over screen
-                solve_time = time.time() - self.start_time if self.start_time else 0
-                self.results_window.show_game_over(
-                    self.move_counter, 
-                    solve_time, 
-                    "moves_exceeded", 
-                    self.menu.get_selected_difficulty()
-                )
             return
         
         # Only start timer if not scrambling

@@ -698,11 +698,16 @@ class Game:
         # Update animated scrambling
         self.update_animated_scramble()
         
-        # Check time limit in limited time mode
+        # Check time limit in limited time mode (only for modes that actually have time limits)
+        current_difficulty = self.menu.get_selected_difficulty()
+        game_mode_config = self.menu.get_game_mode_config(current_difficulty)
+        
         if (self.time_limit is not None and 
             self.start_time is not None and 
             not self.cube_solved and 
-            not self.game_over):
+            not self.game_over and
+            game_mode_config.get("timer_enabled", True) and  # Only check if timer is enabled for this mode
+            "time_limit" in game_mode_config):  # Only check if mode has explicit time limit
             elapsed_time = time.time() - self.start_time
             if elapsed_time >= self.time_limit:
                 self.game_over = True
@@ -716,12 +721,13 @@ class Game:
                     self.menu.get_selected_difficulty()
                 )
         
-        # Check move limit in limited moves mode
+        # Check move limit in limited moves mode (only for modes that actually have move limits)
         if (self.move_limit is not None and 
             self.start_time is not None and 
             not self.cube_solved and 
             not self.game_over and
-            self.move_counter >= self.move_limit):
+            self.move_counter >= self.move_limit and
+            "move_limit" in game_mode_config):  # Only check if mode has explicit move limit
             self.game_over = True
             self.game_over_reason = "moves_exceeded"
             self.show_banner("Game Over! Move limit exceeded!")
@@ -1069,8 +1075,8 @@ class Game:
                         # Countdown mode for limited time
                         remaining_time = max(0, self.time_limit - elapsed)
                         if remaining_time <= 0:
-                            # Time's up!
-                            if not self.game_over:
+                            # Time's up! (but only set game_over if this mode actually uses time limits)
+                            if not self.game_over and "time_limit" in game_mode_config:
                                 self.game_over = True
                                 self.game_over_reason = "time_up"
                                 self.show_banner("Time's up! Game Over!")

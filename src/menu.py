@@ -206,9 +206,9 @@ class Menu:
             logo_path = resource_path("utils/rubiks_logo.png")
             if os.path.exists(logo_path):
                 self.logo_image = pygame.image.load(logo_path)
-                # Scale the logo to an appropriate size for the menu
-                logo_width = int(self.width * 0.4)  # 40% of screen width
-                logo_height = int(logo_width * 0.3)  # Maintain aspect ratio (adjust as needed)
+                # Scale the logo to a much smaller size for the menu
+                logo_width = int(self.width * 0.08)  # 8% of screen width
+                logo_height = int(logo_width * 0.24)  # 24% of logo width (preserve aspect ratio)
                 self.logo_image = pygame.transform.scale(self.logo_image, (logo_width, logo_height))
                 print(f"Loaded logo image: {logo_path} (scaled to {logo_width}x{logo_height})")
             else:
@@ -1702,7 +1702,7 @@ class Menu:
         # Add custom logo image as title if available, otherwise use text
         logo_path = resource_path("utils/rubiks_logo.png")
         if os.path.exists(logo_path):
-            logo_scale_width = self.width * 0.25 / 400
+            logo_scale_width = self.width * 0.12 / 400  # 12% of width, slightly larger
             logo_scale_height = logo_scale_width
             self.main_menu.add.image(
                 logo_path,

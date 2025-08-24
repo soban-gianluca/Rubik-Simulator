@@ -118,8 +118,8 @@ class ResultsWindow:
         # Add some top spacing
         self.menu.add.vertical_margin(30)
         
-        # Add celebration emoji/symbols - smaller and more compact
-        self.menu.add.label("🎉 CUBE SOLVED! 🎉", font_size=50, font_color=(255, 215, 0))  # Combined title and emoji
+        # Add celebration title - dynamic based on game state
+        self.title_widget = self.menu.add.label("🎉 CUBE SOLVED! 🎉", font_size=50, font_color=(255, 215, 0))  # Will be updated dynamically
         self.menu.add.vertical_margin(15)  # Reduced spacing
         
         # Performance stats with modern styling - more compact layout
@@ -215,6 +215,10 @@ class ResultsWindow:
         self.time_widget.set_title(f" Time: {solve_time:.2f}s")
         self.tps_widget.set_title(f"Speed: {self.results_data['tps']:.2f} TPS")
         
+        # Update title widget for successful solve
+        self.title_widget.set_title("🎉 CUBE SOLVED! 🎉")
+        self.title_widget._font_color = (255, 215, 0)  # Gold
+        
         # Set performance rating with dynamic color and add new record indicators
         rating_text = f"{rating}"
         if new_records:
@@ -263,13 +267,19 @@ class ResultsWindow:
         self.time_widget.set_title(f" Time: {solve_time:.2f}s")
         self.tps_widget.set_title(f"Speed: {self.results_data['tps']:.2f} TPS")
         
-        # Set game over message with red color
+        # Update title widget for game over
         if reason == "time_up":
-            rating_text = "TIME'S UP!"
+            self.title_widget.set_title("⏰ TIME'S UP! ⏰")
+            self.title_widget._font_color = (255, 80, 80)  # Red
+            rating_text = "CHALLENGE FAILED!"
         elif reason == "moves_exceeded":
-            rating_text = "TOO MANY MOVES!"
+            self.title_widget.set_title("🚫 MOVE LIMIT EXCEEDED! 🚫")
+            self.title_widget._font_color = (255, 80, 80)  # Red
+            rating_text = "CHALLENGE FAILED!"
         else:
-            rating_text = "GAME OVER!"
+            self.title_widget.set_title("💀 GAME OVER! 💀")
+            self.title_widget._font_color = (255, 80, 80)  # Red
+            rating_text = "CHALLENGE FAILED!"
         
         self.rating_widget.set_title(rating_text)
         self.rating_widget._font_color = (255, 80, 80)  # Red color for game over

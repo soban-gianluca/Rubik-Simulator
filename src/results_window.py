@@ -26,7 +26,7 @@ class ResultsWindow:
         # Animation and visual effects
         self.is_animating = False
         self.animation_start_time = 0
-        self.animation_duration = 0.8  # Longer animation for dramatic effect
+        self.animation_duration = 0.8
         self.is_opening = False
         self.current_alpha = 0.0
         self.target_alpha = 1.0
@@ -74,21 +74,21 @@ class ResultsWindow:
         
         # Title styling - minimal since we use custom label
         self.theme.title_font = pygame_menu.font.FONT_FRANCHISE
-        self.theme.title_font_size = 1  # Minimal since not used
+        self.theme.title_font_size = 1  # Minimal
         self.theme.title_font_color = (255, 215, 0)
         self.theme.title_background_color = (0, 0, 0, 0)  # Transparent
         self.theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_NONE
         self.theme.title_alignment = ALIGN_CENTER
         
-        # Widget styling - more compact
+        # Widget styling
         self.theme.widget_font = pygame_menu.font.FONT_FRANCHISE
         self.theme.widget_font_size = 38
         self.theme.widget_font_color = (255, 255, 255)
         self.theme.widget_font_shadow = True
         self.theme.widget_font_shadow_color = (0, 0, 0)
         self.theme.widget_font_shadow_offset = 2
-        self.theme.widget_margin = (0, 8)  # Even more compact
-        self.theme.widget_padding = (15, 8)  # More compact padding
+        self.theme.widget_margin = (0, 8)
+        self.theme.widget_padding = (15, 8)
         
         # Remove widget backgrounds for clean look
         self.theme.widget_background_color = (0, 0, 0, 0)
@@ -96,7 +96,7 @@ class ResultsWindow:
         self.theme.widget_border_color = (0, 0, 0, 0)
         self.theme.widget_border_width = 0
         
-        # Use no selection effect - we'll handle hover manually
+        # Use no selection effect
         self.theme.widget_selection_effect = pygame_menu.widgets.NoneSelection()
         
         # Menu bar styling
@@ -118,52 +118,40 @@ class ResultsWindow:
         # Add some top spacing
         self.menu.add.vertical_margin(30)
         
-        # Add celebration emoji/symbols - smaller and more compact
-        self.menu.add.label("🎉 CUBE SOLVED! 🎉", font_size=50, font_color=(255, 215, 0))  # Combined title and emoji
-        self.menu.add.vertical_margin(15)  # Reduced spacing
+        # Add celebration emoji/symbols
+        self.menu.add.label("🎉 CUBE SOLVED! 🎉", font_size=50, font_color=(255, 215, 0))
+        self.menu.add.vertical_margin(15)
         
-        # Performance stats with modern styling - more compact layout
+        # Performance stats with modern styling
         self.moves_widget = self.menu.add.label("", font_size=40, font_color=(255, 255, 255))
         self.time_widget = self.menu.add.label("", font_size=40, font_color=(255, 255, 255))
         self.tps_widget = self.menu.add.label("", font_size=40, font_color=(255, 255, 255))
         
-        self.menu.add.vertical_margin(20)  # Reduced spacing
+        self.menu.add.vertical_margin(20)
         
-        # Performance rating with dynamic color - smaller
+        # Performance rating with dynamic color
         self.rating_widget = self.menu.add.label("", font_size=45, font_color=(255, 215, 0))
-        
-        self.menu.add.vertical_margin(25)  # Reduced spacing
-        
-        # Modern styled action buttons - more compact
+
+        self.menu.add.vertical_margin(25)
+
+        # Modern styled action buttons
         self.play_again_btn = self.menu.add.button(
             'Play Again',
             self.play_again,
-            font_size=38,  # Reduced from 45
+            font_size=38,
             background_color=(46, 125, 50, 200),  # Green with transparency
             font_color=(255, 255, 255),
-            padding=(20, 12)  # Reduced padding
+            padding=(20, 12)
         )
         
         self.main_menu_btn = self.menu.add.button(
             'Main Menu',
             self.to_main_menu,
-            font_size=38,  # Reduced from 45
+            font_size=38,
             background_color=(66, 66, 66, 200),  # Gray with transparency
             font_color=(255, 255, 255),
-            padding=(20, 12)  # Reduced padding
+            padding=(20, 12)
         )
-        
-        # Apply modern styling
-        self._customize_button_appearance(self.play_again_btn)
-        self._customize_button_appearance(self.main_menu_btn)
-    
-    def _customize_button_appearance(self, button):
-        """Apply modern styling to buttons (simplified without problematic hover callbacks)"""
-        try:
-            # Just ensure the button has the right styling, hover will be handled manually
-            pass
-        except:
-            pass
     
     def _on_button_hover(self, button, is_hovering):
         """Handle button hover effects"""
@@ -178,7 +166,6 @@ class ResultsWindow:
                 if hasattr(button, '_font_color'):
                     button._font_color = (255, 215, 0)
             else:
-                # Restore original colors
                 if button == self.play_again_btn:
                     button.set_background_color((46, 125, 50, 200))
                 elif button == self.main_menu_btn:
@@ -667,7 +654,7 @@ class ResultsWindow:
     def update_dimensions(self, new_width, new_height):
         """Update the results window dimensions and recreate the menu"""
         if abs(self.width - new_width) < 5 and abs(self.height - new_height) < 5:
-            return  # No significant change
+            return
         
         self.width = new_width
         self.height = new_height
@@ -685,7 +672,6 @@ class ResultsWindow:
             # Re-display results without triggering new celebration
             self._restore_results_display(current_results)
             self.active = current_active
-            # Don't restart celebration after resize
     
     def _restore_results_display(self, results_data):
         """Restore results display after dimension update without celebration"""

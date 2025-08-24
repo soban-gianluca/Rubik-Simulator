@@ -41,6 +41,10 @@ class Menu:
         self.selected_time_limit = 180  # Default 3 minutes in seconds
         self.time_limit_options = [60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 720, 780, 840, 900]  # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 minutes
 
+        # Limited moves mode settings
+        self.selected_move_limit = 25  # Default 25 moves
+        self.move_limit_options = list(range(15, 51))  # 15 to 50 moves
+
         # Initialize game modes configuration as instance variable
         self.game_modes = self._initialize_game_modes()
         
@@ -399,18 +403,16 @@ class Menu:
             },
             "limited_time": {
                 "name": "Limited Time",
-                "description": "Solve the cube before time runs out! (3 minutes)",
+                "description": "Solve the cube before time runs out! - 15 moves scramble",
                 "scramble_moves": 15,
                 "timer_enabled": True,
-                "time_limit": 180,  # 3 minutes in seconds
                 "countdown_mode": True,
             },
             "limited_moves": {
                 "name": "Limited Moves",
-                "description": "Solve the cube with limited moves! (25 moves max)",
+                "description": "Solve the cube with limited moves! - 15 moves scramble",
                 "scramble_moves": 15,
                 "timer_enabled": True,
-                "move_limit": 25,
                 "countdown_moves": True,
             }
         }
@@ -423,6 +425,12 @@ class Menu:
             # Also update the description to reflect current time
             time_display = self._format_time_display(self.selected_time_limit)
             self.game_modes["limited_time"]["description"] = f"Solve the cube before time runs out! ({time_display})"
+        
+        # Update limited_moves configuration with current selected move limit
+        if difficulty == "limited_moves":
+            self.game_modes["limited_moves"]["move_limit"] = self.selected_move_limit
+            # Also update the description to reflect current move limit
+            self.game_modes["limited_moves"]["description"] = f"Solve the cube with limited moves! ({self.selected_move_limit} moves max)"
         
         return self.game_modes.get(difficulty, self.game_modes["medium"])
     
@@ -586,6 +594,57 @@ class Menu:
         if not self.is_animating:  # Prevent multiple animations
             self.toggle()
     
+    def _open_moves_selection(self):
+        """Open moves selection submenu for limited moves mode"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
+        self.current_menu = self.moves_selection_menu
+    
+    def _on_move_limit_change(self, value):
+        """Handle move limit change from slider"""
+        # Convert slider value (0-35) to actual move count (15-50)
+        self.selected_move_limit = self.move_limit_options[int(value)]
+        self.sound_manager.play("menu_select")
+    
+    def _on_move_limit_change_and_update_display(self, value):
+        """Handle move limit change from slider and update display"""
+        self._on_move_limit_change(value)
+        # Update the display label
+        if hasattr(self, 'moves_display_label'):
+            self.moves_display_label.set_title(f"Move Limit: {self.selected_move_limit} moves")
+    
+    def _start_limited_moves_game(self):
+        """Start the limited moves game with selected move limit - always starts fresh"""
+        self.sound_manager.play("menu_select")
+        # Clear hover effects before starting game
+        self._clear_all_hover_effects()
+        
+        # Always set the difficulty and mark as changed to force new game
+        self.selected_difficulty = "limited_moves"
+        self.has_difficulty_changed = True
+        self.difficulty_ever_selected = True
+        
+        # Update game instance and force new game
+        if hasattr(self, "game") and self.game:
+            # Increment difficulty change count to ensure menu shows ESC option
+            self.game.increment_difficulty_change_count()
+            # Refresh main menu buttons to reflect the change
+            self.refresh_main_menu_buttons()
+            
+            # Change skybox based on difficulty
+            skybox_path = self.settings_manager.get_skybox_by_difficulty("limited_moves")
+            self.game.renderer.reload_skybox_texture(skybox_path)
+            
+            # Always request a new game when starting from moves selection menu
+            self.game.request_new_game()
+            
+            if hasattr(self, "debug_mode") and self.debug_mode:
+                print(f"Starting fresh limited moves game with {self.selected_move_limit} moves")
+        
+        # Start closing animation instead of immediately setting active to False
+        if not self.is_animating:  # Prevent multiple animations
+            self.toggle()
+
     def _on_resolution_change(self, selected_tuple, index):
         """Handle resolution change from dropdown"""
         # Play selection sound
@@ -1878,6 +1937,9 @@ class Menu:
                 # Special handling for limited_time mode - open time selection instead of starting game directly
                 if mode_key == "limited_time":
                     button_action = self._open_time_selection
+                # Special handling for limited_moves mode - open moves selection instead of starting game directly
+                elif mode_key == "limited_moves":
+                    button_action = self._open_moves_selection
                 else:
                     button_action = lambda difficulty=mode_key: self._start_game(difficulty)
                 
@@ -2164,7 +2226,7 @@ class Menu:
             self._start_limited_time_game,
             font_size=45,
             font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(46, 125, 50, 200),  # Green
+            background_color=(138, 43, 226, 200),  # Green
             padding=(20, 40)
         )
         
@@ -2185,6 +2247,82 @@ class Menu:
         self._apply_hover_effect(start_btn, False)
         self._apply_hover_effect(back_btn, False)
         
+        # Create moves selection menu for limited moves mode
+        self.moves_selection_menu = pygame_menu.Menu(
+            "Select Move Limit",
+            self.width,
+            self.height,
+            theme=self.sub_theme
+        )
+        
+        # Add description
+        self.moves_selection_menu.add.vertical_margin(20)
+        self.moves_selection_menu.add.label(
+            "Choose your move limit for the challenge:",
+            font_size=45,
+            font_color=(255, 255, 255),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        self.moves_selection_menu.add.vertical_margin(30)
+        
+        # Create moves display label
+        self.moves_display_label = self.moves_selection_menu.add.label(
+            f"Move Limit: {self.selected_move_limit} moves",
+            font_size=45,
+            font_color=(240, 198, 38),  # Golden color
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.moves_selection_menu.add.vertical_margin(20)
+        
+        # Add moves slider
+        current_move_index = self.move_limit_options.index(self.selected_move_limit)
+        
+        self.moves_slider = self.moves_selection_menu.add.range_slider(
+            "",
+            default=current_move_index,
+            range_values=(0, len(self.move_limit_options) - 1),
+            increment=1,
+            value_format=lambda x: "",
+            rangeslider_id="move_limit_slider",
+            slider_text_value_enabled=False,
+            onchange=self._on_move_limit_change_and_update_display
+        )
+        
+        # Customize slider appearance
+        self.moves_slider.set_background_color((60, 60, 60, 200))
+        
+        self.moves_selection_menu.add.vertical_margin(40)
+                
+        self.moves_selection_menu.add.vertical_margin(40)
+        
+        # Add action buttons
+        moves_start_btn = self.moves_selection_menu.add.button(
+            "Start Game",
+            self._start_limited_moves_game,
+            font_size=45,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            background_color=(255, 20, 147, 200),  # Deep Pink (matching limited moves theme)
+            padding=(20, 40)
+        )
+        
+        self.moves_selection_menu.add.vertical_margin(10)
+        
+        moves_back_btn = self.moves_selection_menu.add.button(
+            "Back",
+            self._back_to_difficulty,
+            font_size=45,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            padding=(20, 40)
+        )
+        
+        # Apply custom styling to moves selection menu
+        self._customize_menu_widgets(self.moves_selection_menu)
+        
+        # Apply hover effects to buttons
+        self._apply_hover_effect(moves_start_btn, False)
+        self._apply_hover_effect(moves_back_btn, False)
+        
         # Set current menu (preserve the current menu state)
         if hasattr(self, 'current_menu'):
             if self.current_menu == self.settings_menu:
@@ -2199,6 +2337,8 @@ class Menu:
                 self.current_menu = self.personal_best_menu
             elif self.current_menu == self.time_selection_menu:
                 self.current_menu = self.time_selection_menu
+            elif self.current_menu == self.moves_selection_menu:
+                self.current_menu = self.moves_selection_menu
             else:
                 self.current_menu = self.main_menu
         else:

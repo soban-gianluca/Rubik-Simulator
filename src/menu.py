@@ -243,7 +243,7 @@ class Menu:
     def _customize_button_appearance(self, button):
         """Apply custom styling to a button widget - remove backgrounds"""
         try:
-            # Only set background color to transparent - this is the most important change
+            # Only set background color to transparent
             if hasattr(button, 'set_background_color'):
                 button.set_background_color((0, 0, 0, 0))
             

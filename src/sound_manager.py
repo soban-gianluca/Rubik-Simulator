@@ -12,7 +12,7 @@ class SoundManager:
         self.sounds = {}
         self.is_enabled = True
         self.last_play_time = {}  # Track last play time for each sound
-        self.min_interval = 0.1  # Minimum interval between same sound plays (100ms)
+        self.min_interval = 0.1
         
         # Volume settings (0.0 to 1.0)
         self.master_volume = 1.0
@@ -115,7 +115,6 @@ class SoundManager:
         except Exception as e:
             print(f"Error playing slider sound {sound_name}: {e}")
             return False
-        return False
     
     def play_random_cube_sound(self):
         """Play a random cube movement sound effect"""

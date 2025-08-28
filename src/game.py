@@ -722,23 +722,28 @@ class Game:
                 )
         
         # Check move limit in limited moves mode (only for modes that actually have move limits)
+        # Only check if there's no pending animation to avoid checking before the final move is executed
         if (self.move_limit is not None and 
             self.start_time is not None and 
             not self.cube_solved and 
             not self.game_over and
             self.move_counter >= self.move_limit and
-            "move_limit" in game_mode_config):  # Only check if mode has explicit move limit
-            self.game_over = True
-            self.game_over_reason = "moves_exceeded"
-            self.show_banner("Game Over! Move limit exceeded!")
-            # Show game over screen
-            solve_time = time.time() - self.start_time
-            self.results_window.show_game_over(
-                self.move_counter, 
-                solve_time, 
-                "moves_exceeded", 
-                self.menu.get_selected_difficulty()
-            )
+            "move_limit" in game_mode_config and
+            not (hasattr(self.renderer, 'is_animating') and self.renderer.is_animating)):  # Don't check during animation
+            
+            # Double-check that cube is not solved after any pending moves have been executed
+            if not self.renderer.rubiks_cube.is_solved():
+                self.game_over = True
+                self.game_over_reason = "moves_exceeded"
+                self.show_banner("Game Over! Move limit exceeded!")
+                # Show game over screen
+                solve_time = time.time() - self.start_time
+                self.results_window.show_game_over(
+                    self.move_counter, 
+                    solve_time, 
+                    "moves_exceeded", 
+                    self.menu.get_selected_difficulty()
+                )
         
         # Check for game start (when menu becomes inactive for the first time OR new game is requested)
         if not self.menu.is_active():

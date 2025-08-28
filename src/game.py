@@ -1415,12 +1415,12 @@ class Game:
             self.debug_print(f"Hard mode: Completely random scramble!")
         elif difficulty == "limited_time":
             # Limited Time: Medium scramble with time pressure
-            self.animated_scramble_cube(1)
-            self.debug_print(f"Limited Time mode: Scramble with 15 moves! You have {self.time_limit} seconds!")
+            self.animated_scramble_cube(15)
+            self.debug_print(f"Limited Time mode: Scramble with 15 moves!")
         elif difficulty == "limited_moves":
             # Limited Moves: Medium scramble with move restriction
-            self.animated_scramble_cube(1)
-            self.debug_print(f"Limited Moves mode: Scramble with 15 moves! Max {self.move_limit} moves allowed!")
+            self.animated_scramble_cube(15)
+            self.debug_print(f"Limited Moves mode: Scramble with 15 moves!")
         else:
             # Default case (fallback)
             self.animated_scramble_cube(20)

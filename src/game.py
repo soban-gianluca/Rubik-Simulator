@@ -722,7 +722,6 @@ class Game:
                 )
         
         # Check move limit in limited moves mode (only for modes that actually have move limits)
-        # Only check if there's no pending animation to avoid checking before the final move is executed
         if (self.move_limit is not None and 
             self.start_time is not None and 
             not self.cube_solved and 

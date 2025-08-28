@@ -1159,17 +1159,28 @@ class Menu:
                 if widget in self.difficulty_buttons:
                     self._animate_difficulty_button(widget, is_hovered)
                 else:
+                    # Check if this is a "Start Game" button with golden background
+                    is_golden_start_button = (
+                        (hasattr(self, 'time_start_btn') and widget == self.time_start_btn) or
+                        (hasattr(self, 'moves_start_btn') and widget == self.moves_start_btn)
+                    )
+                    
                     # Regular button hover effect (text color change)
                     if hasattr(widget, '_font_color'):
                         if is_hovered:
-                            widget._font_color = self.text_color_hover
+                            if is_golden_start_button:
+                                # Use black text for better visibility on golden background
+                                widget._font_color = (0, 0, 0)  # Black
+                            else:
+                                widget._font_color = self.text_color_hover
                         else:
                             widget._font_color = self.text_color_normal
                             
                     # Also try to update the button's style if possible
                     if hasattr(widget, 'update_font'):
+                        hover_color = (0, 0, 0) if is_golden_start_button and is_hovered else (self.text_color_hover if is_hovered else self.text_color_normal)
                         widget.update_font({
-                            'color': self.text_color_hover if is_hovered else self.text_color_normal
+                            'color': hover_color
                         })
                     
         except Exception as e:
@@ -1348,7 +1359,12 @@ class Menu:
             # Also change text color for extra effect
             if hasattr(button, '_font_color'):
                 if animation_state['is_hovering']:
-                    button._font_color = self.text_color_hover
+                    # Check if this is a button with yellow/golden background
+                    if button_info['difficulty'] in ['limited_time', 'limited_moves']:
+                        # Use black text for better visibility on yellow background
+                        button._font_color = (0, 0, 0)  # Black
+                    else:
+                        button._font_color = self.text_color_hover
                 else:
                     button._font_color = self.text_color_normal
                     
@@ -2237,6 +2253,9 @@ class Menu:
             padding=(15, 30)
         )
         
+        # Store reference to time start button for special hover handling
+        self.time_start_btn = start_btn
+        
         # Make the Start Game button rounded (like difficulty buttons)
         def draw_rounded_time(widget, surface, *args, **kwargs):
             rect = widget.get_rect(to_real_position=True)
@@ -2329,6 +2348,9 @@ class Menu:
             background_color=(240, 198, 38, 200),  # Gold (matching limited moves theme)
             padding=(15, 30)
         )
+        
+        # Store reference to moves start button for special hover handling
+        self.moves_start_btn = moves_start_btn
         
         # Make the Start Game button rounded (like difficulty buttons)
         def draw_rounded_moves(widget, surface, *args, **kwargs):

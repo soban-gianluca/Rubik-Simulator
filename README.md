@@ -25,4 +25,4 @@ Execute the RubikSimulator.exe and enjoy the game!
 
 ## Credits
 
-Developed as a school project by two IT expert programmers
+Developed as a school project by two aspiring programmers.

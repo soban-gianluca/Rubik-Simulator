@@ -581,37 +581,47 @@ class Game:
             elif self.menu.handle_event(event):
                 continue
                 
+
+
+
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # Handle help overlay clicks first (works even when menu/results are active)
+                # Left click: first try help/menu overlays, else cube moves
                 if self.help_overlay.handle_click(event.pos):
                     continue
-                    
+                # If not handled by overlay, and not in menu/results, do cube moves
+                if not self.menu.is_active() and not self.results_window.active:
+                    self.mouse_cube_moving = True
+                    self.mouse_interaction.start_drag(event.pos)
+                    self.auto_rotate = False
+                    self.debug_print(f"Mouse cube interaction started at {event.pos}")
+
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                 # Then handle other mouse interactions only if menu/results not active
                 if not self.menu.is_active() and not self.results_window.active:
-                    # Left mouse button - camera rotation
+                    # Right mouse button - camera rotation
                     self.mouse_rotating = True
                     self.prev_mouse_x, self.prev_mouse_y = event.pos
                     self.auto_rotate = False
                     self.debug_print(f"Mouse rotation started at {event.pos}")
-                    
+
             elif not self.menu.is_active() and not self.results_window.active and event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 3:  # Right mouse button - cube moves
+                if event.button == 1:  # Left mouse button - cube moves
                     self.mouse_cube_moving = True
                     self.mouse_interaction.start_drag(event.pos)
                     self.auto_rotate = False
                     self.debug_print(f"Mouse cube interaction started at {event.pos}")
                     
             elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1 and not self.menu.is_active() and not self.results_window.active:
+                if event.button == 3 and not self.menu.is_active() and not self.results_window.active:
                     self.mouse_rotating = False
                     self.debug_print("Mouse rotation ended")
-                elif event.button == 3 and not self.menu.is_active() and not self.results_window.active:
+                elif event.button == 1 and not self.menu.is_active() and not self.results_window.active:
                     self.mouse_cube_moving = False
                     self.mouse_interaction.end_drag()
                     self.debug_print("Mouse cube interaction ended")
                 
             elif not self.menu.is_active() and not self.results_window.active and event.type == pygame.MOUSEMOTION:
-                # Handle camera rotation with left mouse button
+                # Handle camera rotation with right mouse button
                 if self.mouse_rotating:
                     current_x, current_y = event.pos
                     dx = current_x - self.prev_mouse_x
@@ -630,7 +640,7 @@ class Game:
                     self.prev_mouse_x = current_x
                     self.prev_mouse_y = current_y
                 
-                # Handle cube moves with right mouse button
+                # Handle cube moves with left mouse button
                 elif self.mouse_cube_moving:
                     detected_move = self.mouse_interaction.update_drag(event.pos)
                     if detected_move:

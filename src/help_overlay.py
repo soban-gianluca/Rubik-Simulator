@@ -138,7 +138,9 @@ class HelpOverlay:
                     "ESC  ->  Main menu",
                     "T  ->  Reset view",
                     "Z  ->  Undo",
-                    "X  ->  Scramble (freeplay)"
+                    "X  ->  Scramble (freeplay)",
+                    "R-Click + Drag  ->  Rotate camera view",
+                    "L-Click + Drag  ->  Perform cube moves"
                 ]
             }
         ]

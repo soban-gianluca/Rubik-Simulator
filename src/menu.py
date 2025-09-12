@@ -2143,8 +2143,8 @@ class Menu:
 
             ]),
             ("MOUSE CONTROLS", [
-                ("Rotate camera view", "[Left Click + Drag]"),
-                ("Perform cube moves", "[Right click + Drag]"),
+                ("Rotate camera view", "[Right Click + Drag]"),
+                ("Perform cube moves", "[Left Click + Drag]"),
                 ("Disable auto-rotation", "[Space / Left Click / Right Click]")
             ]),
             ("CUBE MOVES", [

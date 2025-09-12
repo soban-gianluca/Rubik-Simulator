@@ -692,6 +692,9 @@ class Game:
             self.menu.update_cursor(mouse_pos)
         elif hasattr(self, 'results_window') and self.results_window.active:
             self.results_window.update_cursor(mouse_pos)
+        elif getattr(self, 'mouse_rotating', False):
+            # Show grab cursor when rotating camera
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEALL)
         else:
             # Update help overlay hover state and set appropriate cursor
             if hasattr(self, 'help_overlay'):

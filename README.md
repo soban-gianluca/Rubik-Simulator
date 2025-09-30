@@ -1,5 +1,7 @@
 ![Rubik Logo](utils/rubiks_logo.png)
 
+https://giansob.itch.io/rubiks-cube-simulator
+
 # RubikSimulator
 
 **RubikSimulator** is a digital game of the renowned brain teaser, designed to offer a realistic and engaging experience directly on your pc.

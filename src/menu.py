@@ -74,12 +74,8 @@ class Menu:
         self.record_icon = None
         self._load_record_icon()
         
-        # Available resolutions
-        self.available_resolutions = [
-            (1280, 720),
-            (1366, 768),
-            (1920, 1080)
-        ]
+        # Get machine's max resolution and generate available resolutions dynamically
+        self.available_resolutions = self._generate_available_resolutions()
         
         # Load settings from file
         self.current_resolution_index = 0
@@ -239,6 +235,55 @@ class Menu:
         except Exception as e:
             print(f"Error loading record icon: {e}")
             self.record_icon = None
+    
+    def _generate_available_resolutions(self):
+        """Generate available resolutions based on machine's maximum supported resolution"""
+        try:
+            # Get display info to determine maximum resolution
+            pygame.display.init()
+            display_info = pygame.display.Info()
+            max_width = display_info.current_w
+            max_height = display_info.current_h
+            
+            if hasattr(self, "debug_mode") and self.debug_mode:
+                print(f"Detected maximum resolution: {max_width}x{max_height}")
+            
+            # Common resolution ratios and sizes
+            common_resolutions = [
+                (1280, 720),   # 720p HD
+                (1366, 768),   # Common laptop resolution
+                (1600, 900),   # 900p
+                (1920, 1080),  # 1080p Full HD
+                (2560, 1440),  # 1440p QHD
+                (3840, 2160),  # 4K UHD
+                (5120, 2880),  # 5K
+                (7680, 4320),  # 8K
+            ]
+            
+            # Filter resolutions that fit within the machine's maximum resolution
+            # Also ensure they're not larger than the detected display
+            available_resolutions = []
+            for width, height in common_resolutions:
+                if width <= max_width and height <= max_height:
+                    available_resolutions.append((width, height))
+            
+            # Ensure we have at least some basic resolutions
+            if not available_resolutions:
+                # Fallback to minimum supported resolutions
+                available_resolutions = [(1280, 720)]
+                if hasattr(self, "debug_mode") and self.debug_mode:
+                    print("Warning: No common resolutions fit the display, using fallback resolutions")
+            else:
+                if hasattr(self, "debug_mode") and self.debug_mode:
+                    print(f"Available resolutions: {available_resolutions}")
+            
+            return available_resolutions
+            
+        except Exception as e:
+            if hasattr(self, "debug_mode") and self.debug_mode:
+                print(f"Error detecting display resolution, using fallback: {e}")
+            # Fallback to basic resolutions if detection fails
+            return [(1280, 720), (1366, 768), (1920, 1080)]
     
     def _customize_button_appearance(self, button):
         """Apply custom styling to a button widget - remove backgrounds"""

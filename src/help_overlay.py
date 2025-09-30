@@ -119,27 +119,28 @@ class HelpOverlay:
         self.is_hovering = False  # For backward compatibility (help button)
         self._create_button_surfaces()
         
-        # Help content - made more concise to fit better
+        # Help content
         self.help_sections = [
             {
                 "title": "Cube Moves",
                 "items": [
-                    "L → Left    | R → Right",
-                    "U → Up      | D → Down", 
-                    "F → Front   | B → Back",
-                    "M → Middle  | E → Equator",
-                    "S → Slice",
-                    "key+Shift → reverse move"
+                    "L  ->  Left    | R  ->  Right",
+                    "U  ->  Up      | D  ->  Down",
+                    "F  ->  Front   | B  ->  Back",
+                    "M  ->  Middle",
+                    "E  ->  Equator",
+                    "S  ->  Slice"
                 ]
             },
             {
                 "title": "Game Controls",
                 "items": [
-                    "ESC → Main menu",
-                    "T → Reset view | Z → Undo",
-                    "X → Scramble (freeplay)",
-                    "R-Click → Rotate view",
-                    "L-Click → Move cube"
+                    "ESC  ->  Main menu",
+                    "T  ->  Reset view",
+                    "Z  ->  Undo",
+                    "X  ->  Scramble (freeplay)",
+                    "R-Click + Drag  ->  Rotate camera view",
+                    "L-Click + Drag  ->  Perform cube moves"
                 ]
             }
         ]
@@ -418,35 +419,29 @@ class HelpOverlay:
         pygame.draw.line(self.panel_surface, (100, 150, 255, 180), 
                         (40, line_y), (self.panel_width - 40, line_y), 2)
         
-        # Content in two columns for compact layout - use responsive spacing with increased spacing
+        # Content in two columns for compact layout
         y_offset = line_y + 25
         col_width = (self.panel_width - 60) // 2
-        
-        # Calculate dynamic spacing based on panel size - increased for better readability
-        section_spacing = max(120, min(160, int(self.panel_height * 0.32)))  # ~32% of panel height per section (increased from 28%)
-        title_to_items_spacing = max(30, min(45, int(self.panel_height * 0.09)))  # ~9% of panel height (increased from 7%)  
-        item_spacing = max(25, min(35, int(self.panel_height * 0.07)))  # ~7% of panel height per item (increased from 5.5%)
         
         for i, section in enumerate(self.help_sections):
             # Determine column position
             col_x = 30 if i % 2 == 0 else 30 + col_width + 15
-            section_y = y_offset + (i // 2) * section_spacing
+            section_y = y_offset + (i // 2) * 140
             
             # Section title
             section_text = self.section_font.render(section["title"], True, (235, 38, 38))
             self.panel_surface.blit(section_text, (col_x, section_y))
             
             # Section items
-            item_y = section_y + title_to_items_spacing
+            item_y = section_y + 50
             for item in section["items"]:
                 item_text = self.text_font.render(f"• {item}", True, (220, 220, 220))
                 self.panel_surface.blit(item_text, (col_x + 10, item_y))
-                item_y += item_spacing
+                item_y += 40
         
-        # Close instruction - position responsively
+        # Close instruction
         close_text = self.text_font.render("Click outside or press ESC to close", True, (150, 150, 150))
-        close_margin = max(25, min(40, int(self.panel_height * 0.08)))  # ~8% margin from bottom
-        close_rect = close_text.get_rect(centerx=self.panel_width//2, y=self.panel_height - close_margin)
+        close_rect = close_text.get_rect(centerx=self.panel_width//2, y=self.panel_height - 45)
         self.panel_surface.blit(close_text, close_rect)
         
     def draw(self, surface):

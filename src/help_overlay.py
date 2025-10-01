@@ -97,7 +97,7 @@ class HelpOverlay:
         self.game_callback = None  # Will be set from game instance
         
         # Help panel properties
-        self.panel_width = min(650, self.width - 100)
+        self.panel_width = min(800, self.width - 80)  # Wider panel, less margin
         self.panel_height = min(500, self.height - 100)
         self.panel_x = (self.width - self.panel_width) // 2
         self.panel_y = (self.height - self.panel_height) // 2
@@ -139,8 +139,8 @@ class HelpOverlay:
                     "T  ->  Reset view",
                     "Z  ->  Undo",
                     "X  ->  Scramble (freeplay)",
-                    "R-Click + Drag  ->  Rotate camera view",
-                    "L-Click + Drag  ->  Perform cube moves"
+                    "R-Click + Drag  ->  Rotate camera",
+                    "L-Click + Drag  ->  Cube moves"
                 ]
             }
         ]
@@ -480,7 +480,7 @@ class HelpOverlay:
         )
         
         # Update panel position and size - bigger for larger fonts
-        self.panel_width = min(650, self.width - 100)
+        self.panel_width = min(800, self.width - 80)  # Wider panel, less margin
         self.panel_height = min(500, self.height - 100)
         self.panel_x = (self.width - self.panel_width) // 2
         self.panel_y = (self.height - self.panel_height) // 2

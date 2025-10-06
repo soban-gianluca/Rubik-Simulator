@@ -106,7 +106,7 @@ class LoadingAnimation:
                 pygame.mixer.music.set_volume(volume_level)
                 song = random.choice(playlist)
                 pygame.mixer.music.load(song)
-                pygame.mixer.music.play(-1)  # Loop during loading
+                pygame.mixer.music.play()
         except Exception as e:
             print(f"Loading screen music error: {e}")
         

@@ -68,12 +68,12 @@ class Game:
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
-            # Only set volume and end event if music is already playing
+            # Set volume and end event for music
             music_volume = self.settings.get_music_volume() / 100
             master_volume = self.settings.get_master_volume() / 100
             pygame.mixer.music.set_volume(music_volume * master_volume)
             pygame.mixer.music.set_endevent(self.MUSIC_END_EVENT)
-            # If not playing, start a random song (should only happen if loading didn't start music)
+            # If not playing, start a random song (happens if loading music ended or didn't start)
             if not pygame.mixer.music.get_busy():
                 pygame.mixer.music.load(self.playlist[self.current_song])
                 pygame.mixer.music.play()

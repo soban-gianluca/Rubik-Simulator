@@ -652,8 +652,13 @@ class Renderer:
             
             glPopMatrix()
 
-    def render_frame(self):
-        """Render a frame and return the surface (for compatibility with existing code)"""
+    def render_frame(self, debug_callback=None):
+        """Render a frame and return the surface (for compatibility with existing code)
+        
+        Args:
+            debug_callback: Optional callback function to render debug visualizations
+                           after the cube but before exiting the 3D transformation context.
+        """
         # Check if viewport matches the current dimensions
         viewport = glGetIntegerv(GL_VIEWPORT)
         if viewport[2] != self.width or viewport[3] != self.height:
@@ -682,6 +687,10 @@ class Renderer:
         
         # Render the cube
         self.render_cube()
+        
+        # Call debug callback if provided (renders in 3D space with cube transformations)
+        if debug_callback:
+            debug_callback()
         
         glPopMatrix()
         

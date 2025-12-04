@@ -865,8 +865,11 @@ class Game:
             self.renderer._last_animation_state = self.renderer.is_animating
     
     def render(self):
-        # Render 3D cube
-        self.renderer.render_frame()
+        # Render 3D cube with optional debug visualization
+        if self.debug_mode:
+            self.renderer.render_frame(debug_callback=self.mouse_interaction.render_debug_faces)
+        else:
+            self.renderer.render_frame()
         
         # Notify menu that game has rendered (for blur background capture)
         if hasattr(self, 'menu') and not self.menu.game_rendered:

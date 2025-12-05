@@ -536,11 +536,11 @@ class MouseInteraction:
             # Horizontal drag on bottom face -> F, S, B layers
             # row 0 = front side, row 2 = back side
             if row == 0:
-                return 'F' if screen_dir == 'right' else "F'"
+                return "F'" if screen_dir == 'right' else 'F'
             elif row == 1:
                 return 'S' if screen_dir == 'right' else "S'"
             else:  # row == 2
-                return "B'" if screen_dir == 'right' else 'B'
+                return "B" if screen_dir == 'right' else "B'"
         else:
             # Vertical drag on bottom face -> L, M, R layers
             if col == 0:

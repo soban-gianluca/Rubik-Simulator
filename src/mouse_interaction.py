@@ -356,13 +356,14 @@ class MouseInteraction:
         For TOP face (u_axis = [1,0,0], v_axis = [0,0,-1]):
         - Grid col increases with world +X
         - Grid row increases with world +Z (towards back, since v_axis is [0,0,-1] and we invert)
+        - At rot_y=0: screen right = +X, screen down = -Z (towards front)
         
-        At rot_y=0 (looking at front): screen right = +X, screen down = -Z
-        At rot_y=90 (looking at left): screen right = -Z, screen down = -X  
-        At rot_y=180 (looking at back): screen right = -X, screen down = +Z
-        At rot_y=270 (looking at right): screen right = +Z, screen down = +X
+        For BOTTOM face (u_axis = [1,0,0], v_axis = [0,0,1]):
+        - Grid col increases with world +X  
+        - Grid row increases with world -Z (towards front, since v_axis is [0,0,1] and we invert)
+        - At rot_y=0: screen right = +X, screen down = +Z (towards back)
         
-        The move functions expect 'right' to mean +X in world, 'down' to mean -Z (towards front).
+        The key difference: on bottom face, screen "down" maps to +Z (back), not -Z (front) like on top.
         """
         # Get camera Y rotation and normalize to 0-360
         rot_y = self.renderer.rotation_y % 360
@@ -382,35 +383,72 @@ class MouseInteraction:
         # Grid coordinates are in world space - don't transform them
         # Only transform the screen direction to world direction
         
-        if quadrant == 0:
-            # No transformation needed - screen coords match expected world coords
-            return screen_dir, is_horizontal, row, col
+        if face == 'top':
+            # TOP FACE transformations
+            if quadrant == 0:
+                # No transformation needed - screen coords match expected world coords
+                return screen_dir, is_horizontal, row, col
+            
+            elif quadrant == 1:
+                # Camera looking at left side (rot_y ~90°)
+                # Screen right -> world -Z, which in our system should act like "down" (towards front row)
+                # Screen down -> world -X, which should act like "left"
+                dir_map = {'right': 'down', 'down': 'left', 'left': 'up', 'up': 'right'}
+                new_dir = dir_map[screen_dir]
+                new_is_horizontal = not is_horizontal
+                return new_dir, new_is_horizontal, row, col
+            
+            elif quadrant == 2:
+                # Camera looking at back (rot_y ~180°)
+                # Screen right -> world -X, should act like "left"
+                # Screen down -> world +Z, should act like "up" (towards back row)
+                dir_map = {'right': 'left', 'down': 'up', 'left': 'right', 'up': 'down'}
+                new_dir = dir_map[screen_dir]
+                return new_dir, is_horizontal, row, col
+            
+            else:  # quadrant == 3
+                # Camera looking at right side (rot_y ~270°)
+                # Screen right -> world +Z, should act like "up"
+                # Screen down -> world +X, should act like "right"
+                dir_map = {'right': 'up', 'down': 'right', 'left': 'down', 'up': 'left'}
+                new_dir = dir_map[screen_dir]
+                new_is_horizontal = not is_horizontal
+                return new_dir, new_is_horizontal, row, col
         
-        elif quadrant == 1:
-            # Camera looking at left side (rot_y ~90°)
-            # Screen right -> world -Z, which in our system should act like "down" (towards front row)
-            # Screen down -> world -X, which should act like "left"
-            dir_map = {'right': 'down', 'down': 'left', 'left': 'up', 'up': 'right'}
-            new_dir = dir_map[screen_dir]
-            new_is_horizontal = not is_horizontal
-            return new_dir, new_is_horizontal, row, col
-        
-        elif quadrant == 2:
-            # Camera looking at back (rot_y ~180°)
-            # Screen right -> world -X, should act like "left"
-            # Screen down -> world +Z, should act like "up" (towards back row)
-            dir_map = {'right': 'left', 'down': 'up', 'left': 'right', 'up': 'down'}
-            new_dir = dir_map[screen_dir]
-            return new_dir, is_horizontal, row, col
-        
-        else:  # quadrant == 3
-            # Camera looking at right side (rot_y ~270°)
-            # Screen right -> world +Z, should act like "up"
-            # Screen down -> world +X, should act like "right"
-            dir_map = {'right': 'up', 'down': 'right', 'left': 'down', 'up': 'left'}
-            new_dir = dir_map[screen_dir]
-            new_is_horizontal = not is_horizontal
-            return new_dir, new_is_horizontal, row, col
+        else:  # face == 'bottom'
+            # BOTTOM FACE transformations
+            # The bottom face has v_axis = [0,0,1] instead of [0,0,-1]
+            # At quadrants 0 and 2, bottom face behaves same as top face
+            # At quadrants 1 and 3, we need to invert both row and column directions
+            
+            if quadrant == 0:
+                # No transformation needed - same as top face
+                return screen_dir, is_horizontal, row, col
+            
+            elif quadrant == 1:
+                # Camera looking at left side (rot_y ~90°)
+                # For bottom face: invert both horizontal (right/left) and vertical (up/down) outputs
+                # compared to top face mapping {'right': 'down', 'down': 'left', 'left': 'up', 'up': 'right'}
+                dir_map = {'right': 'up', 'down': 'right', 'left': 'down', 'up': 'left'}
+                new_dir = dir_map[screen_dir]
+                new_is_horizontal = not is_horizontal
+                return new_dir, new_is_horizontal, row, col
+            
+            elif quadrant == 2:
+                # Camera looking at back (rot_y ~180°)
+                # Same transformation as top face
+                dir_map = {'right': 'left', 'down': 'up', 'left': 'right', 'up': 'down'}
+                new_dir = dir_map[screen_dir]
+                return new_dir, is_horizontal, row, col
+            
+            else:  # quadrant == 3
+                # Camera looking at right side (rot_y ~270°)
+                # For bottom face: invert both horizontal and vertical outputs
+                # compared to top face mapping {'right': 'up', 'down': 'right', 'left': 'down', 'up': 'left'}
+                dir_map = {'right': 'down', 'down': 'left', 'left': 'up', 'up': 'right'}
+                new_dir = dir_map[screen_dir]
+                new_is_horizontal = not is_horizontal
+                return new_dir, new_is_horizontal, row, col
     
     def _get_move_for_face(self, face, row, col, screen_dir, is_horizontal):
         """

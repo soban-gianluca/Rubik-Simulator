@@ -1,5 +1,6 @@
 import os
 import json
+import threading
 from datetime import datetime
 from utils.path_helper import resource_path
 
@@ -68,6 +69,87 @@ class PersonalBestManager:
             }
         }
         self.records = self.load_records()
+        
+        # Supabase sync settings
+        self._supabase_manager = None
+        self._user_manager = None
+        self._sync_enabled = True
+    
+    def set_supabase_manager(self, supabase_manager):
+        """Set the Supabase manager for cloud sync."""
+        self._supabase_manager = supabase_manager
+    
+    def set_user_manager(self, user_manager):
+        """Set the user manager for getting user info."""
+        self._user_manager = user_manager
+        # Initialize Supabase user hash if we have user data
+        if user_manager and self._supabase_manager:
+            if user_manager.is_setup_completed():
+                self._supabase_manager.set_user_hash(
+                    user_manager.get_username(),
+                    user_manager.get_region(),
+                    user_manager.user_data.get("created_at", "")
+                )
+    
+    def _sync_to_cloud(self, difficulty: str):
+        """Sync a single record to the cloud in a background thread."""
+        if not self._sync_enabled or not self._supabase_manager or not self._user_manager:
+            return
+        
+        if not self._supabase_manager.is_configured():
+            return
+        
+        if not self._user_manager.is_setup_completed():
+            return
+        
+        # Get user info
+        username = self._user_manager.get_username()
+        region = self._user_manager.get_region()
+        record = self.records.get(difficulty, {})
+        
+        # Sync in background thread to not block the game
+        def sync_task():
+            try:
+                self._supabase_manager.submit_record(
+                    username=username,
+                    region=region,
+                    game_mode=difficulty,
+                    best_time=record.get("best_time"),
+                    best_moves=record.get("best_moves"),
+                    best_tps=record.get("best_tps"),
+                    total_solves=record.get("total_solves", 0),
+                    wins=record.get("wins", 0),
+                    losses=record.get("losses", 0)
+                )
+            except Exception as e:
+                print(f"Error syncing to cloud: {e}")
+        
+        thread = threading.Thread(target=sync_task, daemon=True)
+        thread.start()
+    
+    def sync_all_to_cloud(self):
+        """Sync all records to the cloud."""
+        if not self._sync_enabled or not self._supabase_manager or not self._user_manager:
+            return False
+        
+        if not self._supabase_manager.is_configured():
+            return False
+        
+        if not self._user_manager.is_setup_completed():
+            return False
+        
+        username = self._user_manager.get_username()
+        region = self._user_manager.get_region()
+        
+        def sync_task():
+            try:
+                self._supabase_manager.sync_all_records(username, region, self.records)
+            except Exception as e:
+                print(f"Error syncing all records to cloud: {e}")
+        
+        thread = threading.Thread(target=sync_task, daemon=True)
+        thread.start()
+        return True
     
     def load_records(self) -> dict:
         """Load personal best records from file"""
@@ -151,6 +233,9 @@ class PersonalBestManager:
         # Save to file
         self.save_records()
         
+        # Sync to cloud
+        self._sync_to_cloud(difficulty)
+        
         return {
             "is_best_time": record["best_time"] == solve_time,
             "is_best_moves": record["best_moves"] == moves,
@@ -175,6 +260,9 @@ class PersonalBestManager:
             
             # Save to file
             self.save_records()
+            
+            # Sync to cloud
+            self._sync_to_cloud(difficulty)
     
     def get_records(self, difficulty: str = None) -> dict:
         """Get personal best records for a specific difficulty or all difficulties"""

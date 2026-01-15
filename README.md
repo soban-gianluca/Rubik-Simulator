@@ -11,6 +11,24 @@ Whether you are a beginner or an expert, our simulator allows you to:
 * Explore standard rotations with smooth animations
 * Visualize the cube state in 3D
 * Train with built-in timer and visualize other stats
+* Compete on the **Global Leaderboard** against players worldwide!
+
+## Features
+
+### Game Modes
+- **Freeplay**: Practice without pressure
+- **Easy/Medium/Hard**: Different scramble difficulties
+- **Limited Time**: Beat the clock challenge
+- **Limited Moves**: Efficiency challenge
+
+### Global Leaderboard
+Track your personal records and compete with players from around the world! The leaderboard features:
+- Records separated by game mode (Easy, Medium, Hard, Limited Time, Limited Moves)
+- Regional filtering (Europe, Americas, Asia, Oceania, Africa)
+- Personal best tracking for time, moves, and TPS (turns per second)
+- Automatic cloud sync of your records
+
+**Note**: To enable the global leaderboard, you need to configure Supabase. See [LEADERBOARD_SETUP.md](LEADERBOARD_SETUP.md) for instructions.
 
 ## Used Technologies
 
@@ -21,6 +39,9 @@ We've used 100% Python for the cube logic, the move management and user interfac
 
 * Graphic Rendering:
 For our game we utilize Pygame and OpenGl for the 3D rendering
+
+* Cloud Backend:
+[Supabase](https://supabase.com/) for the global leaderboard (optional, free tier available)
 
 * To run the game:
 Execute the RubikSimulator.exe and enjoy the game!

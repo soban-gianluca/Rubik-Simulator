@@ -13,6 +13,7 @@ from src.results_window import ResultsWindow
 from src.mouse_interaction import MouseInteraction
 from src.help_overlay import HelpOverlay
 from src.personal_best_manager import PersonalBestManager
+from src.supabase_manager import get_supabase_manager
 from utils.path_helper import resource_path
 from src.rubiks_cube import RubiksCube
 
@@ -111,6 +112,16 @@ class Game:
         
         # Initialize personal best manager
         self.personal_best_manager = PersonalBestManager()
+        
+        # Initialize Supabase manager for global leaderboard
+        self.supabase_manager = get_supabase_manager()
+        
+        # Connect managers for cloud sync
+        self.personal_best_manager.set_supabase_manager(self.supabase_manager)
+        self.personal_best_manager.set_user_manager(self.menu.user_manager)
+        
+        # Set the Supabase manager in the menu for leaderboard display
+        self.menu.supabase_manager = self.supabase_manager
         
         # Set the personal best manager in the menu to use the same instance
         self.menu.personal_best_manager = self.personal_best_manager

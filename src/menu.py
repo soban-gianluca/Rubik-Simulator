@@ -5,11 +5,24 @@ from pygame_menu.locals import *  # Import all constants including alignment
 import os
 import time
 import math
+import threading
 from src.settings_manager import SettingsManager
 from src.sound_manager import SoundManager
 from src.personal_best_manager import PersonalBestManager
 from src.user_manager import UserManager, REGIONS
 from utils.path_helper import resource_path
+
+# Leaderboard filter options
+GAME_MODE_OPTIONS = ["All Modes", "easy", "medium", "hard", "limited_time", "limited_moves"]
+GAME_MODE_DISPLAY = {
+    "All Modes": "All Modes",
+    "easy": "Easy",
+    "medium": "Medium", 
+    "hard": "Hard",
+    "limited_time": "Limited Time",
+    "limited_moves": "Limited Moves"
+}
+REGION_OPTIONS = ["All Regions"] + REGIONS
 
 class Menu:
     def __init__(self, screen_width, screen_height, game_instance=None):
@@ -26,6 +39,9 @@ class Menu:
         
         # Initialize user manager
         self.user_manager = UserManager()
+        
+        # Initialize Supabase manager (will be set by game instance)
+        self.supabase_manager = None
         
         # Initialize sound manager for menu sounds
         self.sound_manager = SoundManager()
@@ -48,6 +64,14 @@ class Menu:
         
         # Statistics tab state
         self.statistics_tab = "personal_records"  # "personal_records" or "global_leaderboard"
+        
+        # Leaderboard state
+        self.leaderboard_data = []  # Cached leaderboard data
+        self.leaderboard_loading = False  # Flag for async loading
+        self.leaderboard_error = None  # Error message if fetch failed
+        self.leaderboard_filter_mode = "All Modes"  # Current game mode filter
+        self.leaderboard_filter_region = "All Regions"  # Current region filter
+        self.leaderboard_last_fetch = 0  # Timestamp of last fetch
         
         # Limited time mode settings
         self.selected_time_limit = 180  # Default 3 minutes in seconds
@@ -567,6 +591,84 @@ class Menu:
         """Switch to global leaderboard tab in statistics"""
         self.sound_manager.play("menu_select")
         self.statistics_tab = "global_leaderboard"
+        # Fetch leaderboard data when switching to the tab
+        self._fetch_leaderboard_data()
+        self._create_personal_best_content()
+    
+    def _fetch_leaderboard_data(self, force_refresh=False):
+        """Fetch leaderboard data from Supabase in background thread."""
+        # Don't fetch if already loading
+        if self.leaderboard_loading:
+            return
+        
+        # Check if we should use cached data (cache for 30 seconds)
+        current_time = time.time()
+        if not force_refresh and self.leaderboard_data and (current_time - self.leaderboard_last_fetch) < 30:
+            return
+        
+        # Check if Supabase is configured
+        if not self.supabase_manager or not self.supabase_manager.is_configured():
+            self.leaderboard_error = "Leaderboard not configured"
+            self.leaderboard_data = []
+            return
+        
+        self.leaderboard_loading = True
+        self.leaderboard_error = None
+        
+        def fetch_task():
+            try:
+                # Get filter values
+                game_mode = None if self.leaderboard_filter_mode == "All Modes" else self.leaderboard_filter_mode
+                region = None if self.leaderboard_filter_region == "All Regions" else self.leaderboard_filter_region
+                
+                # Fetch data
+                data = self.supabase_manager.get_leaderboard(
+                    game_mode=game_mode,
+                    region=region,
+                    sort_by="best_time",
+                    limit=50,
+                    ascending=True
+                )
+                
+                self.leaderboard_data = data if data else []
+                self.leaderboard_last_fetch = time.time()
+                self.leaderboard_error = None
+            except Exception as e:
+                print(f"Error fetching leaderboard: {e}")
+                self.leaderboard_error = "Failed to load leaderboard"
+                self.leaderboard_data = []
+            finally:
+                self.leaderboard_loading = False
+        
+        thread = threading.Thread(target=fetch_task, daemon=True)
+        thread.start()
+    
+    def _on_leaderboard_mode_filter_change(self, selected_tuple, index):
+        """Handle game mode filter change in leaderboard."""
+        self.sound_manager.play("menu_select")
+        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 0:
+            self.leaderboard_filter_mode = selected_tuple[0][0] if isinstance(selected_tuple[0], tuple) else selected_tuple[0]
+        else:
+            self.leaderboard_filter_mode = GAME_MODE_OPTIONS[index]
+        self._fetch_leaderboard_data(force_refresh=True)
+        # Refresh display after a short delay to allow data to load
+        self._create_personal_best_content()
+    
+    def _on_leaderboard_region_filter_change(self, selected_tuple, index):
+        """Handle region filter change in leaderboard."""
+        self.sound_manager.play("menu_select")
+        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 0:
+            self.leaderboard_filter_region = selected_tuple[0][0] if isinstance(selected_tuple[0], tuple) else selected_tuple[0]
+        else:
+            self.leaderboard_filter_region = REGION_OPTIONS[index]
+        self._fetch_leaderboard_data(force_refresh=True)
+        # Refresh display after a short delay to allow data to load
+        self._create_personal_best_content()
+    
+    def _refresh_leaderboard(self):
+        """Manually refresh the leaderboard data."""
+        self.sound_manager.play("menu_select")
+        self._fetch_leaderboard_data(force_refresh=True)
         self._create_personal_best_content()
     
     def _open_user_edit(self):
@@ -2833,28 +2935,228 @@ class Menu:
                 )
     
     def _create_leaderboard_content(self):
-        """Create global leaderboard tab content (placeholder)"""
-        self.personal_best_menu.add.vertical_margin(50)
+        """Create global leaderboard tab content with filters and data display."""
+        
+        # Check if Supabase is configured
+        if not self.supabase_manager or not self.supabase_manager.is_configured():
+            self.personal_best_menu.add.vertical_margin(50)
+            self.personal_best_menu.add.label(
+                "Global Leaderboard",
+                font_size=50,
+                font_color=(255, 215, 0),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                "Leaderboard Not Configured",
+                font_size=40,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(20)
+            self.personal_best_menu.add.label(
+                "Please configure Supabase credentials in supabase_manager.py",
+                font_size=24,
+                font_color=(150, 150, 150),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Filter section - using simple vertical layout with labels
+        self.personal_best_menu.add.vertical_margin(5)
+        
+        # Filter label
         self.personal_best_menu.add.label(
-            "Global Leaderboard",
-            font_size=50,
-            font_color=(255, 215, 0),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        self.personal_best_menu.add.vertical_margin(30)
-        self.personal_best_menu.add.label(
-            "Coming Soon!",
-            font_size=40,
+            "FILTERS",
+            font_size=28,
             font_color=(200, 200, 200),
             font_name=pygame_menu.font.FONT_FRANCHISE
         )
-        self.personal_best_menu.add.vertical_margin(20)
+        
+        self.personal_best_menu.add.vertical_margin(5)
+        
+        # Game mode filter dropdown
+        mode_items = [(GAME_MODE_DISPLAY.get(mode, mode), i) for i, mode in enumerate(GAME_MODE_OPTIONS)]
+        current_mode_index = GAME_MODE_OPTIONS.index(self.leaderboard_filter_mode) if self.leaderboard_filter_mode in GAME_MODE_OPTIONS else 0
+        
+        self.personal_best_menu.add.dropselect(
+            "Game Mode:  ",
+            mode_items,
+            default=current_mode_index,
+            font_size=26,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            onchange=self._on_leaderboard_mode_filter_change,
+            selection_box_height=6,
+            selection_box_width=200,
+            margin=(0, 5)
+        )
+        
+        # Region filter dropdown
+        region_items = [(region, i) for i, region in enumerate(REGION_OPTIONS)]
+        current_region_index = REGION_OPTIONS.index(self.leaderboard_filter_region) if self.leaderboard_filter_region in REGION_OPTIONS else 0
+        
+        self.personal_best_menu.add.dropselect(
+            "Region:  ",
+            region_items,
+            default=current_region_index,
+            font_size=26,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            onchange=self._on_leaderboard_region_filter_change,
+            selection_box_height=6,
+            selection_box_width=180,
+            margin=(0, 5)
+        )
+        
+        # Refresh button
+        self.personal_best_menu.add.vertical_margin(5)
+        refresh_btn = self.personal_best_menu.add.button(
+            "⟳ Refresh Leaderboard",
+            self._refresh_leaderboard,
+            font_size=26,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            background_color=(60, 80, 100, 180),
+            padding=(8, 20),
+            margin=(0, 5)
+        )
+        self._apply_hover_effect(refresh_btn, False)
+        
+        self.personal_best_menu.add.vertical_margin(10)
+        
+        # Separator
         self.personal_best_menu.add.label(
-            "Global leaderboard features will be added in a future update.",
-            font_size=28,
-            font_color=(150, 150, 150),
+            "─" * 60,
+            font_size=20,
+            font_color=(100, 100, 100),
             font_name=pygame_menu.font.FONT_FRANCHISE
         )
+        
+        self.personal_best_menu.add.vertical_margin(5)
+        
+        # Loading state
+        if self.leaderboard_loading:
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                "Loading leaderboard...",
+                font_size=35,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Error state
+        if self.leaderboard_error:
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                self.leaderboard_error,
+                font_size=35,
+                font_color=(255, 100, 100),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Empty state
+        if not self.leaderboard_data:
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                "No records found",
+                font_size=40,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(15)
+            self.personal_best_menu.add.label(
+                "Be the first to set a record!",
+                font_size=28,
+                font_color=(150, 150, 150),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Table header
+        if self.leaderboard_filter_mode == "All Modes":
+            header_row = "RANK │      PLAYER      │   REGION   │    MODE    │   BEST TIME   │  MOVES"
+        else:
+            header_row = "RANK │        PLAYER        │     REGION     │   BEST TIME   │  MOVES  │  SOLVES"
+        
+        self.personal_best_menu.add.label(
+            header_row,
+            font_size=28,
+            font_color=(255, 255, 255),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        # Separator line
+        separator = "=" * 85
+        self.personal_best_menu.add.label(
+            separator,
+            font_size=20,
+            font_color=(200, 200, 200),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        # Display leaderboard entries
+        current_username = self.user_manager.get_username() if self.user_manager else ""
+        
+        for rank, entry in enumerate(self.leaderboard_data[:20], 1):  # Limit to 20 entries
+            username = entry.get("username", "Unknown")[:12]  # Truncate long names
+            region = entry.get("region", "N/A")[:10]
+            game_mode = entry.get("game_mode", "N/A")
+            best_time = entry.get("best_time")
+            best_moves = entry.get("best_moves")
+            total_solves = entry.get("total_solves", 0)
+            
+            # Format time
+            if best_time is not None:
+                if best_time < 60:
+                    time_str = f"{best_time:.2f}s"
+                else:
+                    mins = int(best_time // 60)
+                    secs = best_time % 60
+                    time_str = f"{mins}:{secs:05.2f}"
+            else:
+                time_str = "---"
+            
+            # Format moves
+            moves_str = str(best_moves) if best_moves is not None else "---"
+            
+            # Get display mode name
+            mode_display = GAME_MODE_DISPLAY.get(game_mode, game_mode)[:10]
+            
+            # Create row based on filter
+            if self.leaderboard_filter_mode == "All Modes":
+                row = f"{rank:^5}│{username:^18}│{region:^12}│{mode_display:^12}│{time_str:^15}│{moves_str:^8}"
+            else:
+                row = f"{rank:^5}│{username:^22}│{region:^16}│{time_str:^15}│{moves_str:^9}│{total_solves:^9}"
+            
+            # Determine row color
+            if username == current_username:
+                # Highlight current user's entries
+                row_color = (240, 198, 38)  # Gold
+            elif rank == 1:
+                row_color = (255, 215, 0)  # Gold for #1
+            elif rank == 2:
+                row_color = (192, 192, 192)  # Silver for #2
+            elif rank == 3:
+                row_color = (205, 127, 50)  # Bronze for #3
+            else:
+                row_color = (200, 200, 200)  # Default gray
+            
+            self.personal_best_menu.add.label(
+                row,
+                font_size=26,
+                font_color=row_color,
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+        
+        # Show total entries count if there are more
+        if len(self.leaderboard_data) > 20:
+            self.personal_best_menu.add.vertical_margin(10)
+            self.personal_best_menu.add.label(
+                f"Showing top 20 of {len(self.leaderboard_data)} entries",
+                font_size=22,
+                font_color=(150, 150, 150),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
     
     def _create_user_setup_content(self):
         """Create user setup dialog content for first-time users"""
@@ -3071,6 +3373,18 @@ class Menu:
         self.user_manager.complete_setup(username, region)
         self.sound_manager.play("menu_apply")
         self.user_setup_active = False
+        
+        # Initialize Supabase user hash for cloud sync
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            self.supabase_manager.set_user_hash(
+                username,
+                region,
+                self.user_manager.user_data.get("created_at", "")
+            )
+            # Sync any existing records to cloud
+            if self.personal_best_manager:
+                self.personal_best_manager.sync_all_to_cloud()
+        
         # After setup, go directly to difficulty selection
         self.current_menu = self.difficulty_menu
     
@@ -3083,6 +3397,18 @@ class Menu:
         region = REGIONS[self.user_setup_region_index]
         self.user_manager.update_user(username, region)
         self.sound_manager.play("menu_apply")
+        
+        # Update Supabase user hash (note: changing username/region creates a new identity)
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            self.supabase_manager.set_user_hash(
+                username,
+                region,
+                self.user_manager.user_data.get("created_at", "")
+            )
+            # Re-sync all records with new identity
+            if self.personal_best_manager:
+                self.personal_best_manager.sync_all_to_cloud()
+        
         self._open_personal_best()  # Go back to statistics
     
     def _back_to_statistics(self):

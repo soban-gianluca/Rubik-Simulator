@@ -15,6 +15,7 @@ from src.help_overlay import HelpOverlay
 from src.personal_best_manager import PersonalBestManager
 from utils.path_helper import resource_path
 from src.rubiks_cube import RubiksCube
+from src.pykociemba.search import Search as KociembaSearch
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -237,6 +238,64 @@ class Game:
     def debug_print(self, message):
         if self.debug_mode:
             print(message)
+
+    def _cube_to_facelets(self):
+        """Convert current `RubiksCube` state to a facelet string for pykociemba.
+
+        The returned string follows the order expected by pykociemba: U(Top), R(Right),
+        F(Front), D(Bottom), L(Left), B(Back) - each face 9 characters, rows left-to-right,
+        top-to-bottom.
+        """
+        # Map our internal numeric colors to pykociemba face letters
+        color_map = {
+            0: 'U',  # top
+            1: 'D',  # bottom -> D
+            2: 'R',  # right
+            3: 'L',  # left
+            4: 'F',  # front
+            5: 'B',  # back
+        }
+
+        faces_order = ['top', 'right', 'front', 'bottom', 'left', 'back']
+
+        facelet_chars = []
+        for face_name in faces_order:
+            face_array = self.renderer.rubiks_cube.faces[face_name]
+            # face_array is 3x3 numpy array with row 0 = top row
+            for r in range(3):
+                for c in range(3):
+                    color_idx = int(face_array[r, c])
+                    facelet_chars.append(color_map.get(color_idx, 'U'))
+
+        return ''.join(facelet_chars)
+
+    def suggest_next_move(self):
+        """Compute a full solution using pykociemba and print the next move to terminal.
+
+        This is a simple helper for now — it computes the full solution and prints the
+        first move token. Later we can integrate incremental solving or UI suggestions.
+        """
+        try:
+            facelets = self._cube_to_facelets()
+            solver = KociembaSearch()
+            # Conservative limits for quick response
+            solution = solver.solution(facelets, maxDepth=21, timeOut=5, useSeparator=False)
+            if solution.startswith('Error'):
+                print(f"Solver error: {solution}")
+                return None
+
+            solution = solution.strip()
+            if not solution:
+                print("Cube already solved — no moves needed.")
+                return None
+
+            # First token (space separated) is the next move
+            first_move = solution.split()[0]
+            print(f"Suggested next move: {first_move}  (Full solution: {solution})")
+            return first_move
+        except Exception as e:
+            print(f"Error computing suggestion: {e}")
+            return None
 
     def show_banner(self, message):
         """Show a notification banner with fade in/out animation"""
@@ -511,6 +570,11 @@ class Game:
                     self.debug_print("Rotation reset")
                 elif event.key == pygame.K_F11:
                     self.toggle_fullscreen()
+
+                # Suggest next move (press G)
+                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_g:
+                    # Compute and print suggestion to terminal
+                    self.suggest_next_move()
                 
                 # Cube movement controls using standard notation
                 elif not self.menu.is_active() and not self.results_window.active and not (hasattr(self, 'is_scrambling') and self.is_scrambling):

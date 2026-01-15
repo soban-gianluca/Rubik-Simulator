@@ -6,10 +6,10 @@ from utils.path_helper import resource_path
 def get_personal_best_path() -> str:
     """
     Path where personal best records are stored.
-    Example: C:/Users/<User>/AppData/Roaming/RubiksCube/personal_bests.json
+    Example: C:/Users/<User>/AppData/Roaming/RubiksCubeSimulator/personal_bests.json
     """
     base = os.getenv("APPDATA") or os.path.expanduser("~")
-    user_dir = os.path.join(base, "RubiksCube")
+    user_dir = os.path.join(base, "RubiksCubeSimulator")
     os.makedirs(user_dir, exist_ok=True)
     return os.path.join(user_dir, "personal_bests.json")
 

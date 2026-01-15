@@ -53,6 +53,9 @@ class Game:
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         
+        # Enable key repeat for text input (delay=300ms, interval=50ms)
+        pygame.key.set_repeat(300, 50)
+        
         # Initialize music
         self.playlist = [
             resource_path("utils/soundtrack/dark_bar.mp3"),
@@ -481,6 +484,17 @@ class Game:
                     self.sound_manager.restore_music_volume()
                 # Cancel the timer to prevent repeated calls
                 pygame.time.set_timer(self.MUSIC_RESTORE_EVENT, 0)
+            
+            # IMPORTANT: Pass events to menu FIRST when menu is active
+            # This allows text inputs in menus to receive keyboard events
+            elif self.menu.is_active():
+                # Let menu handle the event first
+                if self.menu.handle_event(event):
+                    continue
+                # Only handle ESC here for menu toggle (F11 handled below for all states)
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    # Menu's handle_event already deals with ESC
+                    pass
                 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -577,12 +591,6 @@ class Game:
                             self.scramble_cube()
                         else:
                             self.show_banner(f"Scramble is only available in freeplay mode")
-        
-            elif self.menu.handle_event(event):
-                continue
-                
-
-
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 # Left click: first try help/menu overlays, else cube moves

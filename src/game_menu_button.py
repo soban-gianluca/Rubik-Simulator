@@ -22,7 +22,7 @@ class GameMenuButton:
         # Load menu icon
         try:
             # Load the original menu icon
-            original_menu_icon = pygame.image.load(resource_path("utils/icons/menu_icon.png"))
+            original_menu_icon = pygame.image.load(resource_path("utils/icons/menu.png"))
             
             # Use smoothscale for better quality when scaling down
             # Scale to 2x the button size first, then scale down for anti-aliasing effect

@@ -271,7 +271,7 @@ class Menu:
         """Load the record icon for the personal best button"""
         try:
             # Load the record icon
-            record_icon_path = resource_path("utils/icons/record_icon.png")
+            record_icon_path = resource_path("utils/icons/statistics.png")
             if os.path.exists(record_icon_path):
                 self.record_icon = pygame.image.load(record_icon_path)
                 # Scale the icon to a suitable size (32x32 pixels)
@@ -289,11 +289,11 @@ class Menu:
         """Load the edit icon for the user edit button"""
         try:
             # Load the edit icon
-            edit_icon_path = resource_path("utils/icons/edit_icon.png")
+            edit_icon_path = resource_path("utils/icons/user-edit.png")
             if os.path.exists(edit_icon_path):
                 self.edit_icon = pygame.image.load(edit_icon_path)
-                # Scale the icon to a suitable size (24x24 pixels)
-                icon_size = 24
+                # Scale the icon to a suitable size (36x36 pixels)
+                icon_size = 36
                 self.edit_icon = pygame.transform.scale(self.edit_icon, (icon_size, icon_size))
                 print(f"Loaded edit icon: {edit_icon_path} (scaled to {icon_size}x{icon_size})")
             else:
@@ -1843,7 +1843,7 @@ class Menu:
                 self.user_manager.is_setup_completed()):
                 
                 # Position the edit button in top right of content area
-                edit_btn_size = 40
+                edit_btn_size = 60
                 edit_margin = 20
                 edit_x = screen.get_width() - edit_btn_size - edit_margin
                 edit_y = 80  # Below the title bar
@@ -1859,8 +1859,8 @@ class Menu:
                 
                 # Draw edit icon or fallback pencil symbol
                 if self.edit_icon:
-                    icon_x = edit_x + (edit_btn_size - 24) // 2
-                    icon_y = edit_y + (edit_btn_size - 24) // 2
+                    icon_x = edit_x + (edit_btn_size - 36) // 2
+                    icon_y = edit_y + (edit_btn_size - 36) // 2
                     screen.blit(self.edit_icon, (icon_x, icon_y))
                 else:
                     # Fallback: draw a simple pencil shape

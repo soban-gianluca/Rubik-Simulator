@@ -28,8 +28,6 @@ Track your personal records and compete with players from around the world! The 
 - Personal best tracking for time, moves, and TPS (turns per second)
 - Automatic cloud sync of your records
 
-**Note**: To enable the global leaderboard, you need to configure Supabase. See [LEADERBOARD_SETUP.md](LEADERBOARD_SETUP.md) for instructions.
-
 ## Used Technologies
 
 The project has been developed using a set of modern technologies, with the aim of offering a smooth and accessible simulation of the famous Rubik's Cube

@@ -1,4 +1,4 @@
-1. Show solution with animations + solver pop ups(in progress) 
+1. Show solution with animations (in progress) 
 2. UI enhancement
 3. Backgrounds enhancement
 4. Screen resolution fix

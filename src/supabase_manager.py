@@ -12,12 +12,16 @@ SUPABASE_URL = "https://veqhopyjcwayewxtigfc.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlcWhvcHlqY3dheWV3eHRpZ2ZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0NDc1NzgsImV4cCI6MjA4NDAyMzU3OH0.xswKUcXLleLHiMXGfhEG8spstIp3Qw24jo-UXs2vmvo"
 
 
-def generate_user_hash(username: str, region: str, created_at: str) -> str:
+def generate_user_hash(user_id: str, created_at: str) -> str:
     """
-    Generate a unique hash for a user based on their profile.
-    This is used to identify users without requiring authentication.
+    Generate a unique hash for a user based on their stable identifier.
+    This hash won't change when username or region changes.
+    
+    Args:
+        user_id: Stable unique identifier for the user
+        created_at: When the user account was created
     """
-    unique_string = f"{username}:{region}:{created_at}"
+    unique_string = f"{user_id}:{created_at}"
     return hashlib.sha256(unique_string.encode()).hexdigest()[:32]
 
 
@@ -34,6 +38,7 @@ class SupabaseManager:
             "Prefer": "return=representation"
         }
         self._user_hash = None
+        self._user_id = None
         self._is_configured = self._check_configuration()
     
     def _check_configuration(self) -> bool:
@@ -48,9 +53,10 @@ class SupabaseManager:
         """Check if Supabase credentials are configured."""
         return self._is_configured
     
-    def set_user_hash(self, username: str, region: str, created_at: str):
-        """Set the user hash for the current user."""
-        self._user_hash = generate_user_hash(username, region, created_at)
+    def set_user_hash(self, user_id: str, created_at: str):
+        """Set the user hash for the current user using stable identifiers."""
+        self._user_hash = generate_user_hash(user_id, created_at)
+        self._user_id = user_id
     
     def get_user_hash(self) -> Optional[str]:
         """Get the current user's hash."""
@@ -116,6 +122,7 @@ class SupabaseManager:
             "region": region,
             "game_mode": game_mode,
             "user_hash": self._user_hash,
+            "user_id": self._user_id,
             "updated_at": datetime.now().isoformat()
         }
         
@@ -153,6 +160,54 @@ class SupabaseManager:
                 
         except Exception as e:
             print(f"Error submitting record: {e}")
+            return False
+    
+    def update_user_profile(self, new_username: str, new_region: str) -> bool:
+        """
+        Update username and region for all existing records belonging to the current user.
+        This should be called BEFORE changing the user_hash when a user edits their profile.
+        
+        Args:
+            new_username: The new username to set
+            new_region: The new region to set
+        
+        Returns:
+            True if update successful, False otherwise
+        """
+        if not self._is_configured or not self._user_hash:
+            print("Cannot update profile: Supabase not configured or no user hash")
+            return False
+        
+        # Use PATCH to update all records matching the current user_hash
+        url = f"{self.base_url}/rest/v1/leaderboard?user_hash=eq.{self._user_hash}"
+        
+        data = {
+            "username": new_username,
+            "region": new_region,
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        try:
+            headers = self.headers.copy()
+            headers["Prefer"] = "return=representation"
+            
+            json_data = json.dumps(data).encode('utf-8')
+            request = urllib.request.Request(
+                url,
+                data=json_data,
+                headers=headers,
+                method="PATCH"
+            )
+            
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status in [200, 204]
+                
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8') if e.fp else ""
+            print(f"HTTP error updating user profile: {e.code} - {error_body}")
+            return False
+        except Exception as e:
+            print(f"Error updating user profile: {e}")
             return False
     
     def get_leaderboard(self, game_mode: str = None, region: str = None, 
@@ -264,6 +319,51 @@ class SupabaseManager:
                 break
         
         return ranks
+    
+    def is_username_taken(self, username: str, exclude_user_hash: str = None) -> bool:
+        """
+        Check if a username is already in use by another user.
+        
+        Args:
+            username: The username to check
+            exclude_user_hash: Optional user hash to exclude (for editing own username)
+        
+        Returns:
+            True if the username is taken by another user, False otherwise
+        """
+        if not self._is_configured:
+            return False
+        
+        # Query the leaderboard for any entries with this username (case-insensitive)
+        # Use ilike for case-insensitive matching
+        encoded_username = urllib.parse.quote(username, safe='')
+        url = f"{self.base_url}/rest/v1/leaderboard?username=ilike.{encoded_username}&select=user_hash,username&limit=1"
+        
+        try:
+            request = urllib.request.Request(url, headers=self.headers, method="GET")
+            
+            with urllib.request.urlopen(request, timeout=10) as response:
+                response_data = response.read().decode('utf-8')
+                if response_data:
+                    results = json.loads(response_data)
+                    if results:
+                        # If we're excluding a user hash (editing own profile),
+                        # check if the found user is different
+                        if exclude_user_hash:
+                            for result in results:
+                                if result.get("user_hash") != exclude_user_hash:
+                                    return True
+                            return False
+                        return True
+                return False
+                
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8') if e.fp else ""
+            print(f"HTTP error checking username availability: {e.code} - {error_body}")
+            return False
+        except Exception as e:
+            print(f"Error checking username availability: {e}")
+            return False  # On error, allow the operation to proceed
     
     def sync_all_records(self, username: str, region: str, records: dict) -> bool:
         """

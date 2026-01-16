@@ -86,8 +86,7 @@ class PersonalBestManager:
         if user_manager and self._supabase_manager:
             if user_manager.is_setup_completed():
                 self._supabase_manager.set_user_hash(
-                    user_manager.get_username(),
-                    user_manager.get_region(),
+                    user_manager.get_user_id(),
                     user_manager.user_data.get("created_at", "")
                 )
     

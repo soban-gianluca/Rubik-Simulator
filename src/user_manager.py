@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 from utils.path_helper import resource_path
 
 def get_user_data_path() -> str:
@@ -18,6 +19,7 @@ class UserManager:
             "username": None,
             "region": None,
             "created_at": None,
+            "user_id": None,  # Stable unique identifier for the user
             "setup_completed": False
         }
         self.user_data = self.load_user_data()
@@ -61,6 +63,16 @@ class UserManager:
         """Get the region"""
         return self.user_data.get("region", "")
     
+    def get_user_id(self) -> str:
+        """Get the stable user ID"""
+        user_id = self.user_data.get("user_id")
+        # Generate a user_id if it doesn't exist (for backward compatibility)
+        if not user_id and self.is_setup_completed():
+            user_id = str(uuid.uuid4())
+            self.user_data["user_id"] = user_id
+            self.save_user_data()
+        return user_id or ""
+    
     def set_username(self, username: str):
         """Set the username"""
         self.user_data["username"] = username
@@ -79,6 +91,8 @@ class UserManager:
         self.user_data["region"] = region
         self.user_data["setup_completed"] = True
         self.user_data["created_at"] = datetime.now().isoformat()
+        # Generate a stable unique user ID that won't change when username changes
+        self.user_data["user_id"] = str(uuid.uuid4())
         self.save_user_data()
     
     def update_user(self, username: str, region: str):

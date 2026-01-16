@@ -61,6 +61,7 @@ class Menu:
         self.user_setup_active = False  # Track if user setup dialog is shown
         self.user_setup_username = ""  # Temporary storage for username input
         self.user_setup_region_index = 0  # Temporary storage for region selection
+        self.username_error = None  # Error message for username validation
         
         # Statistics tab state
         self.statistics_tab = "personal_records"  # "personal_records" or "global_leaderboard"
@@ -691,6 +692,7 @@ class Menu:
             self.user_setup_region_index = REGIONS.index(current_region)
         else:
             self.user_setup_region_index = 0
+        self.username_error = None  # Clear any previous error
         self._create_user_edit_content()
         self.current_menu = self.user_edit_menu
     
@@ -3211,6 +3213,16 @@ class Menu:
         # Make text input more visible
         self.username_input.set_background_color((40, 40, 60, 200))
         
+        # Show username error if any
+        if self.username_error:
+            self.user_setup_menu.add.vertical_margin(10)
+            self.user_setup_menu.add.label(
+                self.username_error,
+                font_size=28,
+                font_color=(255, 100, 100),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+        
         self.user_setup_menu.add.vertical_margin(30)
         
         # Region selection
@@ -3308,6 +3320,16 @@ class Menu:
         # Make text input more visible
         self.edit_username_input.set_background_color((40, 40, 60, 200))
         
+        # Show username error if any
+        if self.username_error:
+            self.user_edit_menu.add.vertical_margin(10)
+            self.user_edit_menu.add.label(
+                self.username_error,
+                font_size=28,
+                font_color=(255, 100, 100),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+        
         self.user_edit_menu.add.vertical_margin(30)
         
         # Region selection
@@ -3396,18 +3418,28 @@ class Menu:
         username = self.user_setup_username.strip()
         if not username:
             # Show error - username required
+            self.username_error = "Username is required"
+            self._create_user_setup_content()
             return
         
+        # Check if username is already taken
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            if self.supabase_manager.is_username_taken(username):
+                self.username_error = "Username is already in use. Please choose a different one."
+                self.sound_manager.play("menu_select")  # Play feedback sound
+                self._create_user_setup_content()
+                return
+        
+        self.username_error = None
         region = REGIONS[self.user_setup_region_index]
         self.user_manager.complete_setup(username, region)
         self.sound_manager.play("menu_apply")
         self.user_setup_active = False
         
-        # Initialize Supabase user hash for cloud sync
+        # Initialize Supabase user hash for cloud sync (uses stable user_id)
         if self.supabase_manager and self.supabase_manager.is_configured():
             self.supabase_manager.set_user_hash(
-                username,
-                region,
+                self.user_manager.get_user_id(),
                 self.user_manager.user_data.get("created_at", "")
             )
             # Sync any existing records to cloud
@@ -3421,22 +3453,36 @@ class Menu:
         """Save user edit changes"""
         username = self.user_setup_username.strip()
         if not username:
+            self.username_error = "Username is required"
+            self._create_user_edit_content()
             return
         
+        # Check if username is already taken by another user
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            # Exclude current user's hash when checking
+            current_user_hash = self.supabase_manager.get_user_hash()
+            if self.supabase_manager.is_username_taken(username, exclude_user_hash=current_user_hash):
+                self.username_error = "Username is already in use. Please choose a different one."
+                self.sound_manager.play("menu_select")  # Play feedback sound
+                self._create_user_edit_content()
+                return
+        
+        self.username_error = None
         region = REGIONS[self.user_setup_region_index]
+        
+        # Update existing records in Supabase BEFORE changing local data
+        # This ensures the records keep the same user_hash but get the new username/region
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            # Update all existing records with new username and region
+            self.supabase_manager.update_user_profile(username, region)
+        
+        # Now update local user data
         self.user_manager.update_user(username, region)
         self.sound_manager.play("menu_apply")
         
-        # Update Supabase user hash (note: changing username/region creates a new identity)
-        if self.supabase_manager and self.supabase_manager.is_configured():
-            self.supabase_manager.set_user_hash(
-                username,
-                region,
-                self.user_manager.user_data.get("created_at", "")
-            )
-            # Re-sync all records with new identity
-            if self.personal_best_manager:
-                self.personal_best_manager.sync_all_to_cloud()
+        # Note: We do NOT change the user_hash when editing profile
+        # The user_hash remains the same so existing records stay linked to this user
+        # We also don't need to re-sync since we already updated the records above
         
         self._open_personal_best()  # Go back to statistics
     
@@ -3456,6 +3502,7 @@ class Menu:
         self.user_setup_active = True
         self.user_setup_username = ""
         self.user_setup_region_index = 0
+        self.username_error = None  # Clear any previous error
         self._create_user_setup_content()
         self.current_menu = self.user_setup_menu
         

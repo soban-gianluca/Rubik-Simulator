@@ -39,10 +39,10 @@ We've used 100% Python for the cube logic, the move management and user interfac
 For our game we utilize Pygame and OpenGl for the 3D rendering
 
 * Cloud Backend:
-[Supabase](https://supabase.com/) for the global leaderboard (optional, free tier available)
+[Supabase](https://supabase.com/) for the global leaderboard
 
 * To run the game:
-Execute the RubikSimulator.exe and enjoy the game!
+Execute the main.py RubikSimulator.exe and enjoy the game!
 
 ## Credits
 

@@ -1,7 +1,7 @@
 import pygame
 import pygame_menu
 from pygame_menu import themes
-from pygame_menu.locals import *  # Import all constants including alignment
+from pygame_menu.locals import *
 import os
 import time
 import math
@@ -1229,10 +1229,7 @@ class Menu:
         if not self.active or (self.is_animating and not self.is_opening):
             return False
 
-        # NOTE: In this project, pygame-menu text inputs appear to handle character
-        # insertion via KEYDOWN (event.unicode). Forwarding TEXTINPUT as well can
-        # cause duplicated characters. So, when we're in the username setup/edit
-        # menus, ignore TEXTINPUT events and rely on KEYDOWN.
+        # Ignore TEXTINPUT events and rely on KEYDOWN.
         if (
             self.current_menu in (getattr(self, 'user_setup_menu', None), getattr(self, 'user_edit_menu', None))
             and event.type == pygame.TEXTINPUT

@@ -8,8 +8,6 @@ from datetime import datetime
 from typing import Optional, Dict, List, Any
 
 # Supabase configuration
-# IMPORTANT: Replace these with your actual Supabase project URL and anon key
-# These are safe to expose because RLS policies protect the database
 SUPABASE_URL = "https://veqhopyjcwayewxtigfc.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlcWhvcHlqY3dheWV3eHRpZ2ZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0NDc1NzgsImV4cCI6MjA4NDAyMzU3OH0.xswKUcXLleLHiMXGfhEG8spstIp3Qw24jo-UXs2vmvo"
 

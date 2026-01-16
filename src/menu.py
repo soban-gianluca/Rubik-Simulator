@@ -5,10 +5,24 @@ from pygame_menu.locals import *  # Import all constants including alignment
 import os
 import time
 import math
+import threading
 from src.settings_manager import SettingsManager
 from src.sound_manager import SoundManager
 from src.personal_best_manager import PersonalBestManager
+from src.user_manager import UserManager, REGIONS
 from utils.path_helper import resource_path
+
+# Leaderboard filter options
+GAME_MODE_OPTIONS = ["All Modes", "easy", "medium", "hard", "limited_time", "limited_moves"]
+GAME_MODE_DISPLAY = {
+    "All Modes": "All Modes",
+    "easy": "Easy",
+    "medium": "Medium", 
+    "hard": "Hard",
+    "limited_time": "Limited Time",
+    "limited_moves": "Limited Moves"
+}
+REGION_OPTIONS = ["All Regions"] + REGIONS
 
 class Menu:
     def __init__(self, screen_width, screen_height, game_instance=None):
@@ -23,6 +37,12 @@ class Menu:
         # Initialize personal best manager
         self.personal_best_manager = PersonalBestManager()
         
+        # Initialize user manager
+        self.user_manager = UserManager()
+        
+        # Initialize Supabase manager (will be set by game instance)
+        self.supabase_manager = None
+        
         # Initialize sound manager for menu sounds
         self.sound_manager = SoundManager()
         
@@ -36,6 +56,23 @@ class Menu:
         self.selected_difficulty = "freeplay"  # Default difficulty - start in free play mode
         self.has_difficulty_changed = False  # Track if difficulty has been changed at least once
         self.difficulty_ever_selected = False  # Track if any difficulty has ever been selected
+        
+        # User setup state
+        self.user_setup_active = False  # Track if user setup dialog is shown
+        self.user_setup_username = ""  # Temporary storage for username input
+        self.user_setup_region_index = 0  # Temporary storage for region selection
+        
+        # Statistics tab state
+        self.statistics_tab = "personal_records"  # "personal_records" or "global_leaderboard"
+        
+        # Leaderboard state
+        self.leaderboard_data = []  # Cached leaderboard data
+        self.leaderboard_loading = False  # Flag for async loading
+        self.leaderboard_error = None  # Error message if fetch failed
+        self.leaderboard_filter_mode = "All Modes"  # Current game mode filter
+        self.leaderboard_filter_region = "All Regions"  # Current region filter
+        self.leaderboard_last_fetch = 0  # Timestamp of last fetch
+        self.leaderboard_ui_refresh_pending = False  # Flag to prevent concurrent UI refreshes
         
         # Limited time mode settings
         self.selected_time_limit = 180  # Default 3 minutes in seconds
@@ -74,6 +111,10 @@ class Menu:
         self.record_icon = None
         self._load_record_icon()
         
+        # Load the edit icon for user edit button
+        self.edit_icon = None
+        self._load_edit_icon()
+        
         # Available resolutions
         self.available_resolutions = [
             (1280, 720),
@@ -100,9 +141,13 @@ class Menu:
         # Initialize hover tracking
         self.hovered_widgets = set()  # Track which widgets are currently hovered
         
-        # Personal records button hover state
+        # Statistics button hover state (renamed from personal_best)
         self.personal_best_button_hovered = False
         self.personal_best_rect = None  # Will be set when drawing the button
+        
+        # User edit button hover state
+        self.user_edit_button_hovered = False
+        self.user_edit_rect = None  # Will be set when drawing the button
         
         # Initialize difficulty button animation tracking
         self.difficulty_buttons = {}  # Store difficulty buttons with their metadata
@@ -239,6 +284,24 @@ class Menu:
         except Exception as e:
             print(f"Error loading record icon: {e}")
             self.record_icon = None
+    
+    def _load_edit_icon(self):
+        """Load the edit icon for the user edit button"""
+        try:
+            # Load the edit icon
+            edit_icon_path = resource_path("utils/icons/edit_icon.png")
+            if os.path.exists(edit_icon_path):
+                self.edit_icon = pygame.image.load(edit_icon_path)
+                # Scale the icon to a suitable size (24x24 pixels)
+                icon_size = 24
+                self.edit_icon = pygame.transform.scale(self.edit_icon, (icon_size, icon_size))
+                print(f"Loaded edit icon: {edit_icon_path} (scaled to {icon_size}x{icon_size})")
+            else:
+                print(f"Edit icon not found: {edit_icon_path}")
+                self.edit_icon = None
+        except Exception as e:
+            print(f"Error loading edit icon: {e}")
+            self.edit_icon = None
     
     def _customize_button_appearance(self, button):
         """Apply custom styling to a button widget - remove backgrounds"""
@@ -489,10 +552,15 @@ class Menu:
             self.toggle()
     
     def _open_difficulty_select(self):
-        """Open difficulty selection submenu"""
+        """Open difficulty selection submenu or user setup if needed"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self.current_menu = self.difficulty_menu
+        
+        # Check if user setup is needed first
+        if not self.user_manager.is_setup_completed():
+            self.show_user_setup()
+        else:
+            self.current_menu = self.difficulty_menu
     
     def _open_settings(self):
         """Open settings submenu"""
@@ -507,12 +575,124 @@ class Menu:
         self.current_menu = self.controls_menu
     
     def _open_personal_best(self):
-        """Open personal best submenu"""
+        """Open statistics submenu (renamed from personal best)"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        # Refresh the personal best content before showing
+        
+        # Check if user setup is needed first
+        if not self.user_manager.is_setup_completed():
+            self.show_user_setup()
+        else:
+            # Refresh the statistics content before showing
+            self._create_personal_best_content()
+            self.current_menu = self.personal_best_menu
+    
+    def _switch_to_personal_records_tab(self):
+        """Switch to personal records tab in statistics"""
+        self.sound_manager.play("menu_select")
+        self.statistics_tab = "personal_records"
         self._create_personal_best_content()
-        self.current_menu = self.personal_best_menu
+    
+    def _switch_to_leaderboard_tab(self):
+        """Switch to global leaderboard tab in statistics"""
+        self.sound_manager.play("menu_select")
+        self.statistics_tab = "global_leaderboard"
+        # Fetch leaderboard data when switching to the tab
+        self._fetch_leaderboard_data()
+        self._create_personal_best_content()
+    
+    def _fetch_leaderboard_data(self, force_refresh=False):
+        """Fetch leaderboard data from Supabase in background thread."""
+        # Don't fetch if already loading
+        if self.leaderboard_loading:
+            return
+        
+        # Check if we should use cached data (cache for 30 seconds)
+        current_time = time.time()
+        if not force_refresh and self.leaderboard_data and (current_time - self.leaderboard_last_fetch) < 30:
+            return
+        
+        # Check if Supabase is configured
+        if not self.supabase_manager or not self.supabase_manager.is_configured():
+            self.leaderboard_error = "Leaderboard not configured"
+            self.leaderboard_data = []
+            return
+        
+        self.leaderboard_loading = True
+        self.leaderboard_error = None
+        self.leaderboard_ui_refresh_pending = True
+        
+        def fetch_task():
+            try:
+                # Get filter values
+                game_mode = None if self.leaderboard_filter_mode == "All Modes" else self.leaderboard_filter_mode
+                region = None if self.leaderboard_filter_region == "All Regions" else self.leaderboard_filter_region
+                
+                # Fetch data
+                data = self.supabase_manager.get_leaderboard(
+                    game_mode=game_mode,
+                    region=region,
+                    sort_by="best_time",
+                    limit=50,
+                    ascending=True
+                )
+                
+                self.leaderboard_data = data if data else []
+                self.leaderboard_last_fetch = time.time()
+                self.leaderboard_error = None
+            except Exception as e:
+                print(f"Error fetching leaderboard: {e}")
+                self.leaderboard_error = "Failed to load leaderboard"
+                self.leaderboard_data = []
+            finally:
+                self.leaderboard_loading = False
+                # Refresh the UI after data is loaded if we're still on the leaderboard tab and no other refresh is pending
+                if self.statistics_tab == "global_leaderboard" and self.leaderboard_ui_refresh_pending:
+                    self.leaderboard_ui_refresh_pending = False
+                    self._create_personal_best_content()
+        
+        thread = threading.Thread(target=fetch_task, daemon=True)
+        thread.start()
+    
+    def _on_leaderboard_mode_filter_change(self, selected_tuple, index):
+        """Handle game mode filter change in leaderboard."""
+        self.sound_manager.play("menu_select")
+        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 0:
+            self.leaderboard_filter_mode = selected_tuple[0][0] if isinstance(selected_tuple[0], tuple) else selected_tuple[0]
+        else:
+            self.leaderboard_filter_mode = GAME_MODE_OPTIONS[index]
+        # Fetch will auto-refresh UI when data is ready
+        self._fetch_leaderboard_data(force_refresh=True)
+    
+    def _on_leaderboard_region_filter_change(self, selected_tuple, index):
+        """Handle region filter change in leaderboard."""
+        self.sound_manager.play("menu_select")
+        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 0:
+            self.leaderboard_filter_region = selected_tuple[0][0] if isinstance(selected_tuple[0], tuple) else selected_tuple[0]
+        else:
+            self.leaderboard_filter_region = REGION_OPTIONS[index]
+        # Fetch will auto-refresh UI when data is ready
+        self._fetch_leaderboard_data(force_refresh=True)
+    
+    def _refresh_leaderboard(self):
+        """Manually refresh the leaderboard data."""
+        self.sound_manager.play("menu_select")
+        # Fetch will auto-refresh UI when data is ready
+        self._fetch_leaderboard_data(force_refresh=True)
+    
+    def _open_user_edit(self):
+        """Open user edit dialog"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()
+        # Pre-fill with current user data
+        self.user_setup_username = self.user_manager.get_username()
+        current_region = self.user_manager.get_region()
+        if current_region in REGIONS:
+            self.user_setup_region_index = REGIONS.index(current_region)
+        else:
+            self.user_setup_region_index = 0
+        self._create_user_edit_content()
+        self.current_menu = self.user_edit_menu
     
     def _open_audio_settings(self):
         """Open audio settings submenu"""
@@ -1048,6 +1228,16 @@ class Menu:
         # Only handle events if menu is active and not in closing animation
         if not self.active or (self.is_animating and not self.is_opening):
             return False
+
+        # NOTE: In this project, pygame-menu text inputs appear to handle character
+        # insertion via KEYDOWN (event.unicode). Forwarding TEXTINPUT as well can
+        # cause duplicated characters. So, when we're in the username setup/edit
+        # menus, ignore TEXTINPUT events and rely on KEYDOWN.
+        if (
+            self.current_menu in (getattr(self, 'user_setup_menu', None), getattr(self, 'user_edit_menu', None))
+            and event.type == pygame.TEXTINPUT
+        ):
+            return True
             
         # Enhanced mouse motion handling for hover effects
         if event.type == pygame.MOUSEMOTION:
@@ -1058,22 +1248,51 @@ class Menu:
         if event.type in [pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP]:
             self._clear_all_hover_effects()
             
-            # Check if click is on Personal Records button in bottom right (only on main menu)
+            # Check if click is on Statistics button in bottom right (only on main menu)
             if (event.type == pygame.MOUSEBUTTONDOWN and 
                 self.current_menu == self.main_menu and 
                 hasattr(self, 'personal_best_rect')):
                 
                 mouse_x, mouse_y = event.pos
                 
-                # Check if click is within the Personal Records button area
+                # Check if click is within the Statistics button area
                 if self.personal_best_rect.collidepoint(mouse_x, mouse_y):
                     self._open_personal_best()
+                    return True
+            
+            # Check if click is on user edit button (only in statistics menu)
+            if (event.type == pygame.MOUSEBUTTONDOWN and 
+                self.current_menu == self.personal_best_menu and 
+                hasattr(self, 'user_edit_rect') and 
+                self.user_edit_rect):
+                
+                mouse_x, mouse_y = event.pos
+                
+                if self.user_edit_rect.collidepoint(mouse_x, mouse_y):
+                    self._open_user_edit()
                     return True
         
         # Handle menu navigation
         if self.current_menu and self.current_menu.is_enabled():
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+                # For user setup and edit menus, only handle ESC key here
+                # Let all other keys pass through to the text input widget
+                if self.current_menu == self.user_setup_menu:
+                    if event.key == pygame.K_ESCAPE:
+                        # Don't allow escaping from user setup
+                        return True
+                    # Pass all other keys to pygame-menu for text input
+                    updated = self.current_menu.update([event])
+                    return updated or self.active
+                elif self.current_menu == self.user_edit_menu:
+                    if event.key == pygame.K_ESCAPE:
+                        # Go back to statistics
+                        self._back_to_statistics()
+                        return True
+                    # Pass all other keys to pygame-menu for text input
+                    updated = self.current_menu.update([event])
+                    return updated or self.active
+                elif event.key == pygame.K_ESCAPE:
                     if self.current_menu == self.main_menu:
                         # Start closing animation instead of immediately setting active to False
                         if not self.is_animating:  # Prevent multiple toggle calls during animation
@@ -1377,7 +1596,7 @@ class Menu:
         if not self.active:
             return
         
-        # Check if mouse is over Personal Records button (only on main menu)
+        # Check if mouse is over Statistics button (only on main menu)
         if (self.current_menu == self.main_menu and 
             hasattr(self, 'personal_best_rect') and 
             self.personal_best_rect):
@@ -1390,6 +1609,20 @@ class Menu:
                 self.personal_best_button_hovered = False
         else:
             self.personal_best_button_hovered = False
+        
+        # Check if mouse is over user edit button (only in statistics menu)
+        if (self.current_menu == self.personal_best_menu and 
+            hasattr(self, 'user_edit_rect') and 
+            self.user_edit_rect):
+            
+            if self.user_edit_rect.collidepoint(mouse_pos):
+                self.user_edit_button_hovered = True
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                return
+            else:
+                self.user_edit_button_hovered = False
+        else:
+            self.user_edit_button_hovered = False
         
         if self.current_menu:
             # Check if mouse is over any interactive widget
@@ -1545,12 +1778,12 @@ class Menu:
             
             screen.blit(menu_surface, (0, 0))
             
-            # Draw Personal Records button in bottom right corner (only on main menu)
+            # Draw Statistics button in bottom right corner (only on main menu)
             if (self.current_menu == self.main_menu and 
                 hasattr(self, 'record_icon')):  # Only need to check if we have the icon loaded
                 
-                # Position the Personal Records button in bottom right
-                button_width = 202
+                # Position the Statistics button in bottom right
+                button_width = 160  # Smaller width for "Statistics" text
                 button_height = 60
                 margin = 20
                 
@@ -1590,23 +1823,60 @@ class Menu:
                     
                     # Text color changes on hover
                     text_color = (255, 255, 255) if not self.personal_best_button_hovered else (255, 255, 180)
-                    text_surface = menu_font.render("Personal Records", True, text_color)
+                    text_surface = menu_font.render("Statistics", True, text_color)
                     text_y = button_y + (button_height - text_surface.get_height()) // 2
                     
                     # Add shadow effect like the menu
-                    shadow_surface = menu_font.render("Personal Records", True, (0, 0, 0))
+                    shadow_surface = menu_font.render("Statistics", True, (0, 0, 0))
                     shadow_offset = 2 if self.personal_best_button_hovered else 1
                     screen.blit(shadow_surface, (text_x + shadow_offset, text_y + shadow_offset))
                     screen.blit(text_surface, (text_x, text_y))
                 except:
                     # Fallback to basic font if menu font fails
                     font = pygame.font.Font(None, 24)
-                    text_surface = font.render("Personal Records", True, (255, 255, 255))
+                    text_surface = font.render("Statistics", True, (255, 255, 255))
                     text_y = button_y + (button_height - text_surface.get_height()) // 2
                     screen.blit(text_surface, (text_x, text_y))
                 
                 # Store button rectangle for click detection
                 self.personal_best_rect = button_rect
+            
+            # Draw user edit button in Statistics menu (top right corner)
+            if (self.current_menu == self.personal_best_menu and 
+                self.user_manager.is_setup_completed()):
+                
+                # Position the edit button in top right of content area
+                edit_btn_size = 40
+                edit_margin = 20
+                edit_x = screen.get_width() - edit_btn_size - edit_margin
+                edit_y = 80  # Below the title bar
+                
+                edit_rect = pygame.Rect(edit_x, edit_y, edit_btn_size, edit_btn_size)
+                
+                if self.user_edit_button_hovered:
+                    pygame.draw.rect(screen, (80, 80, 80, 200), edit_rect, border_radius=8)
+                    pygame.draw.rect(screen, (150, 150, 150), edit_rect, 2, border_radius=8)
+                else:
+                    pygame.draw.rect(screen, (50, 50, 50, 180), edit_rect, border_radius=8)
+                    pygame.draw.rect(screen, (100, 100, 100), edit_rect, 1, border_radius=8)
+                
+                # Draw edit icon or fallback pencil symbol
+                if self.edit_icon:
+                    icon_x = edit_x + (edit_btn_size - 24) // 2
+                    icon_y = edit_y + (edit_btn_size - 24) // 2
+                    screen.blit(self.edit_icon, (icon_x, icon_y))
+                else:
+                    # Fallback: draw a simple pencil shape
+                    try:
+                        edit_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, 24)
+                        edit_text = edit_font.render("✎", True, (255, 255, 255))
+                        text_x = edit_x + (edit_btn_size - edit_text.get_width()) // 2
+                        text_y = edit_y + (edit_btn_size - edit_text.get_height()) // 2
+                        screen.blit(edit_text, (text_x, text_y))
+                    except:
+                        pass
+                
+                self.user_edit_rect = edit_rect
         
         # Draw tooltip if active (must be last to appear on top)
         self._draw_tooltip(screen)
@@ -2178,16 +2448,33 @@ class Menu:
         # Ensure the Back button gets hover/cursor styling
         self._apply_hover_effect(back_btn, False)
         
-        # Create personal best menu with ACTUAL dimensions
+        # Create statistics menu (renamed from personal best) with ACTUAL dimensions
         self.personal_best_menu = pygame_menu.Menu(
-            "Personal Best Records",
+            "Statistics",
             self.width,
             self.height,
             theme=self.sub_theme
         )
         
-        # Create personal best menu content
+        # Create statistics menu content
         self._create_personal_best_content()
+        
+        # Create user setup menu for first-time setup
+        self.user_setup_menu = pygame_menu.Menu(
+            "Welcome!",
+            self.width,
+            self.height,
+            theme=self.sub_theme
+        )
+        self._create_user_setup_content()
+        
+        # Create user edit menu for editing user info
+        self.user_edit_menu = pygame_menu.Menu(
+            "Edit Profile",
+            self.width,
+            self.height,
+            theme=self.sub_theme
+        )
         
         # Create time selection menu for limited time mode
         self.time_selection_menu = pygame_menu.Menu(
@@ -2402,13 +2689,17 @@ class Menu:
                 self.current_menu = self.time_selection_menu
             elif self.current_menu == self.moves_selection_menu:
                 self.current_menu = self.moves_selection_menu
+            elif self.current_menu == self.user_setup_menu:
+                self.current_menu = self.user_setup_menu
+            elif self.current_menu == self.user_edit_menu:
+                self.current_menu = self.user_edit_menu
             else:
                 self.current_menu = self.main_menu
         else:
             self.current_menu = self.main_menu
     
     def _create_personal_best_content(self):
-        """Create or refresh personal best menu content"""
+        """Create or refresh statistics menu content with tabs"""
         # Clear existing content except title
         widgets = self.personal_best_menu.get_widgets()
         widgets_to_remove = []
@@ -2421,12 +2712,85 @@ class Menu:
         for widget in widgets_to_remove:
             self.personal_best_menu.remove_widget(widget)
         
+        # Add user info display at the top
+        username = self.user_manager.get_username()
+        region = self.user_manager.get_region()
+        if username:
+            self.personal_best_menu.add.vertical_margin(10)
+            user_info_text = f"Player: {username}"
+            if region:
+                user_info_text += f"  |  Region: {region}"
+            # Tab navigation buttons (side-by-side)
+            self.personal_best_menu.add.vertical_margin(15)
+
+            tab_frame = self.personal_best_menu.add.frame_h(
+                width=900,
+                height=90,
+                align=ALIGN_CENTER,
+                margin=(0, 0)
+            )
+            # Suppress pack margin warnings (pygame-menu internal warning)
+            tab_frame._pack_margin_warning = False
+
+            pr_color = (240, 198, 38, 200) if self.statistics_tab == "personal_records" else (60, 60, 60, 180)
+            pr_text_color = (255, 255, 255) if self.statistics_tab == "personal_records" else (160, 160, 160)
+            personal_records_btn = tab_frame.pack(
+                self.personal_best_menu.add.button(
+                    "Personal Records",
+                    self._switch_to_personal_records_tab,
+                    font_size=28,
+                    font_name=pygame_menu.font.FONT_FRANCHISE,
+                    background_color=pr_color,
+                    font_color=pr_text_color,
+                    padding=(10, 30),
+                    margin=(0, 0)
+                ),
+                align=ALIGN_CENTER,
+                margin=(15, 0)
+            )
+
+            gl_color = (240, 198, 38, 200) if self.statistics_tab == "global_leaderboard" else (60, 60, 60, 180)
+            gl_text_color = (255, 255, 255) if self.statistics_tab == "global_leaderboard" else (160, 160, 160)
+            leaderboard_btn = tab_frame.pack(
+                self.personal_best_menu.add.button(
+                    "Global Leaderboard",
+                    self._switch_to_leaderboard_tab,
+                    font_size=28,
+                    font_name=pygame_menu.font.FONT_FRANCHISE,
+                    background_color=gl_color,
+                    font_color=gl_text_color,
+                    padding=(10, 30),
+                    margin=(0, 0)
+                ),
+                align=ALIGN_CENTER,
+                margin=(15, 0)
+            )
+
+        self.personal_best_menu.add.vertical_margin(20)
+        
+        # Show content based on selected tab
+        if self.statistics_tab == "personal_records":
+            self._create_personal_records_content()
+        else:
+            self._create_leaderboard_content()
+        
+        # Add spacing and back button
+        self.personal_best_menu.add.vertical_margin(40)
+        back_btn = self.personal_best_menu.add.button("Back", self._back_to_main)
+        
+        # Apply custom styling to statistics menu
+        self._customize_menu_widgets(self.personal_best_menu)
+        # Ensure the Back button gets hover/cursor styling
+        self._apply_hover_effect(back_btn, False)
+    
+    def _create_personal_records_content(self):
+        """Create personal records tab content"""
         # Check if there are any records
         has_any_records = self.personal_best_manager.has_records()
         
         if not has_any_records:
             # No records message
-            self.personal_best_menu.add.vertical_margin(50)
+            self.personal_best_menu.add.vertical_margin(30)
             self.personal_best_menu.add.label(
                 "No records yet!",
                 font_size=45,
@@ -2448,7 +2812,7 @@ class Menu:
             )
         else:
             # Display records in table format
-            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.vertical_margin(10)
                         
             # Table column headers with separators
             header_row = "DIFFICULTY           │           BEST TIME           │          LEAST MOVES          │     SOLVES"
@@ -2507,9 +2871,8 @@ class Menu:
                     font_name=pygame_menu.font.FONT_FRANCHISE
                 )
             
-            
             # Challenge Modes Win/Loss Table
-            self.personal_best_menu.add.vertical_margin(40)
+            self.personal_best_menu.add.vertical_margin(30)
             
             # Check if there are any challenge mode records
             has_challenge_records = (
@@ -2580,7 +2943,7 @@ class Menu:
                         )
         
             # Overall statistics
-            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.vertical_margin(20)
             total_solves = self.personal_best_manager.get_total_solves()
             if total_solves > 0:
                 self.personal_best_menu.add.label(
@@ -2589,11 +2952,530 @@ class Menu:
                     font_color=(255, 215, 0),
                     font_name=pygame_menu.font.FONT_FRANCHISE
                 )
-        # Add spacing and back button
-        self.personal_best_menu.add.vertical_margin(40)
-        back_btn = self.personal_best_menu.add.button("Back", self._back_to_main)
+    
+    def _create_leaderboard_content(self):
+        """Create global leaderboard tab content with filters and data display."""
         
-        # Apply custom styling to personal best menu
-        self._customize_menu_widgets(self.personal_best_menu)
-        # Ensure the Back button gets hover/cursor styling
+        # Check if Supabase is configured
+        if not self.supabase_manager or not self.supabase_manager.is_configured():
+            self.personal_best_menu.add.vertical_margin(50)
+            self.personal_best_menu.add.label(
+                "Global Leaderboard",
+                font_size=50,
+                font_color=(255, 215, 0),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                "Leaderboard Not Configured",
+                font_size=40,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(20)
+            self.personal_best_menu.add.label(
+                "Please configure Supabase credentials in supabase_manager.py",
+                font_size=24,
+                font_color=(150, 150, 150),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Filter section - using simple vertical layout with labels
+        self.personal_best_menu.add.vertical_margin(5)
+        
+        # Filter label
+        self.personal_best_menu.add.label(
+            "FILTERS",
+            font_size=28,
+            font_color=(200, 200, 200),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.personal_best_menu.add.vertical_margin(5)
+        
+        # Game mode filter dropdown
+        mode_items = [(GAME_MODE_DISPLAY.get(mode, mode), i) for i, mode in enumerate(GAME_MODE_OPTIONS)]
+        current_mode_index = GAME_MODE_OPTIONS.index(self.leaderboard_filter_mode) if self.leaderboard_filter_mode in GAME_MODE_OPTIONS else 0
+        
+        self.personal_best_menu.add.dropselect(
+            "Game Mode:  ",
+            mode_items,
+            default=current_mode_index,
+            font_size=26,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            onchange=self._on_leaderboard_mode_filter_change,
+            selection_box_height=6,
+            selection_box_width=200,
+            margin=(0, 5)
+        )
+        
+        # Region filter dropdown
+        region_items = [(region, i) for i, region in enumerate(REGION_OPTIONS)]
+        current_region_index = REGION_OPTIONS.index(self.leaderboard_filter_region) if self.leaderboard_filter_region in REGION_OPTIONS else 0
+        
+        self.personal_best_menu.add.dropselect(
+            "Region:  ",
+            region_items,
+            default=current_region_index,
+            font_size=26,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            onchange=self._on_leaderboard_region_filter_change,
+            selection_box_height=6,
+            selection_box_width=180,
+            margin=(0, 5)
+        )
+        
+        # Refresh button
+        self.personal_best_menu.add.vertical_margin(5)
+        refresh_btn = self.personal_best_menu.add.button(
+            "⟳ Refresh Leaderboard",
+            self._refresh_leaderboard,
+            font_size=26,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            background_color=(60, 80, 100, 180),
+            padding=(8, 20),
+            margin=(0, 5)
+        )
+        self._apply_hover_effect(refresh_btn, False)
+        
+        self.personal_best_menu.add.vertical_margin(10)
+        
+        # Separator
+        self.personal_best_menu.add.label(
+            "─" * 60,
+            font_size=20,
+            font_color=(100, 100, 100),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.personal_best_menu.add.vertical_margin(5)
+        
+        # Loading state
+        if self.leaderboard_loading:
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                "Loading leaderboard...",
+                font_size=35,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Error state
+        if self.leaderboard_error:
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                self.leaderboard_error,
+                font_size=35,
+                font_color=(255, 100, 100),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Empty state
+        if not self.leaderboard_data:
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                "No records found",
+                font_size=40,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(15)
+            self.personal_best_menu.add.label(
+                "Be the first to set a record!",
+                font_size=28,
+                font_color=(150, 150, 150),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Table header
+        if self.leaderboard_filter_mode == "All Modes":
+            header_row = "RANK │      PLAYER      │   REGION   │    MODE    │   BEST TIME   │  MOVES"
+        else:
+            header_row = "RANK │        PLAYER        │     REGION     │   BEST TIME   │  MOVES  │  SOLVES"
+        
+        self.personal_best_menu.add.label(
+            header_row,
+            font_size=28,
+            font_color=(255, 255, 255),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        # Separator line
+        separator = "=" * 85
+        self.personal_best_menu.add.label(
+            separator,
+            font_size=20,
+            font_color=(200, 200, 200),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        # Display leaderboard entries
+        current_username = self.user_manager.get_username() if self.user_manager else ""
+        
+        for rank, entry in enumerate(self.leaderboard_data[:20], 1):  # Limit to 20 entries
+            username = entry.get("username", "Unknown")[:12]  # Truncate long names
+            region = entry.get("region", "N/A")[:10]
+            game_mode = entry.get("game_mode", "N/A")
+            best_time = entry.get("best_time")
+            best_moves = entry.get("best_moves")
+            total_solves = entry.get("total_solves", 0)
+            
+            # Format time
+            if best_time is not None:
+                if best_time < 60:
+                    time_str = f"{best_time:.2f}s"
+                else:
+                    mins = int(best_time // 60)
+                    secs = best_time % 60
+                    time_str = f"{mins}:{secs:05.2f}"
+            else:
+                time_str = "---"
+            
+            # Format moves
+            moves_str = str(best_moves) if best_moves is not None else "---"
+            
+            # Get display mode name
+            mode_display = GAME_MODE_DISPLAY.get(game_mode, game_mode)[:10]
+            
+            # Create row based on filter
+            if self.leaderboard_filter_mode == "All Modes":
+                row = f"{rank:^5}│{username:^18}│{region:^12}│{mode_display:^12}│{time_str:^15}│{moves_str:^8}"
+            else:
+                row = f"{rank:^5}│{username:^22}│{region:^16}│{time_str:^15}│{moves_str:^9}│{total_solves:^9}"
+            
+            # Determine row color
+            if username == current_username:
+                # Highlight current user's entries
+                row_color = (240, 198, 38)  # Gold
+            elif rank == 1:
+                row_color = (255, 215, 0)  # Gold for #1
+            elif rank == 2:
+                row_color = (192, 192, 192)  # Silver for #2
+            elif rank == 3:
+                row_color = (205, 127, 50)  # Bronze for #3
+            else:
+                row_color = (200, 200, 200)  # Default gray
+            
+            self.personal_best_menu.add.label(
+                row,
+                font_size=26,
+                font_color=row_color,
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+        
+        # Show total entries count if there are more
+        if len(self.leaderboard_data) > 20:
+            self.personal_best_menu.add.vertical_margin(10)
+            self.personal_best_menu.add.label(
+                f"Showing top 20 of {len(self.leaderboard_data)} entries",
+                font_size=22,
+                font_color=(150, 150, 150),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+    
+    def _create_user_setup_content(self):
+        """Create user setup dialog content for first-time users"""
+        # Clear existing content except title
+        widgets = self.user_setup_menu.get_widgets()
+        widgets_to_remove = []
+        for i, widget in enumerate(widgets):
+            if i > 0:
+                widgets_to_remove.append(widget)
+        for widget in widgets_to_remove:
+            self.user_setup_menu.remove_widget(widget)
+        
+        self.user_setup_menu.add.vertical_margin(30)
+        self.user_setup_menu.add.label(
+            "Please set up your profile",
+            font_size=45,
+            font_color=(255, 255, 255),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.user_setup_menu.add.vertical_margin(30)
+        
+        # Username input - clickable text field for keyboard input
+        self.username_input = self.user_setup_menu.add.text_input(
+            "Enter Username: ",
+            default=self.user_setup_username,
+            maxchar=20,
+            font_size=32,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            input_underline="_",
+            onchange=self._on_username_change,
+            textinput_id="username_input",
+            password=False,
+            copy_paste_enable=True
+        )
+        # Make text input more visible
+        self.username_input.set_background_color((40, 40, 60, 200))
+        
+        self.user_setup_menu.add.vertical_margin(30)
+        
+        # Region selection
+        self.user_setup_menu.add.label(
+            "Region:",
+            font_size=35,
+            font_color=(200, 200, 200),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        region_items = [(region, i) for i, region in enumerate(REGIONS)]
+        self.region_selector = self.user_setup_menu.add.dropselect(
+            "",
+            region_items,
+            default=self.user_setup_region_index,
+            font_size=35,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            onchange=self._on_region_change,
+            selection_box_height=5
+        )
+        
+        self.user_setup_menu.add.vertical_margin(50)
+        
+        # Confirm button
+        confirm_btn = self.user_setup_menu.add.button(
+            "Confirm",
+            self._confirm_user_setup,
+            font_size=45,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            background_color=(46, 125, 50, 200),
+            padding=(15, 40)
+        )
+        
+        self.user_setup_menu.add.vertical_margin(20)
+        
+        # Back button
+        back_btn = self.user_setup_menu.add.button(
+            "Back",
+            self._back_from_user_setup,
+            font_size=45,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            background_color=(211, 47, 47, 200),
+            padding=(15, 40)
+        )
+        
+        # Apply custom styling
+        self._customize_menu_widgets(self.user_setup_menu)
+        self._apply_hover_effect(confirm_btn, False)
         self._apply_hover_effect(back_btn, False)
+        
+        # Set the text input as selected and focused to enable keyboard input
+        try:
+            self.user_setup_menu.enable()
+            self.user_setup_menu.select_widget(self.username_input)
+            # Force focus the text input
+            if hasattr(self.username_input, 'set_selected'):
+                self.username_input.set_selected(True)
+        except Exception as e:
+            print(f"Error focusing text input: {e}")
+    
+    def _create_user_edit_content(self):
+        """Create user edit dialog content"""
+        # Clear existing content except title
+        widgets = self.user_edit_menu.get_widgets()
+        widgets_to_remove = []
+        for i, widget in enumerate(widgets):
+            if i > 0:
+                widgets_to_remove.append(widget)
+        for widget in widgets_to_remove:
+            self.user_edit_menu.remove_widget(widget)
+        
+        self.user_edit_menu.add.vertical_margin(30)
+        self.user_edit_menu.add.label(
+            "Edit your profile",
+            font_size=45,
+            font_color=(255, 255, 255),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.user_edit_menu.add.vertical_margin(30)
+        
+        # Username input - clickable text field for keyboard input
+        self.edit_username_input = self.user_edit_menu.add.text_input(
+            "Enter Username: ",
+            default=self.user_setup_username,
+            maxchar=20,
+            font_size=32,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            input_underline="_",
+            onchange=self._on_edit_username_change,
+            textinput_id="edit_username_input",
+            password=False,
+            copy_paste_enable=True
+        )
+        # Make text input more visible
+        self.edit_username_input.set_background_color((40, 40, 60, 200))
+        
+        self.user_edit_menu.add.vertical_margin(30)
+        
+        # Region selection
+        self.user_edit_menu.add.label(
+            "Region:",
+            font_size=35,
+            font_color=(200, 200, 200),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        region_items = [(region, i) for i, region in enumerate(REGIONS)]
+        self.edit_region_selector = self.user_edit_menu.add.dropselect(
+            "",
+            region_items,
+            default=self.user_setup_region_index,
+            font_size=35,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            onchange=self._on_edit_region_change,
+            selection_box_height=5
+        )
+        
+        self.user_edit_menu.add.vertical_margin(50)
+        
+        # Save button
+        save_btn = self.user_edit_menu.add.button(
+            "Save Changes",
+            self._save_user_edit,
+            font_size=45,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            background_color=(46, 125, 50, 200),
+            padding=(15, 40)
+        )
+        
+        self.user_edit_menu.add.vertical_margin(15)
+        
+        # Back button
+        back_btn = self.user_edit_menu.add.button(
+            "Cancel",
+            self._back_to_statistics,
+            font_size=40,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            padding=(10, 30)
+        )
+        
+        # Apply custom styling
+        self._customize_menu_widgets(self.user_edit_menu)
+        self._apply_hover_effect(save_btn, False)
+        self._apply_hover_effect(back_btn, False)
+        
+        # Set the text input as selected and focused to enable keyboard input
+        try:
+            self.user_edit_menu.enable()
+            self.user_edit_menu.select_widget(self.edit_username_input)
+            # Force focus the text input
+            if hasattr(self.edit_username_input, 'set_selected'):
+                self.edit_username_input.set_selected(True)
+        except Exception as e:
+            print(f"Error focusing edit text input: {e}")
+    
+    def _on_username_change(self, value):
+        """Handle username input change"""
+        self.user_setup_username = value
+    
+    def _on_region_change(self, selected_tuple, index):
+        """Handle region selection change"""
+        self.sound_manager.play("menu_select")
+        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
+            self.user_setup_region_index = selected_tuple[1]
+        else:
+            self.user_setup_region_index = index
+    
+    def _on_edit_username_change(self, value):
+        """Handle username input change in edit mode"""
+        self.user_setup_username = value
+    
+    def _on_edit_region_change(self, selected_tuple, index):
+        """Handle region selection change in edit mode"""
+        self.sound_manager.play("menu_select")
+        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
+            self.user_setup_region_index = selected_tuple[1]
+        else:
+            self.user_setup_region_index = index
+    
+    def _confirm_user_setup(self):
+        """Confirm user setup and save data"""
+        username = self.user_setup_username.strip()
+        if not username:
+            # Show error - username required
+            return
+        
+        region = REGIONS[self.user_setup_region_index]
+        self.user_manager.complete_setup(username, region)
+        self.sound_manager.play("menu_apply")
+        self.user_setup_active = False
+        
+        # Initialize Supabase user hash for cloud sync
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            self.supabase_manager.set_user_hash(
+                username,
+                region,
+                self.user_manager.user_data.get("created_at", "")
+            )
+            # Sync any existing records to cloud
+            if self.personal_best_manager:
+                self.personal_best_manager.sync_all_to_cloud()
+        
+        # After setup, go directly to difficulty selection
+        self.current_menu = self.difficulty_menu
+    
+    def _save_user_edit(self):
+        """Save user edit changes"""
+        username = self.user_setup_username.strip()
+        if not username:
+            return
+        
+        region = REGIONS[self.user_setup_region_index]
+        self.user_manager.update_user(username, region)
+        self.sound_manager.play("menu_apply")
+        
+        # Update Supabase user hash (note: changing username/region creates a new identity)
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            self.supabase_manager.set_user_hash(
+                username,
+                region,
+                self.user_manager.user_data.get("created_at", "")
+            )
+            # Re-sync all records with new identity
+            if self.personal_best_manager:
+                self.personal_best_manager.sync_all_to_cloud()
+        
+        self._open_personal_best()  # Go back to statistics
+    
+    def _back_to_statistics(self):
+        """Go back to statistics menu"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()
+        self._create_personal_best_content()
+        self.current_menu = self.personal_best_menu
+    
+    def needs_user_setup(self) -> bool:
+        """Check if user setup is needed"""
+        return not self.user_manager.is_setup_completed()
+    
+    def show_user_setup(self):
+        """Show the user setup dialog"""
+        self.user_setup_active = True
+        self.user_setup_username = ""
+        self.user_setup_region_index = 0
+        self._create_user_setup_content()
+        self.current_menu = self.user_setup_menu
+        
+        # Ensure the text input is selected and focused for keyboard input
+        try:
+            # Force the menu to become active first
+            self.user_setup_menu.enable()
+            # Then select the text input widget
+            self.user_setup_menu.select_widget(self.username_input)
+            # Also clear any existing text and set cursor position
+            if hasattr(self.username_input, 'clear'):
+                self.username_input.clear()
+        except Exception as e:
+            print(f"Error selecting text input: {e}")    
+    def _back_from_user_setup(self):
+        """Go back from user setup screen to main menu"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()
+        self.user_setup_active = False
+        self.current_menu = self.main_menu

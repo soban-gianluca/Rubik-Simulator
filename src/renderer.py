@@ -597,9 +597,7 @@ class Renderer:
         """
         self.rotation_y += azimuth
         self.rotation_x += elevation
-        
-        # Keep rotations within reasonable bounds
-        self.rotation_x = max(-90, min(90, self.rotation_x))
+        # Vertical limit removed to allow unrestricted look-around
         
     def render_cube(self):
         """Render the 3x3x3 Rubik's cube using individual cubes with animation"""

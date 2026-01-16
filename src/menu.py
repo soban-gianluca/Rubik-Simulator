@@ -577,9 +577,14 @@ class Menu:
         """Open statistics submenu (renamed from personal best)"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        # Refresh the statistics content before showing
-        self._create_personal_best_content()
-        self.current_menu = self.personal_best_menu
+        
+        # Check if user setup is needed first
+        if not self.user_manager.is_setup_completed():
+            self.show_user_setup()
+        else:
+            # Refresh the statistics content before showing
+            self._create_personal_best_content()
+            self.current_menu = self.personal_best_menu
     
     def _switch_to_personal_records_tab(self):
         """Switch to personal records tab in statistics"""
@@ -3228,9 +3233,22 @@ class Menu:
             padding=(15, 40)
         )
         
+        self.user_setup_menu.add.vertical_margin(20)
+        
+        # Back button
+        back_btn = self.user_setup_menu.add.button(
+            "Back",
+            self._back_from_user_setup,
+            font_size=45,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            background_color=(211, 47, 47, 200),
+            padding=(15, 40)
+        )
+        
         # Apply custom styling
         self._customize_menu_widgets(self.user_setup_menu)
         self._apply_hover_effect(confirm_btn, False)
+        self._apply_hover_effect(back_btn, False)
         
         # Set the text input as selected and focused to enable keyboard input
         try:
@@ -3440,4 +3458,10 @@ class Menu:
             if hasattr(self.username_input, 'clear'):
                 self.username_input.clear()
         except Exception as e:
-            print(f"Error selecting text input: {e}")
+            print(f"Error selecting text input: {e}")    
+    def _back_from_user_setup(self):
+        """Go back from user setup screen to main menu"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()
+        self.user_setup_active = False
+        self.current_menu = self.main_menu

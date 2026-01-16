@@ -16,6 +16,8 @@ from src.personal_best_manager import PersonalBestManager
 from utils.path_helper import resource_path
 from src.rubiks_cube import RubiksCube
 from src.pykociemba.search import Search as KociembaSearch
+from src.pykociemba.cubiecube import CubieCube, moveCube
+from src.pykociemba.facecube import FaceCube
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -242,51 +244,139 @@ class Game:
     def _cube_to_facelets(self):
         """Convert current `RubiksCube` state to a facelet string for pykociemba.
 
-        The returned string follows the order expected by pykociemba: U(Top), R(Right),
-        F(Front), D(Bottom), L(Left), B(Back) - each face 9 characters, rows left-to-right,
-        top-to-bottom.
+        CRITICAL FIX: The scramble includes slice moves (M, E, S) which move centers.
+        We must map based on WHICH PHYSICAL FACE each sticker is on, not the color value.
         """
-        # Map our internal numeric colors to pykociemba face letters
-        color_map = {
-            0: 'U',  # top
-            1: 'D',  # bottom -> D
-            2: 'R',  # right
-            3: 'L',  # left
-            4: 'F',  # front
-            5: 'B',  # back
-        }
-
-        faces_order = ['top', 'right', 'front', 'bottom', 'left', 'back']
-
-        facelet_chars = []
-        for face_name in faces_order:
-            face_array = self.renderer.rubiks_cube.faces[face_name]
-            # face_array is 3x3 numpy array with row 0 = top row
-            for r in range(3):
-                for c in range(3):
-                    color_idx = int(face_array[r, c])
-                    facelet_chars.append(color_map.get(color_idx, 'U'))
-
-        return ''.join(facelet_chars)
+        c = self.renderer.rubiks_cube
+        
+        # Read the center color of each physical face to determine orientation
+        center_top = int(c.faces['top'][1, 1])
+        center_right = int(c.faces['right'][1, 1])
+        center_front = int(c.faces['front'][1, 1])
+        center_bottom = int(c.faces['bottom'][1, 1])
+        center_left = int(c.faces['left'][1, 1])
+        center_back = int(c.faces['back'][1, 1])
+        
+        # Create color mapping based on current center positions
+        # Map: color_value -> which face letter it represents
+        color_to_face = {}
+        color_to_face[center_top] = 'U'
+        color_to_face[center_right] = 'R'
+        color_to_face[center_front] = 'F'
+        color_to_face[center_bottom] = 'D'
+        color_to_face[center_left] = 'L'
+        color_to_face[center_back] = 'B'
+        
+        result = []
+        
+        # Read each face in the order expected by pykociemba: U, R, F, D, L, B
+        for face_name in ['top', 'right', 'front', 'bottom', 'left', 'back']:
+            for row in range(3):
+                for col in range(3):
+                    color_idx = int(c.faces[face_name][row, col])
+                    result.append(color_to_face[color_idx])
+        
+        facelet_str = ''.join(result)
+        return facelet_str
 
     def suggest_next_move(self):
         """Compute a full solution using pykociemba and print the next move to terminal.
 
-        This is a simple helper for now — it computes the full solution and prints the
-        first move token. Later we can integrate incremental solving or UI suggestions.
+        This validates the solution using pykociemba's own move semantics to ensure
+        the suggestion is correct and will actually solve the cube.
         """
         try:
+            # Don't run during animations or scrambles
+            if getattr(self.renderer, 'is_animating', False) or getattr(self, 'is_scrambling', False):
+                print("Please wait for animations/scramble to finish before requesting a suggestion.")
+                return None
+
+            # Build facelet string from current cube state
             facelets = self._cube_to_facelets()
+            
+            # Diagnostic: verify it's a solved cube if we think it should be
+            if self.renderer.rubiks_cube.is_solved():
+                expected_solved = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB"
+                if facelets != expected_solved:
+                    print(f"WARNING: Cube reports as solved but facelet string doesn't match!")
+                    print(f"Expected: {expected_solved}")
+                    print(f"Got:      {facelets}")
+            
+            # Call solver
             solver = KociembaSearch()
-            # Conservative limits for quick response
             solution = solver.solution(facelets, maxDepth=21, timeOut=5, useSeparator=False)
+            
             if solution.startswith('Error'):
                 print(f"Solver error: {solution}")
+                print(f"Facelet string: {facelets}")
+                print(f"Cube is_solved: {self.renderer.rubiks_cube.is_solved()}")
                 return None
 
             solution = solution.strip()
             if not solution:
                 print("Cube already solved — no moves needed.")
+                return None
+
+            # CRITICAL: Validate solution using pykociemba's own move semantics
+            # This ensures the moves will actually solve the cube as the solver expects
+            try:
+                # Convert current cube state to CubieCube using pykociemba's parser
+                test_cubie = FaceCube(facelets).toCubieCube()
+                
+                # Apply each move using pykociemba's moveCube table (not RubiksCube.execute_move!)
+                # moveCube indices: 0=U, 1=R, 2=F, 3=D, 4=L, 5=B
+                move_map = {
+                    'U': 0, "U'": 0, 'U2': 0,
+                    'R': 1, "R'": 1, 'R2': 1,
+                    'F': 2, "F'": 2, 'F2': 2,
+                    'D': 3, "D'": 3, 'D2': 3,
+                    'L': 4, "L'": 4, 'L2': 4,
+                    'B': 5, "B'": 5, 'B2': 5,
+                }
+                
+                for move_str in solution.split():
+                    if move_str not in move_map:
+                        print(f"Unknown move in solution: {move_str}")
+                        return None
+                    
+                    move_idx = move_map[move_str]
+                    
+                    # Apply the move 1, 2, or 3 times depending on notation
+                    if move_str.endswith('2'):
+                        test_cubie.multiply(moveCube[move_idx])
+                        test_cubie.multiply(moveCube[move_idx])
+                    elif move_str.endswith("'"):
+                        # Prime = 3 times clockwise
+                        test_cubie.multiply(moveCube[move_idx])
+                        test_cubie.multiply(moveCube[move_idx])
+                        test_cubie.multiply(moveCube[move_idx])
+                    else:
+                        # Normal = 1 time
+                        test_cubie.multiply(moveCube[move_idx])
+                
+                # Check if solved by converting back to facelet and checking all same
+                result_fc = test_cubie.toFaceCube()
+                result_str = result_fc.to_String()
+                
+                # A solved cube has all U's in positions 0-8, all R's in 9-17, etc.
+                is_solved = (
+                    all(result_str[i] == 'U' for i in range(9)) and
+                    all(result_str[i] == 'R' for i in range(9, 18)) and
+                    all(result_str[i] == 'F' for i in range(18, 27)) and
+                    all(result_str[i] == 'D' for i in range(27, 36)) and
+                    all(result_str[i] == 'L' for i in range(36, 45)) and
+                    all(result_str[i] == 'B' for i in range(45, 54))
+                )
+                
+                if not is_solved:
+                    print(f"Solver produced solution that doesn't solve the cube when validated with pykociemba moves. Rejecting.")
+                    print(f"Input facelets: {facelets}")
+                    print(f"Solution: {solution}")
+                    print(f"Result after applying: {result_str}")
+                    return None
+                
+            except Exception as e:
+                print(f"Error validating solution: {e}")
                 return None
 
             # First token (space separated) is the next move

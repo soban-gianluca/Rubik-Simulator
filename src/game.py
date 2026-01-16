@@ -11,14 +11,11 @@ from src.settings_manager import SettingsManager
 from src.sound_manager import SoundManager
 from src.results_window import ResultsWindow
 from src.mouse_interaction import MouseInteraction
-from src.help_overlay import HelpOverlay
+from src.game_menu_button import GameMenuButton
 from src.personal_best_manager import PersonalBestManager
 from src.supabase_manager import get_supabase_manager
 from utils.path_helper import resource_path
 from src.rubiks_cube import RubiksCube
-from src.pykociemba.search import Search as KociembaSearch
-from src.pykociemba.cubiecube import CubieCube, moveCube
-from src.pykociemba.facecube import FaceCube
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes
@@ -144,9 +141,9 @@ class Game:
         self.results_window.set_sound_manager(self.sound_manager)
         self.results_window.set_personal_best_manager(self.personal_best_manager)
         
-        # Initialize help overlay
-        self.help_overlay = HelpOverlay(self.width, self.height)
-        self.help_overlay.set_game_callback(self.handle_overlay_callback)
+        # Initialize menu button
+        self.menu_button = GameMenuButton(self.width, self.height)
+        self.menu_button.set_game_callback(self.handle_overlay_callback)
         
         # Game state
         self.running = True
@@ -255,152 +252,6 @@ class Game:
         if self.debug_mode:
             print(message)
 
-    def _cube_to_facelets(self):
-        """Convert current `RubiksCube` state to a facelet string for pykociemba.
-
-        CRITICAL FIX: The scramble includes slice moves (M, E, S) which move centers.
-        We must map based on WHICH PHYSICAL FACE each sticker is on, not the color value.
-        """
-        c = self.renderer.rubiks_cube
-        
-        # Read the center color of each physical face to determine orientation
-        center_top = int(c.faces['top'][1, 1])
-        center_right = int(c.faces['right'][1, 1])
-        center_front = int(c.faces['front'][1, 1])
-        center_bottom = int(c.faces['bottom'][1, 1])
-        center_left = int(c.faces['left'][1, 1])
-        center_back = int(c.faces['back'][1, 1])
-        
-        # Create color mapping based on current center positions
-        # Map: color_value -> which face letter it represents
-        color_to_face = {}
-        color_to_face[center_top] = 'U'
-        color_to_face[center_right] = 'R'
-        color_to_face[center_front] = 'F'
-        color_to_face[center_bottom] = 'D'
-        color_to_face[center_left] = 'L'
-        color_to_face[center_back] = 'B'
-        
-        result = []
-        
-        # Read each face in the order expected by pykociemba: U, R, F, D, L, B
-        for face_name in ['top', 'right', 'front', 'bottom', 'left', 'back']:
-            for row in range(3):
-                for col in range(3):
-                    color_idx = int(c.faces[face_name][row, col])
-                    result.append(color_to_face[color_idx])
-        
-        facelet_str = ''.join(result)
-        return facelet_str
-
-    def suggest_next_move(self):
-        """Compute a full solution using pykociemba and print the next move to terminal.
-
-        This validates the solution using pykociemba's own move semantics to ensure
-        the suggestion is correct and will actually solve the cube.
-        """
-        try:
-            # Don't run during animations or scrambles
-            if getattr(self.renderer, 'is_animating', False) or getattr(self, 'is_scrambling', False):
-                print("Please wait for animations/scramble to finish before requesting a suggestion.")
-                return None
-
-            # Build facelet string from current cube state
-            facelets = self._cube_to_facelets()
-            
-            # Diagnostic: verify it's a solved cube if we think it should be
-            if self.renderer.rubiks_cube.is_solved():
-                expected_solved = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB"
-                if facelets != expected_solved:
-                    print(f"WARNING: Cube reports as solved but facelet string doesn't match!")
-                    print(f"Expected: {expected_solved}")
-                    print(f"Got:      {facelets}")
-            
-            # Call solver
-            solver = KociembaSearch()
-            solution = solver.solution(facelets, maxDepth=21, timeOut=5, useSeparator=False)
-            
-            if solution.startswith('Error'):
-                print(f"Solver error: {solution}")
-                print(f"Facelet string: {facelets}")
-                print(f"Cube is_solved: {self.renderer.rubiks_cube.is_solved()}")
-                return None
-
-            solution = solution.strip()
-            if not solution:
-                print("Cube already solved — no moves needed.")
-                return None
-
-            # CRITICAL: Validate solution using pykociemba's own move semantics
-            # This ensures the moves will actually solve the cube as the solver expects
-            try:
-                # Convert current cube state to CubieCube using pykociemba's parser
-                test_cubie = FaceCube(facelets).toCubieCube()
-                
-                # Apply each move using pykociemba's moveCube table (not RubiksCube.execute_move!)
-                # moveCube indices: 0=U, 1=R, 2=F, 3=D, 4=L, 5=B
-                move_map = {
-                    'U': 0, "U'": 0, 'U2': 0,
-                    'R': 1, "R'": 1, 'R2': 1,
-                    'F': 2, "F'": 2, 'F2': 2,
-                    'D': 3, "D'": 3, 'D2': 3,
-                    'L': 4, "L'": 4, 'L2': 4,
-                    'B': 5, "B'": 5, 'B2': 5,
-                }
-                
-                for move_str in solution.split():
-                    if move_str not in move_map:
-                        print(f"Unknown move in solution: {move_str}")
-                        return None
-                    
-                    move_idx = move_map[move_str]
-                    
-                    # Apply the move 1, 2, or 3 times depending on notation
-                    if move_str.endswith('2'):
-                        test_cubie.multiply(moveCube[move_idx])
-                        test_cubie.multiply(moveCube[move_idx])
-                    elif move_str.endswith("'"):
-                        # Prime = 3 times clockwise
-                        test_cubie.multiply(moveCube[move_idx])
-                        test_cubie.multiply(moveCube[move_idx])
-                        test_cubie.multiply(moveCube[move_idx])
-                    else:
-                        # Normal = 1 time
-                        test_cubie.multiply(moveCube[move_idx])
-                
-                # Check if solved by converting back to facelet and checking all same
-                result_fc = test_cubie.toFaceCube()
-                result_str = result_fc.to_String()
-                
-                # A solved cube has all U's in positions 0-8, all R's in 9-17, etc.
-                is_solved = (
-                    all(result_str[i] == 'U' for i in range(9)) and
-                    all(result_str[i] == 'R' for i in range(9, 18)) and
-                    all(result_str[i] == 'F' for i in range(18, 27)) and
-                    all(result_str[i] == 'D' for i in range(27, 36)) and
-                    all(result_str[i] == 'L' for i in range(36, 45)) and
-                    all(result_str[i] == 'B' for i in range(45, 54))
-                )
-                
-                if not is_solved:
-                    print(f"Solver produced solution that doesn't solve the cube when validated with pykociemba moves. Rejecting.")
-                    print(f"Input facelets: {facelets}")
-                    print(f"Solution: {solution}")
-                    print(f"Result after applying: {result_str}")
-                    return None
-                
-            except Exception as e:
-                print(f"Error validating solution: {e}")
-                return None
-
-            # First token (space separated) is the next move
-            first_move = solution.split()[0]
-            print(f"Suggested next move: {first_move}  (Full solution: {solution})")
-            return first_move
-        except Exception as e:
-            print(f"Error computing suggestion: {e}")
-            return None
-
     def show_banner(self, message):
         """Show a notification banner with fade in/out animation"""
         self.banner_text = message
@@ -463,8 +314,8 @@ class Game:
             if hasattr(self, 'results_window'):
                 self.results_window.update_dimensions(self.width, self.height)
                 
-            if hasattr(self, 'help_overlay'):
-                self.help_overlay.update_dimensions(self.width, self.height)
+            if hasattr(self, 'menu_button'):
+                self.menu_button.update_dimensions(self.width, self.height)
             
             # Update mouse interaction system for fullscreen dimensions
             if hasattr(self, 'mouse_interaction'):
@@ -594,8 +445,8 @@ class Game:
             if hasattr(self, 'results_window'):
                 self.results_window.update_dimensions(self.width, self.height)
                 
-            if hasattr(self, 'help_overlay'):
-                self.help_overlay.update_dimensions(self.width, self.height)
+            if hasattr(self, 'menu_button'):
+                self.menu_button.update_dimensions(self.width, self.height)
     
             # Try to restore icon
             try:
@@ -658,11 +509,8 @@ class Game:
                 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    # Check if help overlay is active first
-                    if hasattr(self, 'help_overlay') and self.help_overlay.active:
-                        self.help_overlay.toggle()
                     # Don't allow closing results window with ESC - user must choose an option
-                    elif not self.results_window.active:
+                    if not self.results_window.active:
                         # Only allow ESC to toggle menu if difficulty has been changed at least once
                         if self.difficulty_change_count >= 1:
                             menu_was_active = self.menu.is_active()
@@ -685,11 +533,6 @@ class Game:
                     self.debug_print("Rotation reset")
                 elif event.key == pygame.K_F11:
                     self.toggle_fullscreen()
-
-                # Suggest next move (press G)
-                elif not self.menu.is_active() and not self.results_window.active and event.key == pygame.K_g:
-                    # Compute and print suggestion to terminal
-                    self.suggest_next_move()
                 
                 # Cube movement controls using standard notation
                 elif not self.menu.is_active() and not self.results_window.active and not (hasattr(self, 'is_scrambling') and self.is_scrambling):
@@ -758,10 +601,10 @@ class Game:
                             self.show_banner(f"Scramble is only available in freeplay mode")
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # Left click: first try help/menu overlays, else cube moves
-                if self.help_overlay.handle_click(event.pos):
+                # Left click: first try menu button, else cube moves
+                if self.menu_button.handle_click(event.pos):
                     continue
-                # If not handled by overlay, and not in menu/results, do cube moves
+                # If not handled by menu button, and not in menu/results, do cube moves
                 if not self.menu.is_active() and not self.results_window.active:
                     self.mouse_cube_moving = True
                     self.mouse_interaction.start_drag(event.pos)
@@ -850,10 +693,6 @@ class Game:
             self.results_window.update()
             if was_active != self.results_window.active:
                 self.debug_print(f"Results window state changed: {was_active} -> {self.results_window.active}")
-
-        # Update help overlay animation
-        if hasattr(self, 'help_overlay'):
-            self.help_overlay.update()
             
         # Update sound manager music fade
         if hasattr(self, 'sound_manager'):
@@ -869,10 +708,10 @@ class Game:
             # Show grab cursor when rotating camera
             pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEALL)
         else:
-            # Update help overlay hover state and set appropriate cursor
-            if hasattr(self, 'help_overlay'):
-                hover_changed = self.help_overlay.update_hover(mouse_pos)
-                if self.help_overlay.is_hovering_help or self.help_overlay.is_hovering_menu:
+            # Update menu button hover state and set appropriate cursor
+            if hasattr(self, 'menu_button'):
+                hover_changed = self.menu_button.update_hover(mouse_pos)
+                if self.menu_button.is_hovering_menu:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
                 else:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
@@ -1118,56 +957,31 @@ class Game:
             glPixelZoom(1, 1)  # Flip vertically
             glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
     
-        # Render help overlay efficiently - only when visible and not blocked
-        if (hasattr(self, 'help_overlay') and 
-            not self.menu.is_active() and 
-            not self.results_window.active and
-            (self.help_overlay.active or self.help_overlay.current_alpha > 0.01)):
-            
-            # Only create surface when help panel is actually visible
-            help_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            self.help_overlay.draw(help_surface)
-            
-            # Convert pygame surface to OpenGL texture
-            texture_data = pygame.image.tostring(help_surface, 'RGBA', True)
-            
-            glRasterPos2f(0, self.height)
-            glPixelZoom(1, 1)  # Flip vertically
-            glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-        
-        # Render just the buttons when panel is not visible (much more efficient)
-        elif (hasattr(self, 'help_overlay') and 
+        # Render menu button when not in menu or results
+        if (hasattr(self, 'menu_button') and 
               not self.menu.is_active() and 
               not self.results_window.active):
             
-            # Calculate total area needed for both buttons
+            # Calculate area needed for the button
             button_margin = 10
-            total_width = (self.help_overlay.help_button_size * 2) + self.help_overlay.button_spacing + (button_margin * 2)
-            button_area_height = self.help_overlay.help_button_size + (button_margin * 2)
+            total_width = self.menu_button.button_size + (button_margin * 2)
+            button_area_height = self.menu_button.button_size + (button_margin * 2)
             button_surface = pygame.Surface((total_width, button_area_height), pygame.SRCALPHA)
             
-            # Draw help button (left)
-            help_x = button_margin
-            help_y = button_margin
-            if self.help_overlay.is_hovering_help:
-                button_surface.blit(self.help_overlay.help_button_surface_hover, (help_x, help_y))
-            else:
-                button_surface.blit(self.help_overlay.help_button_surface, (help_x, help_y))
-            
-            # Draw menu button (right)
-            menu_x = button_margin + self.help_overlay.help_button_size + self.help_overlay.button_spacing
+            # Draw menu button
+            menu_x = button_margin
             menu_y = button_margin
-            if self.help_overlay.is_hovering_menu:
-                button_surface.blit(self.help_overlay.menu_button_surface_hover, (menu_x, menu_y))
+            if self.menu_button.is_hovering_menu:
+                button_surface.blit(self.menu_button.menu_button_surface_hover, (menu_x, menu_y))
             else:
-                button_surface.blit(self.help_overlay.menu_button_surface, (menu_x, menu_y))
+                button_surface.blit(self.menu_button.menu_button_surface, (menu_x, menu_y))
             
             # Convert surface to OpenGL
             texture_data = pygame.image.tostring(button_surface, 'RGBA', True)
             
-            # Position correctly (align with help button position, which is now leftmost)
-            buttons_x = self.help_overlay.help_button_rect.x - button_margin
-            buttons_y = self.help_overlay.help_button_rect.y - button_margin
+            # Position correctly
+            buttons_x = self.menu_button.menu_button_rect.x - button_margin
+            buttons_y = self.menu_button.menu_button_rect.y - button_margin
             
             glRasterPos2f(buttons_x, buttons_y + button_area_height)
             glPixelZoom(1, 1)
@@ -1766,8 +1580,8 @@ class Game:
             if hasattr(self, 'results_window'):
                 self.results_window.update_dimensions(fallback_width, fallback_height)
                 
-            if hasattr(self, 'help_overlay'):
-                self.help_overlay.update_dimensions(fallback_width, fallback_height)
+            if hasattr(self, 'menu_button'):
+                self.menu_button.update_dimensions(fallback_width, fallback_height)
             
             print(f"Successfully restored to fallback resolution: {fallback_width}x{fallback_height}")
         except Exception as e:

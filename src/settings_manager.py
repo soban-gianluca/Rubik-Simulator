@@ -54,6 +54,7 @@ class SettingsManager:
             "auto_rotate": False,
             "auto_rotate_speed": 0.2,
             "background": "skybox",
+            "hints_enabled": True,
             "difficulty_skyboxes": {
                 "freeplay": "utils/skyboxes/skybox_freeplay.png",
                 "easy": "utils/skyboxes/skybox_easy.jpg",
@@ -83,6 +84,11 @@ class SettingsManager:
             # Ensure difficulty_skyboxes exist for backward compatibility
             if "difficulty_skyboxes" not in self.settings:
                 self.settings["difficulty_skyboxes"] = self.default_settings["difficulty_skyboxes"].copy()
+                self.save_settings()
+            
+            # Ensure hints_enabled exists for backward compatibility
+            if "hints_enabled" not in self.settings:
+                self.settings["hints_enabled"] = self.default_settings["hints_enabled"]
                 self.save_settings()
 
         except Exception as e:
@@ -132,3 +138,12 @@ class SettingsManager:
     def get_menu_volume(self):
         """Get menu volume (0-100)"""
         return self.get_audio_volume("menu_volume")
+    
+    def get_hints_enabled(self):
+        """Get hints enabled setting"""
+        return self.settings.get("hints_enabled", True)
+    
+    def set_hints_enabled(self, enabled):
+        """Set hints enabled setting"""
+        self.settings["hints_enabled"] = enabled
+        self.save_settings()

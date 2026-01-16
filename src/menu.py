@@ -139,6 +139,9 @@ class Menu:
         self.effects_volume = self.settings_manager.get_effects_volume()
         self.menu_volume = self.settings_manager.get_menu_volume()
         
+        # Load hints setting
+        self.hints_enabled = self.settings_manager.get_hints_enabled()
+        
         # Initialize hover tracking
         self.hovered_widgets = set()  # Track which widgets are currently hovered
         
@@ -881,6 +884,25 @@ class Menu:
         self.show_fps = value
         self.settings_changed = True
         self._update_apply_button_state()
+    
+    def _on_hints_toggle(self, value):
+        """Handle hints toggle"""
+        # Play selection sound
+        self.sound_manager.play("menu_select")
+        
+        self.hints_enabled = value
+        
+        # Save to settings immediately
+        self.settings_manager.set_hints_enabled(value)
+        
+        # Also update the game's hints_enabled if available
+        if hasattr(self, "game") and self.game:
+            self.game.hints_enabled = value
+            # Close any active hint banners if hints are disabled
+            if not value:
+                self.game.hint_banner_active = False
+                self.game.hint_expanded = False
+                self.game.hint_banner_alpha = 0.0
     
     def _on_volume_change(self, value):
         """Handle volume slider change"""
@@ -2340,6 +2362,13 @@ class Menu:
             "Show FPS: ",
             default=current_show_fps,
             onchange=self._on_fps_toggle
+        )
+        
+        # Hints toggle
+        self.settings_menu.add.toggle_switch(
+            "Show Hints: ",
+            default=self.hints_enabled,
+            onchange=self._on_hints_toggle
         )
         
         # Audio Settings button

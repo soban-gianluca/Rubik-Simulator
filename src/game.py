@@ -189,6 +189,22 @@ class Game:
         self.banner_fade_duration = 0.2  # 0.5 seconds for fade in/out
         self.banner_alpha = 0.0
         
+        # Hint system
+        self.last_move_time = time.time()  # Track time of last move
+        self.hint_inactivity_threshold = 30.0  # Show hint after 30 seconds of inactivity
+        self.hint_banner_active = False  # Small hint banner visible
+        self.hint_expanded = False  # Expanded hint popup visible
+        self.hint_banner_alpha = 0.0
+        self.hint_banner_fade_in_time = 0.3
+        self.hint_banner_start_time = 0
+        self.hint_current_suggestion = None  # Store the current hint suggestion
+        self.hint_banner_rect = None  # Store rect for click detection
+        self.hint_close_rect = None  # Store rect for close button detection
+        self.hints_enabled = self.settings.get_hints_enabled()  # Load from settings
+        
+        # Load hint icons
+        self._load_hint_icons()
+        
         print("Controls:")
         print("  Space: Toggle auto-rotation")
         print("  Arrow keys: Manual rotation")
@@ -435,6 +451,178 @@ class Game:
             self.banner_active = False
             self.banner_alpha = 0.0
 
+    def _load_hint_icons(self):
+        """Load hint and close button icons"""
+        try:
+            # Load hint icon
+            self.hint_icon = pygame.image.load(resource_path("utils/icons/hint.png"))
+            self.hint_icon = pygame.transform.smoothscale(self.hint_icon, (32, 32))
+        except Exception as e:
+            print(f"Could not load hint icon: {e}")
+            self.hint_icon = None
+        
+        try:
+            # Load close icon
+            self.close_icon = pygame.image.load(resource_path("utils/icons/close.png"))
+            self.close_icon = pygame.transform.smoothscale(self.close_icon, (24, 24))
+        except Exception as e:
+            print(f"Could not load close icon: {e}")
+            self.close_icon = None
+
+    def reset_hint_timer(self):
+        """Reset the hint inactivity timer - called when user makes a move"""
+        self.last_move_time = time.time()
+        # Hide hint banner if visible
+        if self.hint_banner_active and not self.hint_expanded:
+            self.hint_banner_active = False
+            self.hint_banner_alpha = 0.0
+
+    def update_hint_system(self):
+        """Update the hint system - check for inactivity and manage hint display"""
+        if not self.hints_enabled:
+            return
+        
+        # Don't show hints in menu, results screen, during scrambling, or when cube is solved
+        if (self.menu.is_active() or 
+            self.results_window.active or 
+            (hasattr(self, 'is_scrambling') and self.is_scrambling) or 
+            self.cube_solved or
+            self.game_over or
+            not self.game_started):
+            return
+        
+        # Don't show hints in freeplay mode
+        current_difficulty = self.menu.get_selected_difficulty()
+        if current_difficulty == "freeplay":
+            return
+        
+        current_time = time.time()
+        
+        # Check for inactivity
+        if not self.hint_banner_active and not self.hint_expanded:
+            time_since_last_move = current_time - self.last_move_time
+            if time_since_last_move >= self.hint_inactivity_threshold:
+                # Show hint banner
+                self.hint_banner_active = True
+                self.hint_banner_start_time = current_time
+                self.hint_banner_alpha = 0.0
+                self.debug_print("Showing hint banner due to inactivity")
+        
+        # Update hint banner fade-in animation
+        if self.hint_banner_active and not self.hint_expanded:
+            elapsed = current_time - self.hint_banner_start_time
+            if elapsed < self.hint_banner_fade_in_time:
+                self.hint_banner_alpha = elapsed / self.hint_banner_fade_in_time
+            else:
+                self.hint_banner_alpha = 1.0
+
+    def show_hint_expanded(self):
+        """Show the expanded hint popup with algorithm suggestion"""
+        self.hint_expanded = True
+        self.hint_banner_active = False
+        
+        # Get the hint suggestion
+        self.hint_current_suggestion = self._get_hint_suggestion()
+        self.debug_print(f"Showing expanded hint: {self.hint_current_suggestion}")
+
+    def close_hint_popup(self):
+        """Close the hint popup and reset the timer"""
+        self.hint_expanded = False
+        self.hint_banner_active = False
+        self.hint_banner_alpha = 0.0
+        self.hint_current_suggestion = None
+        self.last_move_time = time.time()  # Reset timer so hint doesn't immediately reappear
+
+    def _get_hint_suggestion(self):
+        """Get a hint suggestion for the next 4 moves"""
+        import random
+        
+        # Phrases to make hints more engaging
+        hint_phrases = [
+            "Have you tried using",
+            "Maybe you should try",
+            "Consider performing",
+            "How about doing",
+            "Try executing",
+            "You could use",
+            "Perhaps attempt"
+        ]
+        
+        # Try to get actual solver suggestion - get full solution
+        try:
+            # Get the full solution
+            solution_moves = self._get_solution_moves()
+            if solution_moves:
+                # Get first 4 moves
+                first_moves = solution_moves[:4]
+                moves_str = " ".join(first_moves)
+                
+                phrase = random.choice(hint_phrases)
+                return f"{phrase} these moves:\n{moves_str}"
+        except Exception as e:
+            self.debug_print(f"Could not get solver suggestion: {e}")
+        
+        # Fallback generic hints
+        generic_hints = [
+            "Try solving the white cross first",
+            "Focus on the first layer corners",
+            "Work on the middle layer edges",
+            "Look for patterns in the last layer",
+            "Try the R U R' U' algorithm",
+            "Consider rotating the cube to see it from different angles"
+        ]
+        return random.choice(generic_hints)
+    
+    def _get_solution_moves(self):
+        """Get the solution moves from the solver as a list"""
+        try:
+            # Don't run during animations or scrambles
+            if getattr(self.renderer, 'is_animating', False) or getattr(self, 'is_scrambling', False):
+                return None
+
+            # Build facelet string from current cube state
+            facelets = self._cube_to_facelets()
+
+            # Call solver
+            solver = KociembaSearch()
+            solution = solver.solution(facelets, maxDepth=21, timeOut=5, useSeparator=False)
+
+            if solution.startswith('Error'):
+                self.debug_print(f"Solver error: {solution}")
+                return None
+
+            solution = solution.strip()
+            if not solution:
+                return None
+
+            # Return list of moves
+            return solution.split()
+        except Exception as e:
+            self.debug_print(f"Error getting solution: {e}")
+            return None
+
+    def handle_hint_click(self, mouse_pos):
+        """Handle click on hint banner/popup. Returns True if click was handled."""
+        # Check if clicking on expanded popup's close button
+        if self.hint_expanded and self.hint_close_rect:
+            if self.hint_close_rect.collidepoint(mouse_pos):
+                self.close_hint_popup()
+                return True
+        
+        # Check if clicking on small hint banner's close button
+        if self.hint_banner_active and not self.hint_expanded and hasattr(self, 'hint_banner_close_rect'):
+            if self.hint_banner_close_rect.collidepoint(mouse_pos):
+                self.close_hint_popup()
+                return True
+        
+        # Check if clicking on small hint banner (to expand it)
+        if self.hint_banner_active and not self.hint_expanded and self.hint_banner_rect:
+            if self.hint_banner_rect.collidepoint(mouse_pos):
+                self.show_hint_expanded()
+                return True
+        
+        return False
+
     def toggle_fullscreen(self):
         """Toggle between fullscreen and windowed mode with proper resolution handling"""
         if self.is_fullscreen:
@@ -670,6 +858,8 @@ class Game:
                             self.menu.toggle()
                             if menu_was_active:
                                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                                # Reset hint timer when closing menu
+                                self.last_move_time = time.time()
                             self.debug_print(f"Menu: {'ON' if self.menu.is_active() else 'OFF'}")
                         else:
                             # ESC is disabled when difficulty_change_count is 0 (no banner shown)
@@ -760,7 +950,9 @@ class Game:
                             self.suggest_next_move()
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # Left click: first try menu button, else cube moves
+                # Left click: first check hint system, then menu button, else cube moves
+                if self.handle_hint_click(event.pos):
+                    continue
                 if self.menu_button.handle_click(event.pos):
                     continue
                 # If not handled by menu button, and not in menu/results, do cube moves
@@ -872,6 +1064,17 @@ class Game:
                 hover_changed = self.menu_button.update_hover(mouse_pos)
                 if self.menu_button.is_hovering_menu:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                # Check if hovering over hint banner's close button (highest priority)
+                elif (self.hint_banner_active and hasattr(self, 'hint_banner_close_rect') and 
+                      self.hint_banner_close_rect.collidepoint(mouse_pos)):
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                # Check if hovering over hint banner or close button
+                elif (self.hint_banner_active and self.hint_banner_rect and 
+                      self.hint_banner_rect.collidepoint(mouse_pos)):
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                elif (self.hint_expanded and self.hint_close_rect and 
+                      self.hint_close_rect.collidepoint(mouse_pos)):
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
                 else:
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
             else:
@@ -880,6 +1083,9 @@ class Game:
         
         # Update banner animation
         self.update_banner()
+        
+        # Update hint system
+        self.update_hint_system()
         
         # Update animated scrambling
         self.update_animated_scramble()
@@ -1079,6 +1285,10 @@ class Game:
         # Render notification banner if active
         if self.banner_active:
             self._render_banner_opengl()
+        
+        # Render hint banner or expanded hint popup
+        if self.hint_banner_active or self.hint_expanded:
+            self._render_hint_system()
         
         # Render menu overlay if active (including during animation)
         menu_alpha = self.menu.get_current_alpha()
@@ -1374,6 +1584,271 @@ class Game:
             if self.debug_mode:
                 print(f"Game stats rendering error: {e}")
 
+    def _render_hint_system(self):
+        """Render hint banner or expanded hint popup"""
+        try:
+            import pygame_menu
+            
+            # Create fonts if not exist
+            if not hasattr(self, '_hint_font'):
+                self._hint_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 28)
+            if not hasattr(self, '_hint_title_font'):
+                self._hint_title_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 32)
+            
+            if self.hint_expanded:
+                # Render expanded hint popup
+                self._render_expanded_hint()
+            elif self.hint_banner_active:
+                # Render small hint banner
+                self._render_small_hint_banner()
+                
+        except Exception as e:
+            if self.debug_mode:
+                print(f"Hint system rendering error: {e}")
+
+    def _render_small_hint_banner(self):
+        """Render the small 'Need a hint? Click me' banner"""
+        try:
+            import pygame_menu
+            
+            if not hasattr(self, '_hint_font'):
+                self._hint_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 28)
+            
+            # Banner text
+            banner_text = "Need a hint? Click me!"
+            text_surface = self._hint_font.render(banner_text, True, (255, 255, 255))
+            text_width, text_height = text_surface.get_size()
+            
+            # Calculate banner dimensions (include space for icon and close button)
+            icon_size = 32
+            icon_spacing = 10
+            close_btn_size = 24
+            close_btn_spacing = 10
+            padding_h = 20
+            padding_v = 12
+            
+            total_content_width = icon_size + icon_spacing + text_width if self.hint_icon else text_width
+            # Add space for close button
+            total_content_width += close_btn_spacing + close_btn_size
+            banner_width = total_content_width + (padding_h * 2)
+            banner_height = max(text_height, icon_size, close_btn_size) + (padding_v * 2)
+            
+            # Position at top center of screen
+            banner_x = (self.width - banner_width) // 2
+            banner_y = 15
+            
+            # Store rect for click detection (for expanding, but not including close button)
+            # We'll calculate the clickable area excluding the close button
+            close_btn_x_local = banner_width - padding_h - close_btn_size
+            clickable_width = close_btn_x_local - padding_h
+            self.hint_banner_rect = pygame.Rect(banner_x + padding_h, banner_y, clickable_width, banner_height)
+            
+            # Store close button rect for click detection (in screen coordinates)
+            close_btn_y_local = (banner_height - close_btn_size) // 2
+            self.hint_banner_close_rect = pygame.Rect(
+                banner_x + close_btn_x_local,
+                banner_y + close_btn_y_local,
+                close_btn_size,
+                close_btn_size
+            )
+            
+            # Create banner surface
+            banner_surface = pygame.Surface((banner_width, banner_height), pygame.SRCALPHA)
+            
+            # Background with gradient effect (golden/amber color for hint)
+            background_alpha = int(220 * self.hint_banner_alpha)
+            pygame.draw.rect(banner_surface, (50, 40, 20, background_alpha), 
+                           (0, 0, banner_width, banner_height), border_radius=12)
+            
+            # Accent border (golden)
+            border_alpha = int(180 * self.hint_banner_alpha)
+            pygame.draw.rect(banner_surface, (255, 200, 80, border_alpha), 
+                           (0, 0, banner_width, banner_height), width=2, border_radius=12)
+            
+            # Calculate content positions
+            content_start_x = padding_h
+            content_y = (banner_height - max(text_height, icon_size)) // 2
+            
+            # Draw hint icon if available
+            if self.hint_icon:
+                icon_y = (banner_height - icon_size) // 2
+                icon_alpha_surface = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+                icon_alpha_surface.blit(self.hint_icon, (0, 0))
+                icon_alpha_surface.set_alpha(int(255 * self.hint_banner_alpha))
+                banner_surface.blit(icon_alpha_surface, (content_start_x, icon_y))
+                text_x = content_start_x + icon_size + icon_spacing
+            else:
+                text_x = content_start_x
+            
+            # Draw text
+            text_y = (banner_height - text_height) // 2
+            text_surface.set_alpha(int(255 * self.hint_banner_alpha))
+            banner_surface.blit(text_surface, (text_x, text_y))
+            
+            # Draw close button
+            close_btn_bg_alpha = int(150 * self.hint_banner_alpha)
+            pygame.draw.rect(banner_surface, (60, 50, 30, close_btn_bg_alpha),
+                           (close_btn_x_local, close_btn_y_local, close_btn_size, close_btn_size),
+                           border_radius=4)
+            pygame.draw.rect(banner_surface, (255, 100, 100, int(150 * self.hint_banner_alpha)),
+                           (close_btn_x_local, close_btn_y_local, close_btn_size, close_btn_size),
+                           width=1, border_radius=4)
+            
+            # Draw close icon
+            if self.close_icon:
+                close_icon_size = 16
+                close_icon_scaled = pygame.transform.smoothscale(self.close_icon, (close_icon_size, close_icon_size))
+                icon_x = close_btn_x_local + (close_btn_size - close_icon_size) // 2
+                icon_y = close_btn_y_local + (close_btn_size - close_icon_size) // 2
+                close_icon_alpha = pygame.Surface((close_icon_size, close_icon_size), pygame.SRCALPHA)
+                close_icon_alpha.blit(close_icon_scaled, (0, 0))
+                close_icon_alpha.set_alpha(int(255 * self.hint_banner_alpha))
+                banner_surface.blit(close_icon_alpha, (icon_x, icon_y))
+            else:
+                # Draw X manually
+                x_text = "✕"
+                x_surface = self._hint_font.render(x_text, True, (255, 100, 100))
+                x_surface.set_alpha(int(255 * self.hint_banner_alpha))
+                x_x = close_btn_x_local + (close_btn_size - x_surface.get_width()) // 2
+                x_y = close_btn_y_local + (close_btn_size - x_surface.get_height()) // 2
+                banner_surface.blit(x_surface, (x_x, x_y))
+            
+            # Render to OpenGL
+            texture_data = pygame.image.tostring(banner_surface, 'RGBA', True)
+            glRasterPos2f(banner_x, banner_y + banner_height)
+            glPixelZoom(1, 1)
+            glDrawPixels(banner_width, banner_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+            
+        except Exception as e:
+            if self.debug_mode:
+                print(f"Small hint banner rendering error: {e}")
+
+    def _render_expanded_hint(self):
+        """Render the expanded hint popup with algorithm suggestion"""
+        try:
+            import pygame_menu
+            
+            if not hasattr(self, '_hint_font'):
+                self._hint_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 28)
+            if not hasattr(self, '_hint_title_font'):
+                self._hint_title_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 36)
+            if not hasattr(self, '_hint_moves_font'):
+                self._hint_moves_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 32)
+            
+            # Get hint text to calculate required height
+            hint_text = self.hint_current_suggestion or "Try analyzing the cube pattern..."
+            
+            # Split hint into lines (handle \n in the text)
+            hint_lines = hint_text.split('\n')
+            
+            # Calculate required height based on content
+            title_height = 50
+            separator_height = 25
+            line_height = 35
+            padding_bottom = 20
+            
+            # Calculate height for all lines
+            content_height = title_height + separator_height + (len(hint_lines) * line_height) + padding_bottom
+            
+            # Popup dimensions
+            popup_width = min(500, int(self.width * 0.5))
+            popup_height = max(180, content_height)  # Dynamic height based on content
+            popup_x = (self.width - popup_width) // 2
+            popup_y = 30
+            
+            # Create popup surface
+            popup_surface = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
+            
+            # Background (darker, more prominent)
+            pygame.draw.rect(popup_surface, (30, 25, 15, 240), 
+                           (0, 0, popup_width, popup_height), border_radius=15)
+            
+            # Border (golden)
+            pygame.draw.rect(popup_surface, (255, 200, 80, 200), 
+                           (0, 0, popup_width, popup_height), width=3, border_radius=15)
+            
+            # Title section
+            title_text = "💡 Hint"
+            title_surface = self._hint_title_font.render(title_text, True, (255, 220, 100))
+            title_x = 20
+            title_y = 15
+            
+            # Draw hint icon next to title if available
+            if self.hint_icon:
+                icon_y = title_y + (title_surface.get_height() - 32) // 2
+                popup_surface.blit(self.hint_icon, (title_x, icon_y))
+                title_x += 40
+            
+            popup_surface.blit(title_surface, (title_x, title_y))
+            
+            # Separator line
+            separator_y = title_y + title_surface.get_height() + 10
+            pygame.draw.line(popup_surface, (255, 200, 80, 100), 
+                           (15, separator_y), (popup_width - 15, separator_y), 2)
+            
+            # Render hint text lines
+            text_y = separator_y + 15
+            for i, line in enumerate(hint_lines):
+                # Use different font for moves line (the second line with actual moves)
+                if i == 1 and any(move in line for move in ["R", "L", "U", "D", "F", "B", "M", "E", "S", "'"]):
+                    # This is the moves line - use larger, bolder font
+                    line_surface = self._hint_moves_font.render(line, True, (255, 220, 100))
+                else:
+                    line_surface = self._hint_font.render(line, True, (255, 255, 255))
+                
+                # Center the line if it's the moves line
+                if i == 1 and any(move in line for move in ["R", "L", "U", "D", "F", "B", "M", "E", "S", "'"]):
+                    line_x = (popup_width - line_surface.get_width()) // 2
+                else:
+                    line_x = 20
+                
+                popup_surface.blit(line_surface, (line_x, text_y))
+                text_y += line_height
+            
+            # Close button (top right)
+            close_btn_size = 30
+            close_btn_x = popup_width - close_btn_size - 10
+            close_btn_y = 10
+            
+            # Store close button rect for click detection (in screen coordinates)
+            self.hint_close_rect = pygame.Rect(
+                popup_x + close_btn_x, 
+                popup_y + close_btn_y, 
+                close_btn_size, 
+                close_btn_size
+            )
+            
+            # Draw close button background
+            pygame.draw.rect(popup_surface, (80, 60, 40, 200), 
+                           (close_btn_x, close_btn_y, close_btn_size, close_btn_size), 
+                           border_radius=6)
+            pygame.draw.rect(popup_surface, (255, 100, 100, 180), 
+                           (close_btn_x, close_btn_y, close_btn_size, close_btn_size), 
+                           width=2, border_radius=6)
+            
+            # Draw close icon or X
+            if self.close_icon:
+                icon_x = close_btn_x + (close_btn_size - 24) // 2
+                icon_y = close_btn_y + (close_btn_size - 24) // 2
+                popup_surface.blit(self.close_icon, (icon_x, icon_y))
+            else:
+                # Draw X manually
+                x_font = self._hint_font
+                x_surface = x_font.render("✕", True, (255, 100, 100))
+                x_x = close_btn_x + (close_btn_size - x_surface.get_width()) // 2
+                x_y = close_btn_y + (close_btn_size - x_surface.get_height()) // 2
+                popup_surface.blit(x_surface, (x_x, x_y))
+            
+            # Render to OpenGL
+            texture_data = pygame.image.tostring(popup_surface, 'RGBA', True)
+            glRasterPos2f(popup_x, popup_y + popup_height)
+            glPixelZoom(1, 1)
+            glDrawPixels(popup_width, popup_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+            
+        except Exception as e:
+            if self.debug_mode:
+                print(f"Expanded hint rendering error: {e}")
+
     def can_make_move(self):
         """Check if the player is allowed to make a move (considering move limits)"""
         # Don't allow new moves while animating or if game is over
@@ -1399,6 +1874,9 @@ class Game:
         # Check if move is allowed before executing
         if not self.can_make_move():
             return
+        
+        # Reset hint timer when making a move
+        self.reset_hint_timer()
         
         # Only start timer if not scrambling
         if not hasattr(self, 'is_scrambling') or not self.is_scrambling:
@@ -1549,6 +2027,13 @@ class Game:
         self.game_over = False
         self.game_over_reason = None
         
+        # Reset hint system
+        self.hint_banner_active = False
+        self.hint_expanded = False
+        self.hint_banner_alpha = 0.0
+        self.hint_current_suggestion = None
+        self.last_move_time = time.time()
+        
         # Set up challenge limits based on game mode
         if "time_limit" in game_mode_config:
             self.time_limit = game_mode_config["time_limit"]
@@ -1619,6 +2104,8 @@ class Game:
             # Toggle the main menu
             if self.menu.is_active():
                 self.menu.toggle()  # Close menu
+                # Reset hint timer when closing menu
+                self.last_move_time = time.time()
             else:
                 # Clear the old blurred background to force a fresh capture of current cube state
                 self.menu.background_capture = None

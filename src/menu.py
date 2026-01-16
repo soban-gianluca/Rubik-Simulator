@@ -72,6 +72,7 @@ class Menu:
         self.leaderboard_filter_mode = "All Modes"  # Current game mode filter
         self.leaderboard_filter_region = "All Regions"  # Current region filter
         self.leaderboard_last_fetch = 0  # Timestamp of last fetch
+        self.leaderboard_ui_refresh_pending = False  # Flag to prevent concurrent UI refreshes
         
         # Limited time mode settings
         self.selected_time_limit = 180  # Default 3 minutes in seconds
@@ -619,6 +620,7 @@ class Menu:
         
         self.leaderboard_loading = True
         self.leaderboard_error = None
+        self.leaderboard_ui_refresh_pending = True
         
         def fetch_task():
             try:
@@ -644,6 +646,10 @@ class Menu:
                 self.leaderboard_data = []
             finally:
                 self.leaderboard_loading = False
+                # Refresh the UI after data is loaded if we're still on the leaderboard tab and no other refresh is pending
+                if self.statistics_tab == "global_leaderboard" and self.leaderboard_ui_refresh_pending:
+                    self.leaderboard_ui_refresh_pending = False
+                    self._create_personal_best_content()
         
         thread = threading.Thread(target=fetch_task, daemon=True)
         thread.start()
@@ -655,9 +661,8 @@ class Menu:
             self.leaderboard_filter_mode = selected_tuple[0][0] if isinstance(selected_tuple[0], tuple) else selected_tuple[0]
         else:
             self.leaderboard_filter_mode = GAME_MODE_OPTIONS[index]
+        # Fetch will auto-refresh UI when data is ready
         self._fetch_leaderboard_data(force_refresh=True)
-        # Refresh display after a short delay to allow data to load
-        self._create_personal_best_content()
     
     def _on_leaderboard_region_filter_change(self, selected_tuple, index):
         """Handle region filter change in leaderboard."""
@@ -666,15 +671,14 @@ class Menu:
             self.leaderboard_filter_region = selected_tuple[0][0] if isinstance(selected_tuple[0], tuple) else selected_tuple[0]
         else:
             self.leaderboard_filter_region = REGION_OPTIONS[index]
+        # Fetch will auto-refresh UI when data is ready
         self._fetch_leaderboard_data(force_refresh=True)
-        # Refresh display after a short delay to allow data to load
-        self._create_personal_best_content()
     
     def _refresh_leaderboard(self):
         """Manually refresh the leaderboard data."""
         self.sound_manager.play("menu_select")
+        # Fetch will auto-refresh UI when data is ready
         self._fetch_leaderboard_data(force_refresh=True)
-        self._create_personal_best_content()
     
     def _open_user_edit(self):
         """Open user edit dialog"""

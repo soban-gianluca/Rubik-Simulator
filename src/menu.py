@@ -575,6 +575,18 @@ class Menu:
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
         self.current_menu = self.controls_menu
     
+    def _show_quit_confirmation(self):
+        """Show confirmation dialog before quitting"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
+        self.current_menu = self.quit_confirmation_menu
+    
+    def _cancel_quit(self):
+        """Cancel quit and return to main menu"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()
+        self.current_menu = self.main_menu
+    
     def _open_personal_best(self):
         """Open statistics submenu (renamed from personal best)"""
         self.sound_manager.play("menu_select")
@@ -1297,6 +1309,10 @@ class Menu:
                         if not self.is_animating:  # Prevent multiple toggle calls during animation
                             self.toggle()
                         return True
+                    elif self.current_menu == self.quit_confirmation_menu:
+                        # Go back to main menu when pressing ESC in quit confirmation
+                        self._cancel_quit()
+                        return True
                     elif self.current_menu == self.audio_settings_menu:
                         self.sound_manager.play("menu_select")
                         self._clear_all_hover_effects()  # Clear hover effects when changing menu
@@ -1988,7 +2004,7 @@ class Menu:
             
             settings_btn = self.main_menu.add.button("Settings", self._open_settings)
             controls_btn = self.main_menu.add.button("Controls", self._open_controls)
-            quit_btn = self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
+            quit_btn = self.main_menu.add.button("Quit", self._show_quit_confirmation)
             
             # Apply custom styling to main menu
             self._customize_menu_widgets(self.main_menu)
@@ -2098,13 +2114,30 @@ class Menu:
             play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
         settings_btn = self.main_menu.add.button("Settings", self._open_settings)
         controls_btn = self.main_menu.add.button("Controls", self._open_controls)
-        quit_btn = self.main_menu.add.button("Quit", pygame_menu.events.EXIT)
+        quit_btn = self.main_menu.add.button("Quit", self._show_quit_confirmation)
         for widget in self.main_menu.get_widgets():
             if hasattr(widget, 'set_margin'):
                 widget.set_margin(0, 2)
         self.main_menu.add.vertical_margin(self.height // 10)
         # Apply custom styling to main menu
         self._customize_menu_widgets(self.main_menu)
+        
+        # Create quit confirmation menu
+        self.quit_confirmation_menu = pygame_menu.Menu(
+            "Quit Game",
+            self.width,
+            self.height,
+            theme=self.sub_theme
+        )
+        self.quit_confirmation_menu.add.label("")
+        self.quit_confirmation_menu.add.label("Are you sure you want to quit?")
+        self.quit_confirmation_menu.add.label("")
+        yes_btn = self.quit_confirmation_menu.add.button("Yes", pygame_menu.events.EXIT)
+        no_btn = self.quit_confirmation_menu.add.button("No", self._cancel_quit)
+        for widget in self.quit_confirmation_menu.get_widgets():
+            if hasattr(widget, 'set_margin'):
+                widget.set_margin(0, 2)
+        self._customize_menu_widgets(self.quit_confirmation_menu)
         
         # Create difficulty selection menu with ACTUAL dimensions
         self.difficulty_menu = pygame_menu.Menu(

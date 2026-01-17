@@ -711,3 +711,121 @@ class Renderer:
         if self.skybox_display_list:
             glDeleteLists(self.skybox_display_list, 1)
             self.skybox_display_list = None
+    
+    def render_visual_hint(self, face, clockwise, pulse_time):
+        """Render a visual hint arrow showing which face to rotate and in which direction
+        
+        Args:
+            face: Face letter (R, L, U, D, F, B)
+            clockwise: True for clockwise rotation, False for counterclockwise
+            pulse_time: Start time for pulsing animation
+        """
+        # Calculate pulse effect (0.5 to 1.0)
+        pulse = 0.5 + 0.5 * abs(math.sin((time.time() - pulse_time) * 3))
+        
+        # Map face to position and normal - right on the cube face
+        face_positions = {
+            'R': (1.0, 0, 0, (1, 0, 0)),     # Right face
+            'L': (-1.0, 0, 0, (-1, 0, 0)),   # Left face
+            'U': (0, 1.0, 0, (0, 1, 0)),     # Up/Top face
+            'D': (0, -1.0, 0, (0, -1, 0)),   # Down/Bottom face
+            'F': (0, 0, 1.0, (0, 0, 1)),     # Front face
+            'B': (0, 0, -1.0, (0, 0, -1))    # Back face
+        }
+        
+        if face not in face_positions:
+            return
+        
+        pos_x, pos_y, pos_z, normal = face_positions[face]
+        
+        glPushMatrix()
+        
+        # Move to face position
+        glTranslatef(pos_x, pos_y, pos_z)
+        
+        # Orient the arrow to face outward from the cube
+        if face == 'R':
+            glRotatef(90, 0, 1, 0)
+        elif face == 'L':
+            glRotatef(-90, 0, 1, 0)
+        elif face == 'U':
+            glRotatef(-90, 1, 0, 0)
+        elif face == 'D':
+            glRotatef(90, 1, 0, 0)
+        elif face == 'B':
+            glRotatef(180, 0, 1, 0)
+        # F face doesn't need rotation
+        
+        # Disable lighting for bright arrows
+        glDisable(GL_LIGHTING)
+        
+        # Set arrow color (bright yellow/gold with pulse)
+        glColor4f(1.0 * pulse, 1.0 * pulse, 0.2, 0.9)
+        
+        # Draw circular arrow indicating rotation direction
+        # Invert direction because we're looking at the face from outside
+        self._draw_circular_arrow(not clockwise, pulse)
+        
+        # Re-enable lighting
+        glEnable(GL_LIGHTING)
+        
+        glPopMatrix()
+    
+    def _draw_circular_arrow(self, clockwise, pulse):
+        """Draw a circular arrow with arrowhead to indicate rotation direction"""
+        radius = 0.8
+        thickness = 0.08 * pulse
+        segments = 32
+        arc_angle = 270  # 3/4 circle
+        
+        # Draw the arc
+        glBegin(GL_QUAD_STRIP)
+        for i in range(segments + 1):
+            angle = (i / segments) * arc_angle
+            if not clockwise:
+                angle = -angle
+            
+            rad = math.radians(angle)
+            
+            # Outer point
+            x_outer = (radius + thickness) * math.cos(rad)
+            y_outer = (radius + thickness) * math.sin(rad)
+            
+            # Inner point
+            x_inner = (radius - thickness) * math.cos(rad)
+            y_inner = (radius - thickness) * math.sin(rad)
+            
+            glVertex3f(x_inner, y_inner, 0.01)
+            glVertex3f(x_outer, y_outer, 0.01)
+        glEnd()
+        
+        # Draw arrowhead at the end of the arc
+        arrow_angle = arc_angle if clockwise else -arc_angle
+        arrow_rad = math.radians(arrow_angle)
+        
+        # Position of arrowhead
+        arrow_x = radius * math.cos(arrow_rad)
+        arrow_y = radius * math.sin(arrow_rad)
+        
+        # Direction perpendicular to the arc (tangent)
+        if clockwise:
+            tangent_x = -math.sin(arrow_rad)
+            tangent_y = math.cos(arrow_rad)
+        else:
+            tangent_x = math.sin(arrow_rad)
+            tangent_y = -math.cos(arrow_rad)
+        
+        # Arrowhead size
+        arrow_size = 0.25 * pulse
+        
+        # Draw triangular arrowhead
+        glBegin(GL_TRIANGLES)
+        # Tip of arrow
+        glVertex3f(arrow_x + tangent_x * arrow_size, 
+                   arrow_y + tangent_y * arrow_size, 0.01)
+        # Base corners
+        glVertex3f(arrow_x - tangent_x * arrow_size * 0.3 + tangent_y * arrow_size * 0.5,
+                   arrow_y - tangent_y * arrow_size * 0.3 - tangent_x * arrow_size * 0.5, 0.01)
+        glVertex3f(arrow_x - tangent_x * arrow_size * 0.3 - tangent_y * arrow_size * 0.5,
+                   arrow_y - tangent_y * arrow_size * 0.3 + tangent_x * arrow_size * 0.5, 0.01)
+        glEnd()

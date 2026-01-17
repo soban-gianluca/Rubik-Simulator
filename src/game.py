@@ -697,26 +697,34 @@ class Game:
         # Format the solution moves
         if solution_moves:
             try:
-                # Get first few moves (considering double moves)
+                # Get first few moves for display (max 3 original notation moves)
                 display_moves = []
+                move_count = 0
+                
                 for move in solution_moves:
                     display_moves.append(move)
-                    # Count how many actual moves this represents
+                    # Count actual move steps (B2 counts as 2 steps)
                     if '2' in move:
-                        # Double move counts as 2
-                        if len(display_moves) >= 2:
-                            break
+                        move_count += 2
                     else:
-                        if len(display_moves) >= 3:
-                            break
+                        move_count += 1
+                    
+                    # Stop when we have enough moves to reach 3 steps
+                    if move_count >= 3:
+                        break
                 
-                # Limit to show at most 3 original moves
+                # Limit to show at most 3 original moves for display
                 display_moves = display_moves[:3]
                 moves_str = " ".join(display_moves)
                 
                 phrase = random.choice(hint_phrases)
                 
-                return f"{phrase} these moves:\n{moves_str}"
+                # Add explanation about the visual arrow
+                first_move = display_moves[0]
+                direction = "clockwise" if "'" not in first_move else "counterclockwise"
+                face_name = self._get_face_name(first_move[0])
+                
+                return f"{phrase} these moves:\n{moves_str}\n\n⚠️ Watch the {face_name} face!\nThe yellow arrow shows {direction} rotation"
             except Exception as e:
                 self.debug_print(f"Error formatting hint: {e}")
         

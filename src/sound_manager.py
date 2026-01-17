@@ -57,6 +57,9 @@ class SoundManager:
             
             # Load fail sound effect
             self.sounds["fail"] = pygame.mixer.Sound(resource_path("utils/sfx/results_screen/failSFX.mp3"))
+            
+            # Load hint sound effect
+            self.sounds["hint"] = pygame.mixer.Sound(resource_path("utils/sfx/in-game/hint.mp3"))
 
             # Load cube movement sound effects
             cube_sfx_dir = resource_path("utils/sfx/cube_sfx")
@@ -74,6 +77,7 @@ class SoundManager:
             self.sounds["menu_apply"].set_volume(0.4 * self.menu_volume * self.master_volume)
             self.sounds["winning"].set_volume(1 * self.effects_volume * self.master_volume)
             self.sounds["fail"].set_volume(0.3 * self.effects_volume * self.master_volume)
+            self.sounds["hint"].set_volume(0.2 * self.effects_volume * self.master_volume)
 
         except Exception as e:
             print(f"Error loading sound effects: {e}")

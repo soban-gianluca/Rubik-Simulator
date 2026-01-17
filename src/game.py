@@ -544,6 +544,9 @@ class Game:
                 self.hint_banner_alpha = 0.0
                 self.debug_print("Showing hint banner due to inactivity")
                 
+                # Play hint sound effect
+                self.sound_manager.play("hint")
+                
                 # Start precomputing solution in background
                 self._precompute_solution()
         

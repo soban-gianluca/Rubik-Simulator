@@ -140,11 +140,12 @@ class SupabaseManager:
         if losses > 0:
             data["losses"] = losses
         
-        # Use upsert with on_conflict
+        # Use upsert with on_conflict - specify the unique constraint columns
         headers = self.headers.copy()
         headers["Prefer"] = "resolution=merge-duplicates,return=representation"
         
-        url = f"{self.base_url}/rest/v1/leaderboard"
+        # Add on_conflict parameter to specify which columns to use for conflict detection
+        url = f"{self.base_url}/rest/v1/leaderboard?on_conflict=user_hash,game_mode"
         
         try:
             json_data = json.dumps(data).encode('utf-8')

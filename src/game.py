@@ -527,9 +527,9 @@ class Game:
             not self.game_started):
             return
         
-        # Don't show hints in freeplay mode
+        # Don't show hints in freeplay, limited_time, or limited_moves modes
         current_difficulty = self.menu.get_selected_difficulty()
-        if current_difficulty == "freeplay":
+        if current_difficulty in ["freeplay", "limited_time", "limited_moves"]:
             return
         
         current_time = time.time()
@@ -624,6 +624,15 @@ class Game:
             is_computing = self._solution_computing
         
         if solution_moves:
+            # Determine number of hint moves based on difficulty
+            current_difficulty = self.menu.get_selected_difficulty()
+            hint_move_counts = {
+                "easy": 1,
+                "medium": 2,
+                "hard": 5
+            }
+            max_hint_moves = hint_move_counts.get(current_difficulty, 3)  # Default to 3 if not found
+            
             # Expand moves to handle double moves (B2 -> B, B)
             expanded_moves = []
             for move in solution_moves:
@@ -635,11 +644,11 @@ class Game:
                 else:
                     expanded_moves.append(move)
                 
-                # Stop after we have 3 moves worth
-                if len(expanded_moves) >= 3:
+                # Stop after we have enough moves
+                if len(expanded_moves) >= max_hint_moves:
                     break
             
-            self.hint_moves_sequence = expanded_moves[:3]  # Store first 3 moves
+            self.hint_moves_sequence = expanded_moves[:max_hint_moves]  # Store hint moves based on difficulty
             self.hint_moves_completed = 0
             
             # Get the hint suggestion with cached solution
@@ -697,7 +706,16 @@ class Game:
         # Format the solution moves
         if solution_moves:
             try:
-                # Get first few moves for display (max 3 original notation moves)
+                # Determine number of hint moves based on difficulty
+                current_difficulty = self.menu.get_selected_difficulty()
+                hint_move_counts = {
+                    "easy": 1,
+                    "medium": 2,
+                    "hard": 5
+                }
+                max_hint_moves = hint_move_counts.get(current_difficulty, 3)  # Default to 3 if not found
+                
+                # Get first few moves for display based on difficulty
                 display_moves = []
                 move_count = 0
                 
@@ -709,12 +727,12 @@ class Game:
                     else:
                         move_count += 1
                     
-                    # Stop when we have enough moves to reach 3 steps
-                    if move_count >= 3:
+                    # Stop when we have enough moves based on difficulty
+                    if move_count >= max_hint_moves:
                         break
                 
-                # Limit to show at most 3 original moves for display
-                display_moves = display_moves[:3]
+                # Limit display moves based on difficulty
+                display_moves = display_moves[:max_hint_moves]
                 moves_str = " ".join(display_moves)
                 
                 phrase = random.choice(hint_phrases)

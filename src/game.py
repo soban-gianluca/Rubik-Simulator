@@ -2,6 +2,7 @@ import pygame
 import sys
 import time
 import random
+import threading
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -209,6 +210,11 @@ class Game:
         self.visual_hint_pulse_time = 0  # For pulsing animation
         self.hint_moves_sequence = []  # Store the sequence of hint moves
         self.hint_moves_completed = 0  # Track how many hint moves completed
+        
+        # Solution caching for hints (prevent recomputation)
+        self._cached_solution_moves = None
+        self._solution_computing = False
+        self._solution_lock = threading.Lock()
         
         # Load hint icons
         self._load_hint_icons()
@@ -484,6 +490,11 @@ class Game:
             hint_move_matched: True if the move matched the expected hint move
         """
         self.last_move_time = time.time()
+        
+        # Clear cached solution since cube state changed
+        with self._solution_lock:
+            self._cached_solution_moves = None
+        
         # Hide hint banner if visible
         if self.hint_banner_active and not self.hint_expanded:
             self.hint_banner_active = False
@@ -532,6 +543,9 @@ class Game:
                 self.hint_banner_start_time = current_time
                 self.hint_banner_alpha = 0.0
                 self.debug_print("Showing hint banner due to inactivity")
+                
+                # Start precomputing solution in background
+                self._precompute_solution()
         
         # Update hint banner fade-in animation
         if self.hint_banner_active and not self.hint_expanded:
@@ -540,14 +554,72 @@ class Game:
                 self.hint_banner_alpha = elapsed / self.hint_banner_fade_in_time
             else:
                 self.hint_banner_alpha = 1.0
+        
+        # Update expanded hint if solution becomes available
+        if self.hint_expanded and self.hint_current_suggestion and "Analyzing cube" in self.hint_current_suggestion:
+            with self._solution_lock:
+                if self._cached_solution_moves and not self._solution_computing:
+                    # Solution is now available, update the hint
+                    solution_moves = self._cached_solution_moves
+                    
+                    # Expand moves to handle double moves
+                    expanded_moves = []
+                    for move in solution_moves:
+                        if '2' in move:
+                            base_move = move.replace('2', '')
+                            expanded_moves.append(base_move)
+                            expanded_moves.append(base_move)
+                        else:
+                            expanded_moves.append(move)
+                        if len(expanded_moves) >= 3:
+                            break
+                    
+                    self.hint_moves_sequence = expanded_moves[:3]
+                    self.hint_moves_completed = 0
+                    self.hint_current_suggestion = self._format_hint_suggestion(solution_moves)
+                    
+                    # Enable visual hint now that we have moves
+                    if self.hint_moves_sequence:
+                        self._enable_visual_hint()
+                    
+                    self.debug_print("Hint updated with computed solution")
+    
+    def _precompute_solution(self):
+        """Precompute the solution in a background thread"""
+        with self._solution_lock:
+            # Don't start multiple computation threads
+            if self._solution_computing:
+                return
+            self._solution_computing = True
+        
+        def compute():
+            try:
+                # Compute solution
+                solution = self._get_solution_moves()
+                with self._solution_lock:
+                    self._cached_solution_moves = solution
+                    self._solution_computing = False
+                self.debug_print("Solution precomputed in background")
+            except Exception as e:
+                self.debug_print(f"Error precomputing solution: {e}")
+                with self._solution_lock:
+                    self._solution_computing = False
+        
+        # Start background thread
+        thread = threading.Thread(target=compute, daemon=True)
+        thread.start()
 
     def show_hint_expanded(self):
         """Show the expanded hint popup with algorithm suggestion"""
         self.hint_expanded = True
         self.hint_banner_active = False
         
-        # Get the hint moves sequence
-        solution_moves = self._get_solution_moves()
+        # Use cached solution (should be ready from background precomputation)
+        # If not ready yet, show loading message
+        with self._solution_lock:
+            solution_moves = self._cached_solution_moves
+            is_computing = self._solution_computing
+        
         if solution_moves:
             # Expand moves to handle double moves (B2 -> B, B)
             expanded_moves = []
@@ -566,16 +638,25 @@ class Game:
             
             self.hint_moves_sequence = expanded_moves[:3]  # Store first 3 moves
             self.hint_moves_completed = 0
-        else:
+            
+            # Get the hint suggestion with cached solution
+            self.hint_current_suggestion = self._format_hint_suggestion(solution_moves)
+        elif is_computing:
+            # Still computing in background
             self.hint_moves_sequence = []
             self.hint_moves_completed = 0
+            self.hint_current_suggestion = "Analyzing cube...\nPlease wait..."
+        else:
+            # No solution available
+            self.hint_moves_sequence = []
+            self.hint_moves_completed = 0
+            self.hint_current_suggestion = "Try analyzing the cube pattern..."
         
-        # Get the hint suggestion
-        self.hint_current_suggestion = self._get_hint_suggestion()
         self.debug_print(f"Showing expanded hint: {self.hint_current_suggestion}")
         
-        # Enable visual hint with first move
-        self._enable_visual_hint()
+        # Enable visual hint with first move (only if we have moves)
+        if self.hint_moves_sequence:
+            self._enable_visual_hint()
 
     def close_hint_popup(self):
         """Close the hint popup and reset the timer"""
@@ -590,9 +671,13 @@ class Game:
         self.visual_hint_face = None
         self.hint_moves_sequence = []
         self.hint_moves_completed = 0
+        
+        # Clear cached solution since hint is closed
+        with self._solution_lock:
+            self._cached_solution_moves = None
 
-    def _get_hint_suggestion(self):
-        """Get a hint suggestion for the next 4 moves"""
+    def _format_hint_suggestion(self, solution_moves):
+        """Format hint suggestion from pre-computed solution moves"""
         import random
         
         # Phrases to make hints more engaging
@@ -606,11 +691,9 @@ class Game:
             "Perhaps attempt"
         ]
         
-        # Try to get actual solver suggestion - get full solution
-        try:
-            # Get the full solution
-            solution_moves = self._get_solution_moves()
-            if solution_moves:
+        # Format the solution moves
+        if solution_moves:
+            try:
                 # Get first few moves (considering double moves)
                 display_moves = []
                 for move in solution_moves:
@@ -630,14 +713,9 @@ class Game:
                 
                 phrase = random.choice(hint_phrases)
                 
-                # Add explanation about the visual arrow
-                first_move = display_moves[0]
-                direction = "clockwise" if "'" not in first_move else "counterclockwise"
-                face_name = self._get_face_name(first_move[0])
-                
-                return f"{phrase} these moves:\n{moves_str}\n\n⚠️ Watch the {face_name} face!\nThe yellow arrow shows {direction} rotation"
-        except Exception as e:
-            self.debug_print(f"Could not get solver suggestion: {e}")
+                return f"{phrase} these moves:\n{moves_str}"
+            except Exception as e:
+                self.debug_print(f"Error formatting hint: {e}")
         
         # Fallback generic hints
         generic_hints = [
@@ -1861,24 +1939,15 @@ class Game:
             if not hasattr(self, '_hint_moves_font'):
                 self._hint_moves_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 32)
             
-            # Get hint text to calculate required height
+            # Get hint text
             hint_text = self.hint_current_suggestion or "Try analyzing the cube pattern..."
             
             # Split hint into lines (handle \n in the text)
             hint_lines = hint_text.split('\n')
             
-            # Calculate required height based on content
-            title_height = 50
-            separator_height = 25
-            line_height = 35
-            padding_bottom = 20
-            
-            # Calculate height for all lines
-            content_height = title_height + separator_height + (len(hint_lines) * line_height) + padding_bottom
-            
-            # Popup dimensions
+            # Popup dimensions - keep reduced height
             popup_width = min(500, int(self.width * 0.5))
-            popup_height = max(180, content_height)  # Dynamic height based on content
+            popup_height = 150  # height
             popup_x = (self.width - popup_width) // 2
             popup_y = 30
             
@@ -1914,6 +1983,7 @@ class Game:
             
             # Render hint text lines
             text_y = separator_y + 15
+            line_height = 35
             for i, line in enumerate(hint_lines):
                 # Use different font for moves line (the second line with actual moves)
                 if i == 1 and any(move in line for move in ["R", "L", "U", "D", "F", "B", "M", "E", "S", "'"]):

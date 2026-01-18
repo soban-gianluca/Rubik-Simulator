@@ -673,20 +673,23 @@ class Menu:
     def _on_leaderboard_mode_filter_change(self, selected_tuple, index):
         """Handle game mode filter change in leaderboard."""
         self.sound_manager.play("menu_select")
-        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 0:
-            self.leaderboard_filter_mode = selected_tuple[0][0] if isinstance(selected_tuple[0], tuple) else selected_tuple[0]
-        else:
+        # Use index to get the actual game mode value (lowercase) from GAME_MODE_OPTIONS
+        # The selected_tuple contains the display text
+        if 0 <= index < len(GAME_MODE_OPTIONS):
             self.leaderboard_filter_mode = GAME_MODE_OPTIONS[index]
+        else:
+            self.leaderboard_filter_mode = "All Modes"
         # Fetch will auto-refresh UI when data is ready
         self._fetch_leaderboard_data(force_refresh=True)
     
     def _on_leaderboard_region_filter_change(self, selected_tuple, index):
         """Handle region filter change in leaderboard."""
         self.sound_manager.play("menu_select")
-        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 0:
-            self.leaderboard_filter_region = selected_tuple[0][0] if isinstance(selected_tuple[0], tuple) else selected_tuple[0]
-        else:
+        # Use index to get the actual region value from REGION_OPTIONS
+        if 0 <= index < len(REGION_OPTIONS):
             self.leaderboard_filter_region = REGION_OPTIONS[index]
+        else:
+            self.leaderboard_filter_region = "All Regions"
         # Fetch will auto-refresh UI when data is ready
         self._fetch_leaderboard_data(force_refresh=True)
     

@@ -181,6 +181,7 @@ class Game:
         # Solver cooldown to prevent duplicate triggers from key repeat
         self.solver_last_called = 0
         self.solver_cooldown = 0.5  # seconds
+        self.solver_is_running = False  # Flag to prevent concurrent solver calls
         
         # Banner notification system
         self.banner_active = False
@@ -326,6 +327,14 @@ class Game:
         
         facelet_str = ''.join(result)
         return facelet_str
+
+    def suggest_next_move_threaded(self):
+        """Wrapper to call suggest_next_move in a background thread safely."""
+        try:
+            self.solver_is_running = True
+            self.suggest_next_move()
+        finally:
+            self.solver_is_running = False
 
     def suggest_next_move(self):
         """Compute a full solution using pykociemba and print the next move to terminal.
@@ -1166,11 +1175,14 @@ class Game:
                         else:
                             self.show_banner(f"Scramble is only available in freeplay mode")
                     elif event.key == pygame.K_g:
-                        # Suggest next move (solver) - with cooldown to prevent duplicate triggers
-                        current_time = time.time()
-                        if current_time - self.solver_last_called >= self.solver_cooldown:
-                            self.solver_last_called = current_time
-                            self.suggest_next_move()
+                        # Suggest next move (solver) - with cooldown and concurrent run prevention
+                        if not self.solver_is_running:
+                            current_time = time.time()
+                            if current_time - self.solver_last_called >= self.solver_cooldown:
+                                self.solver_last_called = current_time
+                                # Run solver in background thread
+                                solver_thread = threading.Thread(target=self.suggest_next_move_threaded, daemon=True)
+                                solver_thread.start()
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 # Left click: first check hint system, then menu button, else cube moves
@@ -2213,6 +2225,24 @@ class Game:
         
         self.debug_print(f"Starting fast animated scramble with {num_moves} moves: {' '.join(scramble_sequence)}")
     
+    def animated_daily_scramble_cube(self, num_moves=20):
+        """Scramble the cube with the daily deterministic scramble (animated).
+        All players get the same scramble for the current UTC date."""
+        
+        # Get the daily scramble sequence from the cube
+        scramble_sequence = self.renderer.rubiks_cube.get_daily_scramble_sequence(num_moves)
+        
+        # Store original animation duration and set faster duration for scrambling
+        self.original_animation_duration = self.renderer.animation_duration
+        self.renderer.animation_duration = 0.1  # Faster animation (100ms instead of 300ms)
+        
+        # Store the scramble sequence for animated execution
+        self.scramble_queue = scramble_sequence.copy()
+        self.is_scrambling = True
+        self.scramble_start_time = time.time()
+        
+        self.debug_print(f"Starting daily scramble with {num_moves} moves: {' '.join(scramble_sequence)}")
+    
     def update_animated_scramble(self):
         """Update the animated scrambling process"""
         if not hasattr(self, 'is_scrambling') or not self.is_scrambling:
@@ -2304,6 +2334,10 @@ class Game:
             # Limited Moves: Medium scramble with move restriction
             self.animated_scramble_cube(15)
             self.debug_print(f"Limited Moves mode: Scramble with 15 moves!")
+        elif difficulty == "daily_cube":
+            # Daily Cube: Same scramble for all players today
+            self.animated_daily_scramble_cube(20)
+            self.debug_print(f"Daily Cube mode: Using today's daily scramble!")
         else:
             # Default case (fallback)
             self.animated_scramble_cube(20)

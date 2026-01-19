@@ -7,5 +7,4 @@
 7. In-game UI icons must be resized right after changing resolution, at the moment they resize only after restarting the game
 8. Add more music tracks (in progress)
 9. Add more achievements
-10. Add daily cubes (same for all users, will then be published on daily leaderboard)
-11. Add tutorial mode (?)
+10. Add tutorial mode (?)

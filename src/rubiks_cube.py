@@ -561,6 +561,47 @@ class RubiksCube:
         # Clear history after scrambling so undo doesn't undo scramble
         self.move_history.clear()
     
+    def get_daily_scramble_sequence(self, num_moves=20):
+        """Generate a deterministic scramble sequence based on UTC date.
+        The same sequence will be generated for all players on the same day."""
+        import random
+        from datetime import datetime, timezone
+        
+        # Get current UTC date as seed
+        utc_now = datetime.now(timezone.utc)
+        date_seed = int(utc_now.strftime("%Y%m%d"))  # e.g., 20260119
+        
+        # Create a random generator with the date as seed
+        daily_random = random.Random(date_seed)
+        
+        moves = ['R', "R'", 'L', "L'", 'U', "U'", 'D', "D'", 'F', "F'", 'B', "B'", 'M', "M'", 'E', "E'", 'S', "S'"]
+        
+        # Generate the scramble sequence
+        scramble_sequence = []
+        for _ in range(num_moves):
+            move = daily_random.choice(moves)
+            scramble_sequence.append(move)
+        
+        return scramble_sequence
+    
+    def scramble_daily(self, num_moves=20):
+        """Scramble the cube using the daily deterministic scramble.
+        All players get the same scramble for the current UTC date."""
+        # Clear history before scrambling
+        self.move_history.clear()
+        
+        # Get the daily scramble sequence
+        scramble_sequence = self.get_daily_scramble_sequence(num_moves)
+        
+        # Execute each move
+        for move in scramble_sequence:
+            self.execute_move(move)
+        
+        # Clear history after scrambling so undo doesn't undo scramble
+        self.move_history.clear()
+        
+        return scramble_sequence
+    
     def is_solved(self):
         """Check if the cube is in solved state"""
         for face_name, face_array in self.faces.items():

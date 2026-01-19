@@ -404,6 +404,156 @@ class SupabaseManager:
                     success = False
         
         return success
+    
+    def get_today_date_utc(self) -> str:
+        """Get today's date in UTC as YYYY-MM-DD string."""
+        from datetime import timezone
+        utc_now = datetime.now(timezone.utc)
+        return utc_now.strftime("%Y-%m-%d")
+    
+    def submit_daily_record(self, username: str, region: str, 
+                           solve_time: float, moves: int, tps: float) -> bool:
+        """
+        Submit a daily cube record. Each user can only have one record per day.
+        Uses the current UTC date to identify the daily challenge.
+        """
+        if not self._is_configured or not self._user_hash:
+            return False
+        
+        daily_date = self.get_today_date_utc()
+        
+        data = {
+            "username": username,
+            "region": region,
+            "user_hash": self._user_hash,
+            "user_id": self._user_id,
+            "daily_date": daily_date,
+            "solve_time": round(solve_time, 3),
+            "moves": moves,
+            "tps": round(tps, 3),
+            "submitted_at": datetime.now().isoformat()
+        }
+        
+        # Use upsert with on_conflict - one record per user per day
+        headers = self.headers.copy()
+        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+        
+        url = f"{self.base_url}/rest/v1/daily_leaderboard?on_conflict=user_hash,daily_date"
+        
+        try:
+            json_data = json.dumps(data).encode('utf-8')
+            request = urllib.request.Request(
+                url,
+                data=json_data,
+                headers=headers,
+                method="POST"
+            )
+            
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status in [200, 201]
+                
+        except Exception as e:
+            print(f"Error submitting daily record: {e}")
+            return False
+    
+    def get_daily_leaderboard(self, region: str = None, limit: int = 50) -> List[Dict]:
+        """
+        Fetch the daily leaderboard for today's date (UTC).
+        
+        Args:
+            region: Optional filter by region
+            limit: Maximum number of entries to return
+        
+        Returns:
+            List of daily leaderboard entries sorted by solve_time (fastest first)
+        """
+        if not self._is_configured:
+            return []
+        
+        daily_date = self.get_today_date_utc()
+        
+        # Build filters
+        filters = [f"daily_date=eq.{daily_date}", "solve_time=not.is.null"]
+        
+        if region and region != "All Regions":
+            filters.append(f"region=eq.{region}")
+        
+        # Build URL
+        url = f"{self.base_url}/rest/v1/daily_leaderboard"
+        query_parts = filters.copy()
+        query_parts.append("order=solve_time.asc")
+        query_parts.append(f"limit={limit}")
+        
+        url = f"{url}?{'&'.join(query_parts)}"
+        
+        try:
+            request = urllib.request.Request(url, headers=self.headers, method="GET")
+            
+            with urllib.request.urlopen(request, timeout=10) as response:
+                response_data = response.read().decode('utf-8')
+                if response_data:
+                    return json.loads(response_data)
+                return []
+                
+        except Exception as e:
+            print(f"Error fetching daily leaderboard: {e}")
+            return []
+    
+    def has_user_completed_daily(self) -> bool:
+        """
+        Check if the current user has already completed today's daily cube.
+        
+        Returns:
+            True if user has a record for today, False otherwise
+        """
+        if not self._is_configured or not self._user_hash:
+            return False
+        
+        daily_date = self.get_today_date_utc()
+        
+        url = f"{self.base_url}/rest/v1/daily_leaderboard?user_hash=eq.{self._user_hash}&daily_date=eq.{daily_date}&select=id&limit=1"
+        
+        try:
+            request = urllib.request.Request(url, headers=self.headers, method="GET")
+            
+            with urllib.request.urlopen(request, timeout=10) as response:
+                response_data = response.read().decode('utf-8')
+                if response_data:
+                    results = json.loads(response_data)
+                    return len(results) > 0
+                return False
+                
+        except Exception as e:
+            print(f"Error checking daily completion: {e}")
+            return False
+    
+    def get_user_daily_record(self) -> Optional[Dict]:
+        """
+        Get the current user's record for today's daily cube.
+        
+        Returns:
+            Dict with user's daily record or None if not found
+        """
+        if not self._is_configured or not self._user_hash:
+            return None
+        
+        daily_date = self.get_today_date_utc()
+        
+        url = f"{self.base_url}/rest/v1/daily_leaderboard?user_hash=eq.{self._user_hash}&daily_date=eq.{daily_date}&limit=1"
+        
+        try:
+            request = urllib.request.Request(url, headers=self.headers, method="GET")
+            
+            with urllib.request.urlopen(request, timeout=10) as response:
+                response_data = response.read().decode('utf-8')
+                if response_data:
+                    results = json.loads(response_data)
+                    return results[0] if results else None
+                return None
+                
+        except Exception as e:
+            print(f"Error fetching user daily record: {e}")
+            return None
 
 
 # Global instance for easy access

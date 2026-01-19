@@ -13,14 +13,15 @@ from src.user_manager import UserManager, REGIONS
 from utils.path_helper import resource_path
 
 # Leaderboard filter options
-GAME_MODE_OPTIONS = ["All Modes", "easy", "medium", "hard", "limited_time", "limited_moves"]
+GAME_MODE_OPTIONS = ["All Modes", "easy", "medium", "hard", "limited_time", "limited_moves", "daily_cube"]
 GAME_MODE_DISPLAY = {
     "All Modes": "All Modes",
     "easy": "Easy",
     "medium": "Medium", 
     "hard": "Hard",
     "limited_time": "Limited Time",
-    "limited_moves": "Limited Moves"
+    "limited_moves": "Limited Moves",
+    "daily_cube": "Daily Cube"
 }
 REGION_OPTIONS = ["All Regions"] + REGIONS
 
@@ -64,7 +65,7 @@ class Menu:
         self.username_error = None  # Error message for username validation
         
         # Statistics tab state
-        self.statistics_tab = "personal_records"  # "personal_records" or "global_leaderboard"
+        self.statistics_tab = "personal_records"  # "personal_records", "global_leaderboard", or "daily_leaderboard"
         
         # Leaderboard state
         self.leaderboard_data = []  # Cached leaderboard data
@@ -74,6 +75,14 @@ class Menu:
         self.leaderboard_filter_region = "All Regions"  # Current region filter
         self.leaderboard_last_fetch = 0  # Timestamp of last fetch
         self.leaderboard_ui_refresh_pending = False  # Flag to prevent concurrent UI refreshes
+        
+        # Daily leaderboard state
+        self.daily_leaderboard_data = []  # Cached daily leaderboard data
+        self.daily_leaderboard_loading = False  # Flag for async loading
+        self.daily_leaderboard_error = None  # Error message if fetch failed
+        self.daily_leaderboard_filter_region = "All Regions"  # Current region filter for daily
+        self.daily_leaderboard_last_fetch = 0  # Timestamp of last fetch
+        self.daily_leaderboard_ui_refresh_pending = False  # Flag to prevent concurrent UI refreshes
         
         # Limited time mode settings
         self.selected_time_limit = 180  # Default 3 minutes in seconds
@@ -478,6 +487,13 @@ class Menu:
                 "scramble_moves": 15,
                 "timer_enabled": True,
                 "countdown_moves": True,
+            },
+            "daily_cube": {
+                "name": "Daily Cube",
+                "description": "Same scramble for all players today! Compete globally!",
+                "scramble_moves": 20,  # Fixed scramble based on date
+                "timer_enabled": True,
+                "daily_mode": True,
             }
         }
     
@@ -617,6 +633,14 @@ class Menu:
         self._fetch_leaderboard_data()
         self._create_personal_best_content()
     
+    def _switch_to_daily_leaderboard_tab(self):
+        """Switch to daily leaderboard tab in statistics"""
+        self.sound_manager.play("menu_select")
+        self.statistics_tab = "daily_leaderboard"
+        # Fetch daily leaderboard data when switching to the tab
+        self._fetch_daily_leaderboard_data()
+        self._create_personal_best_content()
+    
     def _fetch_leaderboard_data(self, force_refresh=False):
         """Fetch leaderboard data from Supabase in background thread."""
         # Don't fetch if already loading
@@ -662,13 +686,76 @@ class Menu:
                 self.leaderboard_data = []
             finally:
                 self.leaderboard_loading = False
-                # Refresh the UI after data is loaded if we're still on the leaderboard tab and no other refresh is pending
-                if self.statistics_tab == "global_leaderboard" and self.leaderboard_ui_refresh_pending:
-                    self.leaderboard_ui_refresh_pending = False
-                    self._create_personal_best_content()
+                # Mark that UI needs refresh - will be handled in main thread
+                if self.statistics_tab == "global_leaderboard":
+                    self.leaderboard_ui_refresh_pending = True
         
         thread = threading.Thread(target=fetch_task, daemon=True)
         thread.start()
+    
+    def _fetch_daily_leaderboard_data(self, force_refresh=False):
+        """Fetch daily leaderboard data from Supabase in background thread."""
+        # Don't fetch if already loading
+        if self.daily_leaderboard_loading:
+            return
+        
+        # Check if we should use cached data (cache for 30 seconds)
+        current_time = time.time()
+        if not force_refresh and self.daily_leaderboard_data and (current_time - self.daily_leaderboard_last_fetch) < 30:
+            return
+        
+        # Check if Supabase is configured
+        if not self.supabase_manager or not self.supabase_manager.is_configured():
+            self.daily_leaderboard_error = "Leaderboard not configured"
+            self.daily_leaderboard_data = []
+            return
+        
+        self.daily_leaderboard_loading = True
+        self.daily_leaderboard_error = None
+        self.daily_leaderboard_ui_refresh_pending = True
+        
+        def fetch_task():
+            try:
+                # Get filter values
+                region = None if self.daily_leaderboard_filter_region == "All Regions" else self.daily_leaderboard_filter_region
+                
+                # Fetch daily leaderboard data
+                data = self.supabase_manager.get_daily_leaderboard(
+                    region=region,
+                    limit=50
+                )
+                
+                self.daily_leaderboard_data = data if data else []
+                self.daily_leaderboard_last_fetch = time.time()
+                self.daily_leaderboard_error = None
+            except Exception as e:
+                print(f"Error fetching daily leaderboard: {e}")
+                self.daily_leaderboard_error = "Failed to load daily leaderboard"
+                self.daily_leaderboard_data = []
+            finally:
+                self.daily_leaderboard_loading = False
+                # Mark that UI needs refresh - will be handled in main thread
+                if self.statistics_tab == "daily_leaderboard":
+                    self.daily_leaderboard_ui_refresh_pending = True
+        
+        thread = threading.Thread(target=fetch_task, daemon=True)
+        thread.start()
+    
+    def _on_daily_leaderboard_region_filter_change(self, selected_tuple, index):
+        """Handle region filter change in daily leaderboard."""
+        self.sound_manager.play("menu_select")
+        # Use index to get the actual region value from REGION_OPTIONS
+        if 0 <= index < len(REGION_OPTIONS):
+            self.daily_leaderboard_filter_region = REGION_OPTIONS[index]
+        else:
+            self.daily_leaderboard_filter_region = "All Regions"
+        # Fetch will auto-refresh UI when data is ready
+        self._fetch_daily_leaderboard_data(force_refresh=True)
+    
+    def _refresh_daily_leaderboard(self):
+        """Force refresh the daily leaderboard data."""
+        self.sound_manager.play("menu_select")
+        self._fetch_daily_leaderboard_data(force_refresh=True)
     
     def _on_leaderboard_mode_filter_change(self, selected_tuple, index):
         """Handle game mode filter change in leaderboard."""
@@ -1077,6 +1164,18 @@ class Menu:
     
     def update(self):
         """Update animation state and alpha values"""
+        # Check if global leaderboard UI needs refresh (from background thread)
+        if self.leaderboard_ui_refresh_pending and not self.leaderboard_loading:
+            if self.statistics_tab == "global_leaderboard":
+                self.leaderboard_ui_refresh_pending = False
+                self._create_personal_best_content()
+        
+        # Check if daily leaderboard UI needs refresh (from background thread)
+        if self.daily_leaderboard_ui_refresh_pending and not self.daily_leaderboard_loading:
+            if self.statistics_tab == "daily_leaderboard":
+                self.daily_leaderboard_ui_refresh_pending = False
+                self._create_personal_best_content()
+        
         # Always update button animations regardless of menu animation state
         self._update_button_animations()
         
@@ -2184,6 +2283,7 @@ class Menu:
             "hard": (176, 28, 28, 200),      # Red
             "limited_time": (240, 198, 38, 200),   # Gold
             "limited_moves": (240, 198, 38, 200),  # Gold
+            "daily_cube": (138, 43, 226, 200),     # Purple/Violet
         }
         
         # First, add Free Play button separately at the top
@@ -2324,6 +2424,39 @@ class Menu:
                     'animation_start_time': 0,
                     'glow_intensity': 0.0
                 }
+        
+        # Add Daily Cube button (special daily challenge mode)
+        self.difficulty_menu.add.vertical_margin(20)
+        
+        if "daily_cube" in game_modes:
+            mode_config = game_modes["daily_cube"]
+            button_text = "🌍 " + mode_config['name']  # Globe emoji for global challenge
+            button_action = lambda: self._start_game("daily_cube")
+            bg_color = (138, 43, 226, 200)  # Purple/Violet for daily cube
+            
+            daily_cube_button = self.difficulty_menu.add.button(
+                button_text, 
+                button_action,
+                font_size=40,
+                font_name=pygame_menu.font.FONT_FRANCHISE,
+                background_color=bg_color,
+                padding=(20, 300)  # Wide button
+            )
+            
+            # Store difficulty button for animation tracking and tooltip
+            self.difficulty_buttons[daily_cube_button] = {
+                'difficulty': "daily_cube",
+                'original_color': bg_color,
+                'base_color': bg_color,
+                'description': mode_config['description']
+            }
+            
+            # Initialize animation state for this button
+            self.button_animations[daily_cube_button] = {
+                'is_hovering': False,
+                'animation_start_time': 0,
+                'glow_intensity': 0.0
+            }
         
         # Add final spacing and back button
         self.difficulty_menu.add.vertical_margin(20)
@@ -2788,7 +2921,7 @@ class Menu:
             self.personal_best_menu.add.vertical_margin(15)
 
             tab_frame = self.personal_best_menu.add.frame_h(
-                width=900,
+                width=1100,
                 height=90,
                 align=ALIGN_CENTER,
                 margin=(0, 0)
@@ -2802,15 +2935,15 @@ class Menu:
                 self.personal_best_menu.add.button(
                     "Personal Records",
                     self._switch_to_personal_records_tab,
-                    font_size=28,
+                    font_size=26,
                     font_name=pygame_menu.font.FONT_FRANCHISE,
                     background_color=pr_color,
                     font_color=pr_text_color,
-                    padding=(10, 30),
+                    padding=(8, 20),
                     margin=(0, 0)
                 ),
                 align=ALIGN_CENTER,
-                margin=(15, 0)
+                margin=(10, 0)
             )
 
             gl_color = (240, 198, 38, 200) if self.statistics_tab == "global_leaderboard" else (60, 60, 60, 180)
@@ -2819,15 +2952,32 @@ class Menu:
                 self.personal_best_menu.add.button(
                     "Global Leaderboard",
                     self._switch_to_leaderboard_tab,
-                    font_size=28,
+                    font_size=26,
                     font_name=pygame_menu.font.FONT_FRANCHISE,
                     background_color=gl_color,
                     font_color=gl_text_color,
-                    padding=(10, 30),
+                    padding=(8, 20),
                     margin=(0, 0)
                 ),
                 align=ALIGN_CENTER,
-                margin=(15, 0)
+                margin=(10, 0)
+            )
+
+            dl_color = (240, 198, 38, 200) if self.statistics_tab == "daily_leaderboard" else (60, 60, 60, 180)
+            dl_text_color = (255, 255, 255) if self.statistics_tab == "daily_leaderboard" else (160, 160, 160)
+            daily_leaderboard_btn = tab_frame.pack(
+                self.personal_best_menu.add.button(
+                    "Daily Leaderboard",
+                    self._switch_to_daily_leaderboard_tab,
+                    font_size=26,
+                    font_name=pygame_menu.font.FONT_FRANCHISE,
+                    background_color=dl_color,
+                    font_color=dl_text_color,
+                    padding=(8, 20),
+                    margin=(0, 0)
+                ),
+                align=ALIGN_CENTER,
+                margin=(10, 0)
             )
 
         self.personal_best_menu.add.vertical_margin(20)
@@ -2835,8 +2985,10 @@ class Menu:
         # Show content based on selected tab
         if self.statistics_tab == "personal_records":
             self._create_personal_records_content()
-        else:
+        elif self.statistics_tab == "global_leaderboard":
             self._create_leaderboard_content()
+        else:  # daily_leaderboard
+            self._create_daily_leaderboard_content()
         
         # Add spacing and back button
         self.personal_best_menu.add.vertical_margin(40)
@@ -3237,6 +3389,219 @@ class Menu:
             self.personal_best_menu.add.label(
                 f"Showing top 20 of {len(self.leaderboard_data)} entries",
                 font_size=22,
+                font_color=(150, 150, 150),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+    
+    def _create_daily_leaderboard_content(self):
+        """Create daily leaderboard tab content with today's date and rankings."""
+        from datetime import datetime, timezone
+        
+        # Check if Supabase is configured
+        if not self.supabase_manager or not self.supabase_manager.is_configured():
+            self.personal_best_menu.add.vertical_margin(50)
+            self.personal_best_menu.add.label(
+                "Daily Leaderboard",
+                font_size=50,
+                font_color=(255, 215, 0),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                "Leaderboard Not Configured",
+                font_size=40,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Display today's date
+        utc_now = datetime.now(timezone.utc)
+        date_str = utc_now.strftime("%B %d, %Y")  # e.g., "January 19, 2026"
+        
+        self.personal_best_menu.add.vertical_margin(5)
+        self.personal_best_menu.add.label(
+            f"📅 Today's Daily Cube - {date_str} (UTC)",
+            font_size=32,
+            font_color=(255, 215, 0),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.personal_best_menu.add.vertical_margin(10)
+        
+        # Filter section - region only for daily leaderboard
+        self.personal_best_menu.add.label(
+            "FILTER",
+            font_size=24,
+            font_color=(200, 200, 200),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.personal_best_menu.add.vertical_margin(5)
+        
+        # Region filter dropdown
+        region_items = [(region, i) for i, region in enumerate(REGION_OPTIONS)]
+        current_region_index = REGION_OPTIONS.index(self.daily_leaderboard_filter_region) if self.daily_leaderboard_filter_region in REGION_OPTIONS else 0
+        
+        self.personal_best_menu.add.dropselect(
+            "Region:  ",
+            region_items,
+            default=current_region_index,
+            font_size=24,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            onchange=self._on_daily_leaderboard_region_filter_change,
+            selection_box_height=6,
+            selection_box_width=180,
+            margin=(0, 5)
+        )
+        
+        # Refresh button
+        self.personal_best_menu.add.vertical_margin(5)
+        refresh_btn = self.personal_best_menu.add.button(
+            "⟳ Refresh",
+            self._refresh_daily_leaderboard,
+            font_size=24,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            background_color=(60, 80, 100, 180),
+            padding=(6, 15),
+            margin=(0, 5)
+        )
+        self._apply_hover_effect(refresh_btn, False)
+        
+        self.personal_best_menu.add.vertical_margin(10)
+        
+        # Separator
+        self.personal_best_menu.add.label(
+            "─" * 60,
+            font_size=18,
+            font_color=(100, 100, 100),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.personal_best_menu.add.vertical_margin(5)
+        
+        # Loading state
+        if self.daily_leaderboard_loading:
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                "Loading daily leaderboard...",
+                font_size=32,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Error state
+        if self.daily_leaderboard_error:
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                self.daily_leaderboard_error,
+                font_size=32,
+                font_color=(255, 100, 100),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Empty state
+        if not self.daily_leaderboard_data:
+            self.personal_best_menu.add.vertical_margin(30)
+            self.personal_best_menu.add.label(
+                "No one has completed today's Daily Cube yet!",
+                font_size=36,
+                font_color=(200, 200, 200),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(15)
+            self.personal_best_menu.add.label(
+                "Be the first to set a record!",
+                font_size=26,
+                font_color=(150, 150, 150),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.personal_best_menu.add.vertical_margin(10)
+            self.personal_best_menu.add.label(
+                "Play 'Daily Cube' mode to compete!",
+                font_size=24,
+                font_color=(240, 198, 38),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            return
+        
+        # Table header
+        header_row = "RANK │        PLAYER        │     REGION     │   SOLVE TIME   │  MOVES  │   TPS"
+        
+        self.personal_best_menu.add.label(
+            header_row,
+            font_size=26,
+            font_color=(255, 255, 255),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        # Separator line
+        separator = "=" * 85
+        self.personal_best_menu.add.label(
+            separator,
+            font_size=18,
+            font_color=(200, 200, 200),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        # Display daily leaderboard entries
+        current_username = self.user_manager.get_username() if self.user_manager else ""
+        
+        for rank, entry in enumerate(self.daily_leaderboard_data[:20], 1):  # Limit to 20 entries
+            username = entry.get("username", "Unknown")[:12]  # Truncate long names
+            region = entry.get("region", "N/A")[:10]
+            solve_time = entry.get("solve_time")
+            moves = entry.get("moves")
+            tps = entry.get("tps")
+            
+            # Format time
+            if solve_time is not None:
+                if solve_time < 60:
+                    time_str = f"{solve_time:.2f}s"
+                else:
+                    mins = int(solve_time // 60)
+                    secs = solve_time % 60
+                    time_str = f"{mins}:{secs:05.2f}"
+            else:
+                time_str = "---"
+            
+            # Format moves
+            moves_str = str(moves) if moves is not None else "---"
+            
+            # Format TPS
+            tps_str = f"{tps:.2f}" if tps is not None else "---"
+            
+            # Create row
+            row = f"{rank:^5}│{username:^22}│{region:^16}│{time_str:^16}│{moves_str:^9}│{tps_str:^8}"
+            
+            # Determine row color
+            if username == current_username:
+                # Highlight current user's entries
+                row_color = (240, 198, 38)  # Gold
+            elif rank == 1:
+                row_color = (255, 215, 0)  # Gold for #1
+            elif rank == 2:
+                row_color = (192, 192, 192)  # Silver for #2
+            elif rank == 3:
+                row_color = (205, 127, 50)  # Bronze for #3
+            else:
+                row_color = (200, 200, 200)  # Default gray
+            
+            self.personal_best_menu.add.label(
+                row,
+                font_size=24,
+                font_color=row_color,
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+        
+        # Show total entries count if there are more
+        if len(self.daily_leaderboard_data) > 20:
+            self.personal_best_menu.add.vertical_margin(10)
+            self.personal_best_menu.add.label(
+                f"Showing top 20 of {len(self.daily_leaderboard_data)} entries",
+                font_size=20,
                 font_color=(150, 150, 150),
                 font_name=pygame_menu.font.FONT_FRANCHISE
             )

@@ -66,6 +66,15 @@ class PersonalBestManager:
                 "last_solve_date": None,
                 "wins": 0,
                 "losses": 0
+            },
+            "daily_cube": {
+                "best_time": None,
+                "best_moves": None,
+                "best_tps": None,
+                "total_solves": 0,
+                "average_time": None,
+                "average_moves": None,
+                "last_solve_date": None
             }
         }
         self.records = self.load_records()
@@ -90,7 +99,7 @@ class PersonalBestManager:
                     user_manager.user_data.get("created_at", "")
                 )
     
-    def _sync_to_cloud(self, difficulty: str):
+    def _sync_to_cloud(self, difficulty: str, solve_time: float = None, moves: int = None, tps: float = None):
         """Sync a single record to the cloud in a background thread."""
         if not self._sync_enabled or not self._supabase_manager or not self._user_manager:
             return
@@ -109,17 +118,27 @@ class PersonalBestManager:
         # Sync in background thread to not block the game
         def sync_task():
             try:
-                self._supabase_manager.submit_record(
-                    username=username,
-                    region=region,
-                    game_mode=difficulty,
-                    best_time=record.get("best_time"),
-                    best_moves=record.get("best_moves"),
-                    best_tps=record.get("best_tps"),
-                    total_solves=record.get("total_solves", 0),
-                    wins=record.get("wins", 0),
-                    losses=record.get("losses", 0)
-                )
+                # Daily cube uses separate leaderboard table
+                if difficulty == "daily_cube" and solve_time is not None:
+                    self._supabase_manager.submit_daily_record(
+                        username=username,
+                        region=region,
+                        solve_time=solve_time,
+                        moves=moves or 0,
+                        tps=tps or 0.0
+                    )
+                else:
+                    self._supabase_manager.submit_record(
+                        username=username,
+                        region=region,
+                        game_mode=difficulty,
+                        best_time=record.get("best_time"),
+                        best_moves=record.get("best_moves"),
+                        best_tps=record.get("best_tps"),
+                        total_solves=record.get("total_solves", 0),
+                        wins=record.get("wins", 0),
+                        losses=record.get("losses", 0)
+                    )
             except Exception as e:
                 print(f"Error syncing to cloud: {e}")
         
@@ -232,8 +251,8 @@ class PersonalBestManager:
         # Save to file
         self.save_records()
         
-        # Sync to cloud
-        self._sync_to_cloud(difficulty)
+        # Sync to cloud (pass solve_time, moves, tps for daily_cube mode)
+        self._sync_to_cloud(difficulty, solve_time=solve_time, moves=moves, tps=tps)
         
         return {
             "is_best_time": record["best_time"] == solve_time,

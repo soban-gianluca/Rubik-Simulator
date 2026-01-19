@@ -1985,7 +1985,7 @@ class Menu:
                 
                 # Position the edit button in top right of content area
                 edit_btn_size = 60
-                edit_margin = 20
+                edit_margin = 80
                 edit_x = screen.get_width() - edit_btn_size - edit_margin
                 edit_y = 80  # Below the title bar
                 

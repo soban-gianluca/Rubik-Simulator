@@ -174,6 +174,14 @@ class Menu:
         self.tooltip_surface = None
         self.tooltip_rect = None
         self.current_tooltip_button = None
+
+        # Prevent double-calling pygame-menu update() in the same frame
+        # (event handler already calls update([event]) for interactive input).
+        self._skip_pygame_menu_update_once = False
+
+        # Patch pygame-menu scrollbar rendering once so the thumb never drifts off
+        # the track (prevents "invisible thumb" and avoids hover flicker).
+        self._patch_pygame_menu_scrollbar_render()
         
         # Create custom fancy theme with improved styling
         self._create_custom_theme()
@@ -183,6 +191,43 @@ class Menu:
         
         # Set current menu to main menu
         self.current_menu = self.main_menu
+
+    @staticmethod
+    def _patch_pygame_menu_scrollbar_render() -> None:
+        """Monkeypatch pygame-menu ScrollBar._render to clamp thumb cross-axis.
+
+        The root issue was the thumb rect cross-axis drifting (e.g., x for vertical)
+        which makes the thumb render outside the track. Fixing it inside _render()
+        ensures every internal render is correct and avoids visible flicker from
+        external forced re-renders.
+        """
+        try:
+            from pygame_menu.widgets.widget.scrollbar import ScrollBar
+        except Exception:
+            return
+
+        if getattr(ScrollBar, '_rubik_sim_render_patched', False):
+            return
+
+        original_render = getattr(ScrollBar, '_render', None)
+        if original_render is None:
+            return
+
+        def _render_patched(self):  # type: ignore[no-redef]
+            try:
+                r = getattr(self, '_slider_rect', None)
+                if r is not None:
+                    pad = int(getattr(self, '_slider_pad', 0) or 0)
+                    if getattr(self, '_orientation', None) == 1:
+                        r.x = pad
+                    else:
+                        r.y = pad
+            except Exception:
+                pass
+            return original_render(self)
+
+        ScrollBar._render = _render_patched  # type: ignore[assignment]
+        ScrollBar._rubik_sim_render_patched = True
     
     def _create_custom_theme(self):
         """Create a fancy custom theme with better styling"""
@@ -224,9 +269,19 @@ class Menu:
         self.theme.widget_background_color_disabled = (0, 0, 0, 0)  # Completely transparent
         
         # Scrollbar styling (for controls menu)
-        self.theme.scrollbar_color = (50, 70, 100)
-        self.theme.scrollbar_slider_color = (100, 130, 180)
-        self.theme.scrollbar_slider_hover_color = (120, 150, 200)
+        # NOTE: pygame-menu uses `scrollbar_thick` (not `scrollbar_thickness`)
+        # Use high-contrast colors so the thumb (slider) is clearly visible.
+        # Use RGB (no per-pixel alpha) because menus are rendered to an SRCALPHA
+        # surface and then faded via set_alpha(); mixing per-pixel alpha here can
+        # make the thumb appear to vanish.
+        self.theme.scrollbar_color = (15, 22, 35)              # Track
+        self.theme.scrollbar_slider_color = (240, 198, 38)     # Thumb
+        self.theme.scrollbar_slider_hover_color = (255, 255, 255)
+        self.theme.scrollbar_slider_pad = 1  # pygame-menu expects int padding
+        self.theme.scrollbar_thick = 14
+        self.theme.scrollbar_shadow = True  # Add shadow for better visibility
+        self.theme.scrollbar_shadow_color = (0, 0, 0)
+        self.theme.scrollbar_shadow_offset = 1
         
         # Border styling - remove borders
         self.theme.widget_border_color = (0, 0, 0, 0)  # Transparent border
@@ -252,7 +307,6 @@ class Menu:
             background_path = resource_path("utils/main_menu_background.png")
             if os.path.exists(background_path):
                 self.main_menu_background = pygame.image.load(background_path)
-                print(f"Loaded main menu background: {background_path}")
             else:
                 print(f"Main menu background not found: {background_path}")
                 self.main_menu_background = None
@@ -271,7 +325,6 @@ class Menu:
                 logo_width = int(self.width * 0.08)  # 8% of screen width
                 logo_height = int(logo_width * 0.24)  # 24% of logo width (preserve aspect ratio)
                 self.logo_image = pygame.transform.scale(self.logo_image, (logo_width, logo_height))
-                print(f"Loaded logo image: {logo_path} (scaled to {logo_width}x{logo_height})")
             else:
                 print(f"Logo image not found: {logo_path}")
                 self.logo_image = None
@@ -289,7 +342,6 @@ class Menu:
                 # Scale the icon to a suitable size (32x32 pixels)
                 icon_size = 32
                 self.record_icon = pygame.transform.scale(self.record_icon, (icon_size, icon_size))
-                print(f"Loaded record icon: {record_icon_path} (scaled to {icon_size}x{icon_size})")
             else:
                 print(f"Record icon not found: {record_icon_path}")
                 self.record_icon = None
@@ -307,7 +359,6 @@ class Menu:
                 # Scale the icon to a suitable size (36x36 pixels)
                 icon_size = 36
                 self.edit_icon = pygame.transform.scale(self.edit_icon, (icon_size, icon_size))
-                print(f"Loaded edit icon: {edit_icon_path} (scaled to {icon_size}x{icon_size})")
             else:
                 print(f"Edit icon not found: {edit_icon_path}")
                 self.edit_icon = None
@@ -1163,6 +1214,17 @@ class Menu:
     
     def update(self):
         """Update animation state and alpha values"""
+        # Run pygame-menu internal update each frame so scrollbars/scrollareas are computed.
+        # Avoid doing it twice in the same frame if handle_event() already updated the menu.
+        if self.active and self.current_menu and self.current_menu.is_enabled():
+            if self._skip_pygame_menu_update_once:
+                self._skip_pygame_menu_update_once = False
+            else:
+                try:
+                    self.current_menu.update([])
+                except Exception:
+                    pass
+
         # Check if global leaderboard UI needs refresh (from background thread)
         if self.leaderboard_ui_refresh_pending and not self.leaderboard_loading:
             if self.statistics_tab == "global_leaderboard":
@@ -1417,6 +1479,7 @@ class Menu:
                         return True
                     # Pass all other keys to pygame-menu for text input
                     updated = self.current_menu.update([event])
+                    self._skip_pygame_menu_update_once = True
                     return updated or self.active
                 elif self.current_menu == self.user_edit_menu:
                     if event.key == pygame.K_ESCAPE:
@@ -1425,6 +1488,7 @@ class Menu:
                         return True
                     # Pass all other keys to pygame-menu for text input
                     updated = self.current_menu.update([event])
+                    self._skip_pygame_menu_update_once = True
                     return updated or self.active
                 elif event.key == pygame.K_ESCAPE:
                     if self.current_menu == self.main_menu:
@@ -1449,6 +1513,7 @@ class Menu:
         
         # Let pygame-menu handle the event
         updated = self.current_menu.update([event])
+        self._skip_pygame_menu_update_once = True
         
         # Check if we need to go back to main menu (after pygame-menu processes the event)
         return updated or self.active
@@ -1908,13 +1973,20 @@ class Menu:
         
         # Draw the current menu
         if self.current_menu:
-            menu_surface = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
-            self.current_menu.draw(menu_surface)
-            
+            # Important: avoid calling set_alpha() on an SRCALPHA surface.
+            # pygame-menu draws the scrollbar thumb using per-pixel alpha, and
+            # combining that with per-surface alpha can make the thumb appear to
+            # disappear on some systems.
             if current_alpha < 1.0:
+                colorkey = (1, 2, 3)
+                menu_surface = pygame.Surface((screen.get_width(), screen.get_height())).convert()
+                menu_surface.fill(colorkey)
+                menu_surface.set_colorkey(colorkey)
+                self.current_menu.draw(menu_surface)
                 menu_surface.set_alpha(int(255 * current_alpha))
-            
-            screen.blit(menu_surface, (0, 0))
+                screen.blit(menu_surface, (0, 0))
+            else:
+                self.current_menu.draw(screen)
             
             # Draw Statistics button in bottom right corner (only on main menu)
             if (self.current_menu == self.main_menu and 
@@ -2178,6 +2250,16 @@ class Menu:
         # Ensure sub-theme also has a solid background for title visibility
         self.sub_theme.title_background_color = (0, 8, 18, 250)  # More opaque dark background for better visibility
         self.sub_theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_ADAPTIVE
+        
+        # Apply scrollbar settings to sub_theme for visibility in all sub-menus
+        self.sub_theme.scrollbar_color = (15, 22, 35)
+        self.sub_theme.scrollbar_slider_color = (240, 198, 38)
+        self.sub_theme.scrollbar_slider_hover_color = (255, 255, 255)
+        self.sub_theme.scrollbar_slider_pad = 1  # pygame-menu expects int padding
+        self.sub_theme.scrollbar_thick = 14
+        self.sub_theme.scrollbar_shadow = True
+        self.sub_theme.scrollbar_shadow_color = (0, 0, 0)
+        self.sub_theme.scrollbar_shadow_offset = 1
 
         # Create main menu with ACTUAL dimensions and no title (we'll add custom centered title)
         self.main_menu = pygame_menu.Menu(
@@ -2368,20 +2450,21 @@ class Menu:
                     'glow_intensity': 0.0
                 }
         
-        # Create second horizontal layout for Limited Time and Limited Moves
+        # Create second horizontal layout for Limited Time, Limited Moves, and Daily Cube
         challenge_frame = self.difficulty_menu.add.frame_h(
-            width=900,  # Further increased width to accommodate buttons
+            width=1200,  # Increased width to accommodate three buttons
             height=130,
             align=ALIGN_CENTER,
             margin=(0, 0)
         )
         
-        # Add Limited Time and Limited Moves buttons horizontally
-        challenge_modes = ["limited_time", "limited_moves"]
+        # Add Limited Time, Limited Moves, and Daily Cube buttons horizontally
+        challenge_modes = ["limited_time", "limited_moves", "daily_cube"]
         for mode_key in challenge_modes:
             if mode_key in game_modes:
                 mode_config = game_modes[mode_key]
-                button_text = mode_config['name']
+                # Add globe emoji for daily cube
+                button_text = "🌍 " + mode_config['name'] if mode_key == "daily_cube" else mode_config['name']
                 
                 # Special handling for limited_time mode - open time selection instead of starting game directly
                 if mode_key == "limited_time":
@@ -2392,7 +2475,11 @@ class Menu:
                 else:
                     button_action = lambda difficulty=mode_key: self._start_game(difficulty)
                 
-                bg_color = difficulty_colors.get(mode_key, (40, 60, 90, 200))
+                # Special color for daily cube
+                if mode_key == "daily_cube":
+                    bg_color = (138, 43, 226, 200)  # Purple/Violet
+                else:
+                    bg_color = difficulty_colors.get(mode_key, (40, 60, 90, 200))
                 
                 challenge_button = challenge_frame.pack(
                     self.difficulty_menu.add.button(
@@ -2406,7 +2493,7 @@ class Menu:
                         margin=(0, 0)  # No margin on individual buttons when packed
                     ),
                     align=ALIGN_CENTER,
-                    margin=(15, 0)  # Reduced margin between the two challenge buttons
+                    margin=(10, 0)  # Reduced margin between challenge buttons
                 )
                 
                 # Store difficulty button for animation tracking and tooltip
@@ -2423,39 +2510,6 @@ class Menu:
                     'animation_start_time': 0,
                     'glow_intensity': 0.0
                 }
-        
-        # Add Daily Cube button (special daily challenge mode)
-        self.difficulty_menu.add.vertical_margin(20)
-        
-        if "daily_cube" in game_modes:
-            mode_config = game_modes["daily_cube"]
-            button_text = "🌍 " + mode_config['name']  # Globe emoji for global challenge
-            button_action = lambda: self._start_game("daily_cube")
-            bg_color = (138, 43, 226, 200)  # Purple/Violet for daily cube
-            
-            daily_cube_button = self.difficulty_menu.add.button(
-                button_text, 
-                button_action,
-                font_size=40,
-                font_name=pygame_menu.font.FONT_FRANCHISE,
-                background_color=bg_color,
-                padding=(20, 300)  # Wide button
-            )
-            
-            # Store difficulty button for animation tracking and tooltip
-            self.difficulty_buttons[daily_cube_button] = {
-                'difficulty': "daily_cube",
-                'original_color': bg_color,
-                'base_color': bg_color,
-                'description': mode_config['description']
-            }
-            
-            # Initialize animation state for this button
-            self.button_animations[daily_cube_button] = {
-                'is_hovering': False,
-                'animation_start_time': 0,
-                'glow_intensity': 0.0
-            }
         
         # Add final spacing and back button
         self.difficulty_menu.add.vertical_margin(20)

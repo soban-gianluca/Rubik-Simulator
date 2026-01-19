@@ -219,26 +219,10 @@ class Game:
         
         # Load hint icons
         self._load_hint_icons()
-        
-        print("Controls:")
-        print("  Space: Toggle auto-rotation")
-        print("  Arrow keys: Manual rotation")
-        print("  Left Mouse + Drag: Rotate cube view")
-        print("  Right Mouse + Drag: Execute move cube")
-        print("  Ctrl+B: Toggle debug mode")
-        print("  T: Reset rotation")
-        print("  ESC: Toggle menu")        
+         
         print("\nMovement Controls:")
-        print("  R: R move       Shift+R: R' move")
-        print("  L: L move       Shift+L: L' move") 
-        print("  U: U move       Shift+U: U' move")
-        print("  D: D move       Shift+D: D' move")
-        print("  F: F move       Shift+F: F' move")
-        print("  B: B move       Shift+B: B' move")
-        print("Slice Moves:")
-        print("  M: M move       Shift+M: M' move (Middle)")
-        print("  E: E move       Shift+E: E' move (Equatorial)")
-        print("  S: S move       Shift+S: S' move (Standing)")
+        print("  Ctrl + B: Debug mode")
+        print("  G: Get all hints")
         print("  Z: Undo last move")
         print("  X: Scramble cube (freeplay mode only)")
 

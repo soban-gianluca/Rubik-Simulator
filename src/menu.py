@@ -13,15 +13,14 @@ from src.user_manager import UserManager, REGIONS
 from utils.path_helper import resource_path
 
 # Leaderboard filter options
-GAME_MODE_OPTIONS = ["All Modes", "easy", "medium", "hard", "limited_time", "limited_moves", "daily_cube"]
+GAME_MODE_OPTIONS = ["All Modes", "easy", "medium", "hard", "limited_time", "limited_moves"]
 GAME_MODE_DISPLAY = {
     "All Modes": "All Modes",
     "easy": "Easy",
     "medium": "Medium", 
     "hard": "Hard",
     "limited_time": "Limited Time",
-    "limited_moves": "Limited Moves",
-    "daily_cube": "Daily Cube"
+    "limited_moves": "Limited Moves"
 }
 REGION_OPTIONS = ["All Regions"] + REGIONS
 

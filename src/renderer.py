@@ -3,6 +3,7 @@ from pygame.locals import *
 import numpy as np
 import math
 import time
+import random
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from utils.path_helper import resource_path
@@ -69,10 +70,9 @@ class Renderer:
         # Initialize OpenGL settings
         self.setup_opengl()
 
-        # Load skybox texture from settings and create spherical skybox
+        # Load a procedural skybox texture (no external images)
         # Use freeplay difficulty as default on initialization
-        skybox_path = self.settings_manager.get_skybox_by_difficulty("freeplay")
-        self.load_skybox_texture(resource_path(skybox_path))
+        self.reload_skybox_texture("freeplay")
         self.create_spherical_skybox_display_list()  # Using spherical skybox for full panoramic image
 
         # Create optimized display list for single cube
@@ -82,88 +82,168 @@ class Renderer:
         self.rotation_x = 0
         self.rotation_y = 0
 
-    def load_skybox_texture(self, image_path):
-        """Load skybox texture from image file"""
-        try:
-            # Load image using pygame
-            skybox_image = pygame.image.load(resource_path(image_path))
-            skybox_image = pygame.transform.flip(skybox_image, False, True)  # Flip vertically for OpenGL
-            
-            # Get image data
-            image_data = pygame.image.tostring(skybox_image, 'RGB')
-            image_width, image_height = skybox_image.get_size()
-            
-            # Generate and bind texture
-            self.skybox_texture = glGenTextures(1)
-            glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
-            
-            # CRITICAL: Set texture parameters for seamless panoramic wrapping
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)      # Horizontal repeat for 360°
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)  # Vertical clamp to prevent artifacts
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-            
-            # Upload texture data
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image_width, image_height, 0, GL_RGB, GL_UNSIGNED_BYTE, image_data)
-            
-        except Exception as e:
-            print(f"Failed to load skybox texture: {e}")
-            # Create a simple gradient texture as fallback
-            self.create_fallback_skybox_texture()
+    def create_procedural_skybox_texture(self, preset="calm"):
+        """Create a lightweight procedural skybox texture (no external images)."""
+        # Use a higher 2:1 texture for better quality (generated once, cached on GPU)
+        width = 2048
+        height = 1024
 
-    def create_fallback_skybox_texture(self):
-        """Create a simple gradient texture if image loading fails"""
-        # Create a simple 64x64 gradient texture
-        size = 64
-        texture_data = []
-        
-        for y in range(size):
-            for x in range(size):
-                # Create a blue to white gradient from bottom to top
-                intensity = y / size
-                r = int(135 + (255 - 135) * intensity)  # Sky blue to white
-                g = int(206 + (255 - 206) * intensity)
-                b = int(235 + (255 - 235) * intensity)
-                texture_data.extend([r, g, b])
-        
+        palettes = {
+            "calm": ((42, 61, 115), (118, 160, 210), (118, 160, 210)),
+            "green": ((26, 79, 53), (54, 133, 67), (170, 220, 190)),
+            "orange": ((40, 20, 10), (170, 90, 40), (255, 200, 140)),
+            "red": ((35, 12, 18), (150, 50, 60), (240, 160, 170)),
+            "purple": ((36, 20, 70), (90, 60, 150), (175, 120, 230)),
+        }
+
+        # Preset names must match difficulty names
+        difficulty_palette = {
+            "freeplay": "calm",
+            "easy": "green",
+            "medium": "orange",
+            "hard": "red",
+            "limited_time": "calm",
+            "limited_moves": "calm",
+            "daily_cube": "purple"
+        }
+
+        palette_key = difficulty_palette.get(preset, "calm")
+        top, mid, bottom = palettes.get(palette_key, palettes["calm"])
+
+        # Create base gradient with subtle horizon glow and dithering
+        texture_data = bytearray(width * height * 3)
+        for y in range(height):
+            t = y / (height - 1)
+            # Blend top->mid->bottom
+            if t < 0.55:
+                tt = t / 0.55
+                r = int(top[0] + (mid[0] - top[0]) * tt)
+                g = int(top[1] + (mid[1] - top[1]) * tt)
+                b = int(top[2] + (mid[2] - top[2]) * tt)
+            else:
+                tt = (t - 0.55) / 0.45
+                bottom_bright = (min(255, bottom[0] * 1.4), min(255, bottom[1] * 1.4), min(255, bottom[2] * 1.4))
+                r = int(mid[0] + (bottom_bright[0] - mid[0]) * tt)
+                g = int(mid[1] + (bottom_bright[1] - mid[1]) * tt)
+                b = int(mid[2] + (bottom_bright[2] - mid[2]) * tt)
+
+            # Soft horizon glow near the middle
+            glow = max(0.0, 1.0 - abs(t - 0.55) * 6.0)
+            r = min(255, int(r + 15 * glow))
+            g = min(255, int(g + 12 * glow))
+            b = min(255, int(b + 6 * glow))
+
+            # Subtle vignette to reduce flatness
+            v = 1.0 - abs(t - 0.5) * 0.18
+            r = int(r * v)
+            g = int(g * v)
+            b = int(b * v)
+
+            row_index = y * width * 3
+            for x in range(width):
+                # Tiny deterministic dithering to reduce banding
+                noise = ((x * 73856093) ^ (y * 19349663)) & 0xFF
+                d = (noise - 128) * 0.015
+                idx = row_index + x * 3
+                texture_data[idx] = min(255, max(0, int(r + d)))
+                texture_data[idx + 1] = min(255, max(0, int(g + d)))
+                texture_data[idx + 2] = min(255, max(0, int(b + d)))
+
+        # Add sparse star field (very cheap, static)
+        rng = random.Random(1337 + hash(preset) % 1000)
+        star_count = 320 if palette_key == "calm" else 420
+        for _ in range(star_count):
+            x = rng.randrange(0, width)
+            y = rng.randrange(0, int(height * 0.65))  # upper region
+            brightness = rng.randint(180, 255)
+            idx = (y * width + x) * 3
+            texture_data[idx] = min(255, texture_data[idx] + brightness)
+            texture_data[idx + 1] = min(255, texture_data[idx + 1] + brightness)
+            texture_data[idx + 2] = min(255, texture_data[idx + 2] + brightness)
+
+        # Add a soft haze band near horizon (no stripes)
+        haze_center = int(height * 0.58)
+        haze_radius = int(height * 0.18)
+        for y in range(max(0, haze_center - haze_radius), min(height, haze_center + haze_radius)):
+            falloff = 1.0 - abs(y - haze_center) / haze_radius
+            tint = int(18 * falloff)
+            row_index = y * width * 3
+            for x in range(width):
+                idx = row_index + x * 3
+                texture_data[idx] = min(255, texture_data[idx] + tint)
+                texture_data[idx + 1] = min(255, texture_data[idx + 1] + int(tint * 0.7))
+                texture_data[idx + 2] = min(255, texture_data[idx + 2] + int(tint * 0.9))
+
         # Generate and bind texture
         self.skybox_texture = glGenTextures(1)
         glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
-        
-        # Set texture parameters
+
+        # Texture parameters for seamless panoramic wrapping
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        
+
         # Upload texture data
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, size, size, 0, GL_RGB, GL_UNSIGNED_BYTE, bytes(texture_data))
-        
-        print("Using fallback gradient skybox texture")
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGB,
+            width,
+            height,
+            0,
+            GL_RGB,
+            GL_UNSIGNED_BYTE,
+            bytes(texture_data),
+        )
+
+    def create_fallback_skybox_texture(self):
+        """Deprecated: kept for compatibility (procedural texture is used)."""
+        self.create_procedural_skybox_texture("calm")
     
     def reload_skybox_texture(self, new_image_path):
-        """Reload skybox texture with a new image file"""
+        """Reload skybox texture with a new procedural style."""
         try:
             # Clean up old texture
             if self.skybox_texture:
                 glDeleteTextures([self.skybox_texture])
                 self.skybox_texture = None
-            
+
             # Clean up old display list
             if self.skybox_display_list:
                 glDeleteLists(self.skybox_display_list, 1)
                 self.skybox_display_list = None
-            
-            # Load new texture
-            self.load_skybox_texture(resource_path(new_image_path))
-            
+
+            # Map incoming difficulty skybox path to a procedural preset
+            lowered = (new_image_path or "").lower()
+            if "daily_cube" in lowered:
+                preset = "daily_cube"
+            elif "freeplay" in lowered:
+                preset = "freeplay"
+            elif "easy" in lowered:
+                preset = "easy"
+            elif "medium" in lowered:
+                preset = "medium"
+            elif "hard" in lowered:
+                preset = "hard"
+            elif "limited_time" in lowered:
+                preset = "limited_time"
+            elif "limited_moves" in lowered:
+                preset = "limited_moves"
+            elif "daily" in lowered:
+                preset = "daily"
+            else:
+                preset = "freeplay"
+
+            # Create new procedural texture
+            self.create_procedural_skybox_texture(preset)
+
             # Recreate display list with new texture
             self.create_spherical_skybox_display_list()
-            
+
         except Exception as e:
             print(f"Failed to reload skybox texture: {e}")
-            # Fallback to default texture
-            self.load_skybox_texture(resource_path("utils/skybox.jpg"))
+            self.create_procedural_skybox_texture("calm")
             self.create_spherical_skybox_display_list()
 
     def create_spherical_skybox_display_list(self):
@@ -181,8 +261,8 @@ class Renderer:
         
         # Create a sphere for the skybox
         radius = self.skybox_size
-        stacks = 32  # Number of horizontal divisions (latitude)
-        slices = 64  # Number of vertical divisions (longitude)
+        stacks = 64  # Number of horizontal divisions (latitude)
+        slices = 128  # Number of vertical divisions (longitude)
         
         # Generate sphere vertices and texture coordinates
         for i in range(stacks):

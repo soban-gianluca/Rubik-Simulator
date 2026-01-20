@@ -137,7 +137,7 @@ class Menu:
         if current_res in self.available_resolutions:
             self.current_resolution_index = self.available_resolutions.index(current_res)
         
-        self.volume = int(self.settings_manager.settings.get("volume", 50))  # Ensure volume is integer
+        self.volume = int(self.settings_manager.settings.get("volume", 50))
         self.show_fps = self.settings_manager.settings.get("show_fps", False)
         self.fullscreen = self.settings_manager.settings.get("fullscreen", False)
         
@@ -589,12 +589,11 @@ class Menu:
             if hasattr(self, "debug_mode") and self.debug_mode:
                 print(f"Difficulty selected: {difficulty} (ESC now enabled)")
         
-        # Change skybox based on difficulty
+        # Change background based on difficulty (procedural, no external images)
         if hasattr(self, "game") and self.game:
-            skybox_path = self.settings_manager.get_skybox_by_difficulty(difficulty)
-            self.game.renderer.reload_skybox_texture(skybox_path)
+            self.game.renderer.reload_skybox_texture(difficulty)
             if hasattr(self, "debug_mode") and self.debug_mode:
-                print(f"Changed skybox to: {skybox_path}")
+                print(f"Changed background preset to difficulty: {difficulty}")
             
             # Only request a new game if difficulty changed and we have changed it before
             # or if this is the very first time a difficulty is selected
@@ -914,9 +913,8 @@ class Menu:
             # Refresh main menu buttons to reflect the change
             self.refresh_main_menu_buttons()
             
-            # Change skybox based on difficulty
-            skybox_path = self.settings_manager.get_skybox_by_difficulty("limited_time")
-            self.game.renderer.reload_skybox_texture(skybox_path)
+            # Change background based on difficulty (procedural, no external images)
+            self.game.renderer.reload_skybox_texture("limited_time")
             
             # Always request a new game when starting from time selection menu
             self.game.request_new_game()
@@ -965,9 +963,8 @@ class Menu:
             # Refresh main menu buttons to reflect the change
             self.refresh_main_menu_buttons()
             
-            # Change skybox based on difficulty
-            skybox_path = self.settings_manager.get_skybox_by_difficulty("limited_moves")
-            self.game.renderer.reload_skybox_texture(skybox_path)
+            # Change background based on difficulty (procedural, no external images)
+            self.game.renderer.reload_skybox_texture("limited_moves")
             
             # Always request a new game when starting from moves selection menu
             self.game.request_new_game()

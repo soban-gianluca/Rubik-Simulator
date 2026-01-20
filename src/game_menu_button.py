@@ -8,43 +8,18 @@ class GameMenuButton:
         self.height = height
         
         # Button dimensions and position - make it responsive to screen size
-        self.button_size = max(40, min(48, int(width * 0.045)))  # 4.5% of screen width, min 40px, max 48px
-        self.button_margin = max(12, int(width * 0.015))  # 1.5% of screen width, min 12px
-        
-        # Menu button position (top right)
-        self.menu_button_rect = pygame.Rect(
-            self.width - self.button_size - self.button_margin,
-            self.button_margin,
-            self.button_size,
-            self.button_size
-        )
+        self._recalculate_dimensions(width, height)
         
         # Load menu icon
+        self._menu_icon_original = None
         try:
             # Load the original menu icon
-            original_menu_icon = pygame.image.load(resource_path("utils/icons/menu.png"))
-            
-            # Use smoothscale for better quality when scaling down
-            # Scale to 2x the button size first, then scale down for anti-aliasing effect
-            high_res_size = self.button_size * 2
-            high_res_menu_icon = pygame.transform.smoothscale(original_menu_icon, (high_res_size, high_res_size))
-            self.menu_icon = pygame.transform.smoothscale(high_res_menu_icon, (self.button_size, self.button_size))
+            self._menu_icon_original = pygame.image.load(resource_path("utils/icons/menu.png")).convert_alpha()
         except:
-            # Create a high-quality fallback menu icon if the image fails to load
-            self.menu_icon = pygame.Surface((self.button_size, self.button_size), pygame.SRCALPHA)
-            
-            # Create a hamburger menu icon
-            center = self.button_size // 2
-            line_width = int(self.button_size * 0.6)
-            line_height = max(2, int(self.button_size * 0.08))
-            line_spacing = int(self.button_size * 0.2)
-            
-            # Draw three horizontal lines for hamburger menu
-            start_x = (self.button_size - line_width) // 2
-            for i in range(3):
-                y = center - line_spacing + (i * line_spacing)
-                pygame.draw.rect(self.menu_icon, (255, 255, 255, 220), 
-                               (start_x, y - line_height//2, line_width, line_height))
+            self._menu_icon_original = None
+        
+        # Create the scaled menu icon surface
+        self._rescale_menu_icon()
         
         # Button state tracking
         self.is_hovering_menu = False
@@ -122,6 +97,54 @@ class GameMenuButton:
         
         # Use the same centered position for hover state
         self.menu_button_surface_hover.blit(scaled_menu_icon_hover, (icon_x, icon_y))
+
+    def _recalculate_dimensions(self, width, height):
+        """Recalculate button size and position based on screen size"""
+        self.width = width
+        self.height = height
+
+        base = min(width, height)
+        self.button_size = max(50, min(60, int(base * 0.055)))
+        self.button_margin = max(10, int(base * 0.015))
+
+        # Menu button position (top right)
+        self.menu_button_rect = pygame.Rect(
+            self.width - self.button_size - self.button_margin,
+            self.button_margin,
+            self.button_size,
+            self.button_size
+        )
+
+    def _create_fallback_icon(self):
+        """Create a fallback hamburger menu icon"""
+        self.menu_icon = pygame.Surface((self.button_size, self.button_size), pygame.SRCALPHA)
+        
+        # Create a hamburger menu icon
+        center = self.button_size // 2
+        line_width = int(self.button_size * 0.6)
+        line_height = max(2, int(self.button_size * 0.08))
+        line_spacing = int(self.button_size * 0.2)
+        
+        # Draw three horizontal lines for hamburger menu
+        start_x = (self.button_size - line_width) // 2
+        for i in range(3):
+            y = center - line_spacing + (i * line_spacing)
+            pygame.draw.rect(self.menu_icon, (255, 255, 255, 220), 
+                           (start_x, y - line_height//2, line_width, line_height))
+
+    def _rescale_menu_icon(self):
+        """Rescale menu icon for current button size"""
+        try:
+            if self._menu_icon_original:
+                # Use smoothscale for better quality when scaling down
+                # Scale to 2x the button size first, then scale down for anti-aliasing effect
+                high_res_size = self.button_size * 2
+                high_res_menu_icon = pygame.transform.smoothscale(self._menu_icon_original, (high_res_size, high_res_size))
+                self.menu_icon = pygame.transform.smoothscale(high_res_menu_icon, (self.button_size, self.button_size))
+            else:
+                self._create_fallback_icon()
+        except Exception:
+            self._create_fallback_icon()
         
     def update_hover(self, mouse_pos):
         """Update hover state based on mouse position"""
@@ -153,21 +176,10 @@ class GameMenuButton:
             
     def update_dimensions(self, width, height):
         """Update dimensions when screen size changes"""
-        self.width = width
-        self.height = height
+        self._recalculate_dimensions(width, height)
         
-        self.button_size = max(40, min(60, int(width * 0.045)))  # 4.5% of screen width, min 40px, max 60px
-        self.button_margin = max(12, int(width * 0.015))  # 1.5% of screen width, min 12px
-        
-        # Update menu button position (top right)
-        self.menu_button_rect = pygame.Rect(
-            self.width - self.button_size - self.button_margin,
-            self.button_margin,
-            self.button_size,
-            self.button_size
-        )
-        
-        # Recreate button surfaces for new dimensions
+        # Rescale icon and recreate button surfaces for new dimensions
+        self._rescale_menu_icon()
         self._create_button_surfaces()
 
     def set_game_callback(self, callback):

@@ -239,7 +239,8 @@ class Menu:
         
         # Title styling
         self.theme.title_font = pygame_menu.font.FONT_FRANCHISE
-        self.theme.title_font_size = 65
+        title_font_size = max(38, min(70, int(self.height * 0.085)))
+        self.theme.title_font_size = title_font_size
         self.theme.title_font_color = (255, 255, 255)
         self.theme.title_font_shadow = True
         self.theme.title_font_shadow_color = (0, 0, 0)
@@ -253,13 +254,14 @@ class Menu:
         
         # Widget styling
         self.theme.widget_font = pygame_menu.font.FONT_FRANCHISE
-        self.theme.widget_font_size = 50
+        widget_font_size = max(28, min(54, int(self.height * 0.065)))
+        self.theme.widget_font_size = widget_font_size
         self.theme.widget_font_color = (255, 255, 255)  # White text
         self.theme.widget_font_shadow = True
         self.theme.widget_font_shadow_color = (0, 0, 0)
         self.theme.widget_font_shadow_offset = 2
-        self.theme.widget_margin = (0, 5)  # Reduced from 15 to 5 for tighter spacing
-        self.theme.widget_padding = (15, 10)
+        self.theme.widget_margin = (0, max(3, int(self.height * 0.007)))
+        self.theme.widget_padding = (max(10, int(self.width * 0.008)), max(6, int(self.height * 0.01)))
         
         # Button styling - use NoneSelection for now and handle custom effects manually
         self.theme.widget_selection_effect = pygame_menu.widgets.NoneSelection()
@@ -338,10 +340,8 @@ class Menu:
             # Load the record icon
             record_icon_path = resource_path("utils/icons/statistics.png")
             if os.path.exists(record_icon_path):
-                self.record_icon = pygame.image.load(record_icon_path)
-                # Scale the icon to a suitable size (32x32 pixels)
-                icon_size = 32
-                self.record_icon = pygame.transform.scale(self.record_icon, (icon_size, icon_size))
+                self._record_icon_original = pygame.image.load(record_icon_path).convert_alpha()
+                self._scale_record_icon()
             else:
                 print(f"Record icon not found: {record_icon_path}")
                 self.record_icon = None
@@ -355,16 +355,58 @@ class Menu:
             # Load the edit icon
             edit_icon_path = resource_path("utils/icons/user-edit.png")
             if os.path.exists(edit_icon_path):
-                self.edit_icon = pygame.image.load(edit_icon_path)
-                # Scale the icon to a suitable size (36x36 pixels)
-                icon_size = 36
-                self.edit_icon = pygame.transform.scale(self.edit_icon, (icon_size, icon_size))
+                self._edit_icon_original = pygame.image.load(edit_icon_path).convert_alpha()
+                self._scale_edit_icon()
             else:
                 print(f"Edit icon not found: {edit_icon_path}")
                 self.edit_icon = None
         except Exception as e:
             print(f"Error loading edit icon: {e}")
             self.edit_icon = None
+
+    def _get_stats_button_metrics(self, screen_width=None, screen_height=None):
+        """Calculate sizes for the Statistics button based on screen size"""
+        if screen_width is None:
+            screen_width = self.width
+        if screen_height is None:
+            screen_height = self.height
+
+        button_height = max(52, min(84, int(screen_height * 0.07)))
+        button_width = max(170, min(280, int(screen_width * 0.12)))
+        margin = max(14, int(screen_width * 0.018))
+        icon_size = max(26, min(48, int(button_height * 0.6)))
+        icon_padding = max(10, int(button_height * 0.22))
+        font_size = max(20, int(button_height * 0.46))
+        hover_font_size = max(font_size + 2, int(button_height * 0.5))
+
+        return {
+            "button_width": button_width,
+            "button_height": button_height,
+            "margin": margin,
+            "icon_size": icon_size,
+            "icon_padding": icon_padding,
+            "font_size": font_size,
+            "hover_font_size": hover_font_size
+        }
+
+    def _scale_record_icon(self):
+        """Scale the record icon based on current resolution"""
+        if not hasattr(self, "_record_icon_original") or self._record_icon_original is None:
+            self.record_icon = None
+            return
+
+        icon_size = self._get_stats_button_metrics()["icon_size"]
+        self.record_icon = pygame.transform.smoothscale(self._record_icon_original, (icon_size, icon_size))
+
+    def _scale_edit_icon(self):
+        """Scale the edit icon based on current resolution"""
+        if not hasattr(self, "_edit_icon_original") or self._edit_icon_original is None:
+            self.edit_icon = None
+            return
+
+        # Keep edit icon proportional to edit button size
+        edit_icon_size = max(28, min(40, int(self.height * 0.045)))
+        self.edit_icon = pygame.transform.smoothscale(self._edit_icon_original, (edit_icon_size, edit_icon_size))
     
     def _customize_button_appearance(self, button):
         """Apply custom styling to a button widget - remove backgrounds"""
@@ -1990,9 +2032,12 @@ class Menu:
                 hasattr(self, 'record_icon')):  # Only need to check if we have the icon loaded
                 
                 # Position the Statistics button in bottom right
-                button_width = 160  # Smaller width for "Statistics" text
-                button_height = 60
-                margin = 20
+                metrics = self._get_stats_button_metrics(screen.get_width(), screen.get_height())
+                button_width = metrics["button_width"]
+                button_height = metrics["button_height"]
+                margin = metrics["margin"]
+                icon_size = metrics["icon_size"]
+                icon_padding = metrics["icon_padding"]
                 
                 button_x = screen.get_width() - button_width - margin
                 button_y = screen.get_height() - button_height - margin
@@ -2015,17 +2060,20 @@ class Menu:
                 
                 # Draw the record icon if available
                 if self.record_icon:
-                    icon_x = button_x + 10
-                    icon_y = button_y + (button_height - 32) // 2
+                    if (hasattr(self, "_record_icon_original") and self._record_icon_original and
+                        (self.record_icon.get_width() != icon_size or self.record_icon.get_height() != icon_size)):
+                        self.record_icon = pygame.transform.smoothscale(self._record_icon_original, (icon_size, icon_size))
+                    icon_x = button_x + icon_padding
+                    icon_y = button_y + (button_height - icon_size) // 2
                     screen.blit(self.record_icon, (icon_x, icon_y))
-                    text_x = icon_x + 40  # Position text after icon
+                    text_x = icon_x + icon_size + max(8, icon_padding // 2)
                 else:
-                    text_x = button_x + 10
+                    text_x = button_x + icon_padding
                 
                 # Draw the text using the menu's font with hover effects
                 try:
                     # Use the same font as the menu widgets
-                    font_size = 26 if self.personal_best_button_hovered else 24
+                    font_size = metrics["hover_font_size"] if self.personal_best_button_hovered else metrics["font_size"]
                     menu_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, font_size)
                     
                     # Text color changes on hover
@@ -2135,6 +2183,10 @@ class Menu:
         
         # Reload logo image with new screen dimensions
         self._load_logo_image()
+
+        # Rescale resolution-dependent icons
+        self._scale_record_icon()
+        self._scale_edit_icon()
         
         # Clear cached background images since resolution changed
         self.background_capture = None
@@ -2205,6 +2257,10 @@ class Menu:
     
     def _create_menus(self):
         """Create or recreate menus with current dimensions"""
+        # Refresh resolution-dependent assets
+        self._scale_record_icon()
+        self._scale_edit_icon()
+
         # Clear existing difficulty button tracking when recreating menus
         self.difficulty_buttons.clear()
         self.button_animations.clear()

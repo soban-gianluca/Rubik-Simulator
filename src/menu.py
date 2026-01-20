@@ -174,6 +174,11 @@ class Menu:
         self.tooltip_surface = None
         self.tooltip_rect = None
         self.current_tooltip_button = None
+        
+        # Keyboard navigation state
+        self.keyboard_navigation_enabled = False  # Enable on first arrow key press
+        self.focused_button_index = -1  # Currently focused button index (-1 = none)
+        self.navigable_widgets = []  # List of widgets that can be navigated
 
         # Prevent double-calling pygame-menu update() in the same frame
         # (event handler already calls update([event]) for interactive input).
@@ -671,31 +676,31 @@ class Menu:
         if not self.user_manager.is_setup_completed():
             self.show_user_setup()
         else:
-            self.current_menu = self.difficulty_menu
+            self._change_menu(self.difficulty_menu)
     
     def _open_settings(self):
         """Open settings submenu"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self.current_menu = self.settings_menu
+        self._change_menu(self.settings_menu)
     
     def _open_controls(self):
         """Open controls submenu"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self.current_menu = self.controls_menu
+        self._change_menu(self.controls_menu)
     
     def _show_quit_confirmation(self):
         """Show confirmation dialog before quitting"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self.current_menu = self.quit_confirmation_menu
+        self._change_menu(self.quit_confirmation_menu)
     
     def _cancel_quit(self):
         """Cancel quit and return to main menu"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()
-        self.current_menu = self.main_menu
+        self._change_menu(self.main_menu)
     
     def _open_personal_best(self):
         """Open statistics submenu (renamed from personal best)"""
@@ -708,7 +713,7 @@ class Menu:
         else:
             # Refresh the statistics content before showing
             self._create_personal_best_content()
-            self.current_menu = self.personal_best_menu
+            self._change_menu(self.personal_best_menu)
     
     def _switch_to_personal_records_tab(self):
         """Switch to personal records tab in statistics"""
@@ -890,19 +895,19 @@ class Menu:
             self.user_setup_region_index = 0
         self.username_error = None  # Clear any previous error
         self._create_user_edit_content()
-        self.current_menu = self.user_edit_menu
+        self._change_menu(self.user_edit_menu)
     
     def _open_audio_settings(self):
         """Open audio settings submenu"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self.current_menu = self.audio_settings_menu
+        self._change_menu(self.audio_settings_menu)
     
     def _open_time_selection(self):
         """Open time selection submenu for limited time mode"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self.current_menu = self.time_selection_menu
+        self._change_menu(self.time_selection_menu)
     
     def _on_time_limit_change(self, value):
         """Handle time limit change from slider"""
@@ -921,7 +926,7 @@ class Menu:
         """Go back to difficulty selection menu"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()
-        self.current_menu = self.difficulty_menu
+        self._change_menu(self.difficulty_menu)
     
     def _format_time_display(self, seconds):
         """Format time in seconds to display string"""
@@ -972,7 +977,7 @@ class Menu:
         """Open moves selection submenu for limited moves mode"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self.current_menu = self.moves_selection_menu
+        self._change_menu(self.moves_selection_menu)
     
     def _on_move_limit_change(self, value):
         """Handle move limit change from slider"""
@@ -1243,13 +1248,13 @@ class Menu:
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
         # Refresh main menu buttons in case difficulty change count has changed
         self.refresh_main_menu_buttons()
-        self.current_menu = self.main_menu
+        self._change_menu(self.main_menu)
     
     def _back_to_settings(self):
         """Return to the settings menu"""
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self.current_menu = self.settings_menu
+        self._change_menu(self.settings_menu)
     
     def update(self):
         """Update animation state and alpha values"""
@@ -1341,7 +1346,7 @@ class Menu:
             # Play sound when opening menu
             self.sound_manager.play("menu_open")
             # Always reset to main menu when opening from in-game
-            self.current_menu = self.main_menu
+            self._change_menu(self.main_menu)
             
             # Capture and blur the background when opening the menu (if game has rendered)
             # Only capture if difficulty change count > 0 (don't blur when using main menu background)
@@ -1473,14 +1478,16 @@ class Menu:
             and event.type == pygame.TEXTINPUT
         ):
             return True
-            
-        # Enhanced mouse motion handling for hover effects
+        
+        # Disable keyboard navigation on mouse movement
         if event.type == pygame.MOUSEMOTION:
+            self._disable_keyboard_navigation_on_mouse()
             self.update_cursor(event.pos)
             self._update_hover_effects(event.pos)
         
         # Clear hover effects on mouse button clicks to prevent sticky hover
         if event.type in [pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP]:
+            self._disable_keyboard_navigation_on_mouse()
             self._clear_all_hover_effects()
             
             # Check if click is on Statistics button in bottom right (only on main menu)
@@ -1529,7 +1536,14 @@ class Menu:
                     updated = self.current_menu.update([event])
                     self._skip_pygame_menu_update_once = True
                     return updated or self.active
-                elif event.key == pygame.K_ESCAPE:
+                
+                # Handle keyboard navigation (arrow keys, Tab, Enter, Space)
+                # But not for text input menus
+                if self._handle_keyboard_navigation(event):
+                    return True
+                
+                # Handle ESC key
+                if event.key == pygame.K_ESCAPE:
                     if self.current_menu == self.main_menu:
                         # Start closing animation instead of immediately setting active to False
                         if not self.is_animating:  # Prevent multiple toggle calls during animation
@@ -1542,12 +1556,12 @@ class Menu:
                     elif self.current_menu == self.audio_settings_menu:
                         self.sound_manager.play("menu_select")
                         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-                        self.current_menu = self.settings_menu
+                        self._change_menu(self.settings_menu)
                         return True
                     else:
                         self.sound_manager.play("menu_select")
                         self._clear_all_hover_effects()  # Clear hover effects when changing menu
-                        self.current_menu = self.main_menu
+                        self._change_menu(self.main_menu)
                         return True
         
         # Let pygame-menu handle the event
@@ -1832,6 +1846,141 @@ class Menu:
         except Exception as e:
             # Silently handle any errors
             pass
+    
+    def _update_navigable_widgets(self):
+        """Update the list of navigable widgets for keyboard navigation"""
+        self.navigable_widgets = []
+        if not self.current_menu:
+            return
+            
+        widgets = self.current_menu.get_widgets()
+        for widget in widgets:
+            widget_class_name = widget.__class__.__name__
+            # Only include buttons, dropdowns, and toggle switches
+            if widget_class_name in ['Button', 'DropSelect', 'ToggleSwitch']:
+                # Skip disabled widgets - check both as property and method
+                try:
+                    if hasattr(widget, 'is_selectable'):
+                        is_selectable = widget.is_selectable() if callable(widget.is_selectable) else widget.is_selectable
+                        if not is_selectable:
+                            continue
+                except:
+                    pass
+                self.navigable_widgets.append(widget)
+    
+    def _handle_keyboard_navigation(self, event):
+        """Handle keyboard navigation (arrow keys, Enter, Space)"""
+        if event.type != pygame.KEYDOWN:
+            return False
+            
+        # Arrow keys or Tab - enable keyboard navigation and move focus
+        if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_TAB]:
+            # Enable keyboard navigation on first arrow key press
+            if not self.keyboard_navigation_enabled:
+                self.keyboard_navigation_enabled = True
+                self._update_navigable_widgets()
+                
+                # Start with first widget focused
+                if self.navigable_widgets:
+                    self.focused_button_index = 0
+                    self._apply_keyboard_focus(self.navigable_widgets[0], True)
+                    return True
+            
+            # Navigate between widgets
+            if not self.navigable_widgets:
+                self._update_navigable_widgets()
+                
+            if self.navigable_widgets:
+                # Clear current focus
+                if 0 <= self.focused_button_index < len(self.navigable_widgets):
+                    self._apply_keyboard_focus(self.navigable_widgets[self.focused_button_index], False)
+                
+                # Move focus
+                if event.key in [pygame.K_DOWN, pygame.K_RIGHT] or (event.key == pygame.K_TAB and not (pygame.key.get_mods() & pygame.KMOD_SHIFT)):
+                    self.focused_button_index = (self.focused_button_index + 1) % len(self.navigable_widgets)
+                elif event.key in [pygame.K_UP, pygame.K_LEFT] or (event.key == pygame.K_TAB and (pygame.key.get_mods() & pygame.KMOD_SHIFT)):
+                    self.focused_button_index = (self.focused_button_index - 1) % len(self.navigable_widgets)
+                
+                # Apply new focus
+                self._apply_keyboard_focus(self.navigable_widgets[self.focused_button_index], True)
+                
+                # Play navigation sound
+                if hasattr(self, 'sound_manager'):
+                    self.sound_manager.play_slider_sound("menu_select")
+                
+                return True
+                
+        # Enter or Space - activate focused widget
+        elif event.key in [pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE]:
+            if self.keyboard_navigation_enabled and 0 <= self.focused_button_index < len(self.navigable_widgets):
+                focused_widget = self.navigable_widgets[self.focused_button_index]
+                
+                # Simulate click on the focused widget
+                if focused_widget.__class__.__name__ == 'Button':
+                    # Play click sound
+                    if hasattr(self, 'sound_manager'):
+                        self.sound_manager.play("menu_select")
+                    
+                    # Trigger button action
+                    focused_widget.apply()
+                    return True
+                elif focused_widget.__class__.__name__ == 'ToggleSwitch':
+                    # Toggle the switch
+                    focused_widget.change()
+                    return True
+                elif focused_widget.__class__.__name__ == 'DropSelect':
+                    # Open dropdown (let pygame-menu handle this)
+                    return False
+        
+        return False
+    
+    def _apply_keyboard_focus(self, widget, is_focused):
+        """Apply or remove keyboard focus visual effect from a widget"""
+        try:
+            if is_focused:
+                # Apply focus effect similar to hover
+                self._apply_hover_effect(widget, True)
+                
+                # Add additional visual indicator (border or background change)
+                if hasattr(widget, 'set_border'):
+                    widget.set_border(2, (255, 255, 255))
+                    
+            else:
+                # Remove focus effect
+                self._apply_hover_effect(widget, False)
+                
+                # Remove border
+                if hasattr(widget, 'set_border'):
+                    widget.set_border(0, (0, 0, 0, 0))
+                    
+        except Exception:
+            pass
+    
+    def _disable_keyboard_navigation_on_mouse(self):
+        """Disable keyboard navigation when mouse is used"""
+        if self.keyboard_navigation_enabled:
+            # Clear current focus
+            if 0 <= self.focused_button_index < len(self.navigable_widgets):
+                self._apply_keyboard_focus(self.navigable_widgets[self.focused_button_index], False)
+            
+            self.keyboard_navigation_enabled = False
+            self.focused_button_index = -1
+    
+    def _reset_keyboard_navigation(self):
+        """Reset keyboard navigation state (called when changing menus)"""
+        # Clear current focus if active
+        if self.keyboard_navigation_enabled and 0 <= self.focused_button_index < len(self.navigable_widgets):
+            self._apply_keyboard_focus(self.navigable_widgets[self.focused_button_index], False)
+        
+        # Reset state
+        self.keyboard_navigation_enabled = False
+        self.focused_button_index = -1
+        self.navigable_widgets = []
+    
+    def _change_menu(self, new_menu):
+        """Change to a new menu and reset keyboard navigation"""
+        self._reset_keyboard_navigation()
+        self.current_menu = new_menu
     
     def update_cursor(self, mouse_pos):
         """Update cursor based on menu interaction with enhanced feedback"""
@@ -4027,7 +4176,7 @@ class Menu:
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()
         self._create_personal_best_content()
-        self.current_menu = self.personal_best_menu
+        self._change_menu(self.personal_best_menu)
     
     def needs_user_setup(self) -> bool:
         """Check if user setup is needed"""
@@ -4040,7 +4189,7 @@ class Menu:
         self.user_setup_region_index = 0
         self.username_error = None  # Clear any previous error
         self._create_user_setup_content()
-        self.current_menu = self.user_setup_menu
+        self._change_menu(self.user_setup_menu)
         
         # Ensure the text input is selected and focused for keyboard input
         try:
@@ -4058,4 +4207,4 @@ class Menu:
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()
         self.user_setup_active = False
-        self.current_menu = self.main_menu
+        self._change_menu(self.main_menu)

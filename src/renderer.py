@@ -89,10 +89,11 @@ class Renderer:
         height = 1024
 
         palettes = {
-            "calm": ((28, 40, 76), (118, 160, 210), (255, 230, 180)),
-            "green": ((10, 30, 20), (60, 130, 90), (170, 220, 190)),
+            "calm": ((42, 61, 115), (118, 160, 210), (118, 160, 210)),
+            "green": ((26, 79, 53), (54, 133, 67), (170, 220, 190)),
             "orange": ((40, 20, 10), (170, 90, 40), (255, 200, 140)),
             "red": ((35, 12, 18), (150, 50, 60), (240, 160, 170)),
+            "purple": ((36, 20, 70), (90, 60, 150), (175, 120, 230)),
         }
 
         # Preset names must match difficulty names
@@ -103,7 +104,8 @@ class Renderer:
             "hard": "red",
             "limited_time": "calm",
             "limited_moves": "calm",
-            "daily": "calm"
+            "daily": "purple",
+            "daily_cube": "purple"
         }
 
         palette_key = difficulty_palette.get(preset, "calm")
@@ -121,15 +123,16 @@ class Renderer:
                 b = int(top[2] + (mid[2] - top[2]) * tt)
             else:
                 tt = (t - 0.55) / 0.45
-                r = int(mid[0] + (bottom[0] - mid[0]) * tt)
-                g = int(mid[1] + (bottom[1] - mid[1]) * tt)
-                b = int(mid[2] + (bottom[2] - mid[2]) * tt)
+                bottom_bright = (min(255, bottom[0] * 1.4), min(255, bottom[1] * 1.4), min(255, bottom[2] * 1.4))
+                r = int(mid[0] + (bottom_bright[0] - mid[0]) * tt)
+                g = int(mid[1] + (bottom_bright[1] - mid[1]) * tt)
+                b = int(mid[2] + (bottom_bright[2] - mid[2]) * tt)
 
             # Soft horizon glow near the middle
             glow = max(0.0, 1.0 - abs(t - 0.55) * 6.0)
-            r = min(255, int(r + 25 * glow))
-            g = min(255, int(g + 20 * glow))
-            b = min(255, int(b + 10 * glow))
+            r = min(255, int(r + 15 * glow))
+            g = min(255, int(g + 12 * glow))
+            b = min(255, int(b + 6 * glow))
 
             # Subtle vignette to reduce flatness
             v = 1.0 - abs(t - 0.5) * 0.18

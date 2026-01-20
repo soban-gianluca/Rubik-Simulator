@@ -104,7 +104,6 @@ class Renderer:
             "hard": "red",
             "limited_time": "calm",
             "limited_moves": "calm",
-            "daily": "purple",
             "daily_cube": "purple"
         }
 

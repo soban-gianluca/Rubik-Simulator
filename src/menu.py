@@ -1540,7 +1540,8 @@ class Menu:
             # Check if click is on Statistics button in bottom right (only on main menu)
             if (event.type == pygame.MOUSEBUTTONDOWN and 
                 self.current_menu == self.main_menu and 
-                hasattr(self, 'personal_best_rect')):
+                hasattr(self, 'personal_best_rect') and
+                self.personal_best_rect is not None):
                 
                 mouse_x, mouse_y = event.pos
                 
@@ -1553,7 +1554,7 @@ class Menu:
             if (event.type == pygame.MOUSEBUTTONDOWN and 
                 self.current_menu == self.main_menu and 
                 hasattr(self, 'achievements_rect') and 
-                self.achievements_rect):
+                self.achievements_rect is not None):
                 
                 mouse_x, mouse_y = event.pos
                 

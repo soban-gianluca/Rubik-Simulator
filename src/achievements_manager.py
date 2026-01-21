@@ -94,33 +94,33 @@ ACHIEVEMENTS = {
     },
     
     # Speed achievements
-    "speed_under_2min": {
-        "name": "Under Two",
-        "description": "Solve a Hard cube in under 2 minutes",
-        "icon": "utils/icons/achievements/speed/under-2min.png",
+    "speed_under_30s": {
+        "name": "Lightning Fast",
+        "description": "Solve an Easy cube in under 30 seconds",
+        "icon": "utils/icons/achievements/speed/under-30sec.png",
         "category": "speed",
         "condition_type": "time_under",
-        "target": 120,
-        "difficulty": "hard",
+        "time_threshold": 30,
+        "difficulty": "easy",
         "secret": False
     },
     "speed_under_1min": {
         "name": "Speed Demon",
-        "description": "Solve a Hard cube in under 1 minute",
+        "description": "Solve a Medium cube in under 1 minute",
         "icon": "utils/icons/achievements/speed/under-1min.png",
         "category": "speed",
         "condition_type": "time_under",
-        "target": 60,
-        "difficulty": "hard",
+        "time_threshold": 60,
+        "difficulty": "medium",
         "secret": False
     },
-    "speed_under_30s": {
-        "name": "Lightning Fast",
-        "description": "Solve a Hard cube in under 30 seconds",
-        "icon": "utils/icons/achievements/speed/under-30sec.png",
+    "speed_under_2min": {
+        "name": "Speedrunner",
+        "description": "Solve a Hard cube in under 2 minutes",
+        "icon": "utils/icons/achievements/speed/under-2min.png",
         "category": "speed",
         "condition_type": "time_under",
-        "target": 30,
+        "time_threshold": 120,
         "difficulty": "hard",
         "secret": False
     },
@@ -190,7 +190,7 @@ ACHIEVEMENTS = {
         "icon": "utils/icons/achievements/efficiency/efficient-easy.png",
         "category": "efficiency",
         "condition_type": "moves_under",
-        "target": 10,
+        "moves_threshold": 10,
         "difficulty": "easy",
         "secret": False
     },
@@ -200,7 +200,7 @@ ACHIEVEMENTS = {
         "icon": "utils/icons/achievements/efficiency/efficient-medium.png",
         "category": "efficiency",
         "condition_type": "moves_under",
-        "target": 20,
+        "moves_threshold": 20,
         "difficulty": "medium",
         "secret": False
     },
@@ -362,14 +362,16 @@ class AchievementsManager:
                 unlocked = self.data["stats"].get("scramble_count", 0) >= target
             elif condition_type == "time_under":
                 difficulty = achievement.get("difficulty", "hard")
+                time_threshold = achievement.get("time_threshold", target)  # Fallback to target for compatibility
                 best_time = self.data["stats"].get("best_times", {}).get(difficulty)
                 if best_time is not None:
-                    unlocked = best_time < target
+                    unlocked = best_time < time_threshold
             elif condition_type == "moves_under":
                 difficulty = achievement.get("difficulty", "easy")
+                moves_threshold = achievement.get("moves_threshold", target)  # Fallback to target for compatibility
                 best_moves = self.data["stats"].get("best_moves", {}).get(difficulty)
                 if best_moves is not None:
-                    unlocked = best_moves <= target
+                    unlocked = best_moves <= moves_threshold
             
             if unlocked:
                 if self.unlock_achievement(achievement_id):
@@ -467,6 +469,79 @@ class AchievementsManager:
     def get_stats(self) -> dict:
         """Get player statistics"""
         return self.data["stats"].copy()
+    
+    def sync_with_personal_records(self, personal_best_manager):
+        """Retroactively check and unlock achievements based on existing personal records."""
+        from personal_best_manager import PersonalBestManager
+        
+        if not isinstance(personal_best_manager, PersonalBestManager):
+            print("Invalid personal_best_manager provided")
+            return []
+        
+        # Get all personal records
+        records = personal_best_manager.records
+        
+        # Update stats from personal records
+        stats = self.data["stats"]
+        
+        # Update total solves
+        total_solves = 0
+        for difficulty in ["easy", "medium", "hard", "limited_time", "limited_moves", "daily_cube"]:
+            if difficulty in records:
+                total_solves += records[difficulty].get("total_solves", 0)
+        
+        stats["total_solves"] = max(stats.get("total_solves", 0), total_solves)
+        
+        # Update difficulty-specific solves
+        for difficulty in ["easy", "medium", "hard"]:
+            if difficulty in records:
+                key = f"{difficulty}_solves"
+                stats[key] = max(stats.get(key, 0), records[difficulty].get("total_solves", 0))
+        
+        # Update challenge mode stats
+        if "limited_time" in records:
+            stats["limited_time_wins"] = max(
+                stats.get("limited_time_wins", 0),
+                records["limited_time"].get("wins", 0)
+            )
+        
+        if "limited_moves" in records:
+            stats["limited_moves_wins"] = max(
+                stats.get("limited_moves_wins", 0),
+                records["limited_moves"].get("wins", 0)
+            )
+        
+        # Update daily solves
+        if "daily_cube" in records:
+            stats["daily_solves"] = max(
+                stats.get("daily_solves", 0),
+                records["daily_cube"].get("total_solves", 0)
+            )
+        
+        # Update best times
+        if "best_times" not in stats:
+            stats["best_times"] = {}
+        
+        for difficulty in ["easy", "medium", "hard", "limited_time", "limited_moves", "daily_cube"]:
+            if difficulty in records and records[difficulty].get("best_time") is not None:
+                best_time = records[difficulty]["best_time"]
+                if difficulty not in stats["best_times"] or best_time < stats["best_times"][difficulty]:
+                    stats["best_times"][difficulty] = best_time
+        
+        # Update best moves
+        if "best_moves" not in stats:
+            stats["best_moves"] = {}
+        
+        for difficulty in ["easy", "medium", "hard", "limited_time", "limited_moves", "daily_cube"]:
+            if difficulty in records and records[difficulty].get("best_moves") is not None:
+                best_moves = records[difficulty]["best_moves"]
+                if difficulty not in stats["best_moves"] or best_moves < stats["best_moves"][difficulty]:
+                    stats["best_moves"][difficulty] = best_moves
+        
+        self.save_data()
+        
+        # Check for newly unlocked achievements
+        return self.check_and_unlock()
     
     def reset_achievements(self):
         """Reset all achievements (for testing or user request)"""

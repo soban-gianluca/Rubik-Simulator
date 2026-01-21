@@ -19,6 +19,9 @@ class ResultsWindow:
         # Initialize personal best manager
         self.personal_best_manager = None  # Will be set from game instance
         
+        # Initialize achievements manager
+        self.achievements_manager = None  # Will be set from game instance
+        
         # Results window state
         self.active = False
         self.results_data = {}
@@ -185,12 +188,20 @@ class ResultsWindow:
                 difficulty, solve_time, moves, tps or (moves / solve_time if solve_time > 0 else 0)
             )
         
+        # Track achievements if achievements manager is available
+        newly_unlocked_achievements = []
+        if self.achievements_manager and difficulty and difficulty != "freeplay":
+            newly_unlocked_achievements = self.achievements_manager.record_solve(
+                difficulty, solve_time, moves
+            )
+        
         self.results_data = {
             'moves': moves,
             'time': solve_time,
             'tps': tps or (moves / solve_time if solve_time > 0 else 0),
             'difficulty': difficulty,
-            'new_records': new_records
+            'new_records': new_records,
+            'newly_unlocked_achievements': newly_unlocked_achievements
         }
         
         # Calculate performance rating and get color
@@ -703,15 +714,15 @@ class ResultsWindow:
         self.tps_widget.set_title(f"Speed: {tps:.2f} TPS")
         
         # Set performance rating with dynamic color - check for stored new record indicators
-        rating_text = f"🌟 {rating}"
+        rating_text = f"{rating}"
         if 'new_records' in results_data:
             new_records = results_data['new_records']
             if new_records.get('is_best_time'):
-                rating_text += "NEW BEST TIME!"
+                rating_text += " NEW BEST TIME!"
             elif new_records.get('is_best_moves'):
-                rating_text += "NEW LEAST MOVES!"
+                rating_text += " NEW LEAST MOVES!"
             elif new_records.get('is_best_tps'):
-                rating_text += "NEW BEST TPS!"
+                rating_text += " NEW BEST TPS!"
         
         self.rating_widget.set_title(rating_text)
         self.rating_widget._font_color = rating_color
@@ -726,3 +737,7 @@ class ResultsWindow:
     def set_personal_best_manager(self, personal_best_manager):
         """Set the personal best manager instance for tracking records"""
         self.personal_best_manager = personal_best_manager
+    
+    def set_achievements_manager(self, achievements_manager):
+        """Set the achievements manager instance for tracking achievements"""
+        self.achievements_manager = achievements_manager

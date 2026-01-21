@@ -70,6 +70,7 @@ class Menu:
         self.leaderboard_data = []  # Cached leaderboard data
         self.leaderboard_loading = False  # Flag for async loading
         self.leaderboard_error = None  # Error message if fetch failed
+        self.leaderboard_is_offline = False  # Flag for offline/network error state
         self.leaderboard_filter_mode = "All Modes"  # Current game mode filter
         self.leaderboard_filter_region = "All Regions"  # Current region filter
         self.leaderboard_last_fetch = 0  # Timestamp of last fetch
@@ -79,6 +80,7 @@ class Menu:
         self.daily_leaderboard_data = []  # Cached daily leaderboard data
         self.daily_leaderboard_loading = False  # Flag for async loading
         self.daily_leaderboard_error = None  # Error message if fetch failed
+        self.daily_leaderboard_is_offline = False  # Flag for offline/network error state
         self.daily_leaderboard_filter_region = "All Regions"  # Current region filter for daily
         self.daily_leaderboard_last_fetch = 0  # Timestamp of last fetch
         self.daily_leaderboard_ui_refresh_pending = False  # Flag to prevent concurrent UI refreshes
@@ -764,8 +766,8 @@ class Menu:
                 game_mode = None if self.leaderboard_filter_mode == "All Modes" else self.leaderboard_filter_mode
                 region = None if self.leaderboard_filter_region == "All Regions" else self.leaderboard_filter_region
                 
-                # Fetch data
-                data = self.supabase_manager.get_leaderboard(
+                # Fetch data (returns tuple: data, is_offline)
+                data, is_offline = self.supabase_manager.get_leaderboard(
                     game_mode=game_mode,
                     region=region,
                     sort_by="best_time",
@@ -775,10 +777,12 @@ class Menu:
                 
                 self.leaderboard_data = data if data else []
                 self.leaderboard_last_fetch = time.time()
+                self.leaderboard_is_offline = is_offline
                 self.leaderboard_error = None
             except Exception as e:
                 print(f"Error fetching leaderboard: {e}")
                 self.leaderboard_error = "Failed to load leaderboard"
+                self.leaderboard_is_offline = False
                 self.leaderboard_data = []
             finally:
                 self.leaderboard_loading = False
@@ -815,18 +819,20 @@ class Menu:
                 # Get filter values
                 region = None if self.daily_leaderboard_filter_region == "All Regions" else self.daily_leaderboard_filter_region
                 
-                # Fetch daily leaderboard data
-                data = self.supabase_manager.get_daily_leaderboard(
+                # Fetch daily leaderboard data (returns tuple: data, is_offline)
+                data, is_offline = self.supabase_manager.get_daily_leaderboard(
                     region=region,
                     limit=50
                 )
                 
                 self.daily_leaderboard_data = data if data else []
                 self.daily_leaderboard_last_fetch = time.time()
+                self.daily_leaderboard_is_offline = is_offline
                 self.daily_leaderboard_error = None
             except Exception as e:
                 print(f"Error fetching daily leaderboard: {e}")
                 self.daily_leaderboard_error = "Failed to load daily leaderboard"
+                self.daily_leaderboard_is_offline = False
                 self.daily_leaderboard_data = []
             finally:
                 self.daily_leaderboard_loading = False
@@ -3544,20 +3550,45 @@ class Menu:
             )
             return
         
-        # Empty state
+        # Empty state - distinguish between offline and no records
         if not self.leaderboard_data:
             self.personal_best_menu.add.vertical_margin(30)
-            self.personal_best_menu.add.label(
-                "No records found",
-                font_size=40,
-                font_color=(200, 200, 200),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.personal_best_menu.add.vertical_margin(15)
-            self.personal_best_menu.add.label(
-                "Be the first to set a record!",
-                font_size=28,
-                font_color=(150, 150, 150),
+            
+            if self.leaderboard_is_offline:
+                # Offline state - no internet connection
+                self.personal_best_menu.add.label(
+                    "⚠ No Internet Connection",
+                    font_size=40,
+                    font_color=(255, 165, 0),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                self.personal_best_menu.add.vertical_margin(15)
+                self.personal_best_menu.add.label(
+                    "Online features are unavailable",
+                    font_size=28,
+                    font_color=(200, 150, 100),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                self.personal_best_menu.add.vertical_margin(10)
+                self.personal_best_menu.add.label(
+                    "Please check your internet connection and try again",
+                    font_size=24,
+                    font_color=(150, 150, 150),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+            else:
+                # Actually no records found
+                self.personal_best_menu.add.label(
+                    "No records found",
+                    font_size=40,
+                    font_color=(200, 200, 200),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                self.personal_best_menu.add.vertical_margin(15)
+                self.personal_best_menu.add.label(
+                    "Be the first to set a record!",
+                    font_size=28,
+                    font_color=(150, 150, 150),
                 font_name=pygame_menu.font.FONT_FRANCHISE
             )
             return
@@ -3757,27 +3788,52 @@ class Menu:
             )
             return
         
-        # Empty state
+        # Empty state - distinguish between offline and no records
         if not self.daily_leaderboard_data:
             self.personal_best_menu.add.vertical_margin(30)
-            self.personal_best_menu.add.label(
-                "No one has completed today's Daily Cube yet!",
-                font_size=36,
-                font_color=(200, 200, 200),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.personal_best_menu.add.vertical_margin(15)
-            self.personal_best_menu.add.label(
-                "Be the first to set a record!",
-                font_size=26,
-                font_color=(150, 150, 150),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.personal_best_menu.add.vertical_margin(10)
-            self.personal_best_menu.add.label(
-                "Play 'Daily Cube' mode to compete!",
-                font_size=24,
-                font_color=(240, 198, 38),
+            
+            if self.daily_leaderboard_is_offline:
+                # Offline state - no internet connection
+                self.personal_best_menu.add.label(
+                    "⚠ No Internet Connection",
+                    font_size=40,
+                    font_color=(255, 165, 0),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                self.personal_best_menu.add.vertical_margin(15)
+                self.personal_best_menu.add.label(
+                    "Online features are unavailable",
+                    font_size=28,
+                    font_color=(200, 150, 100),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                self.personal_best_menu.add.vertical_margin(10)
+                self.personal_best_menu.add.label(
+                    "Please check your internet connection and try again",
+                    font_size=24,
+                    font_color=(150, 150, 150),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+            else:
+                # Actually no records found
+                self.personal_best_menu.add.label(
+                    "No one has completed today's Daily Cube yet!",
+                    font_size=36,
+                    font_color=(200, 200, 200),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                self.personal_best_menu.add.vertical_margin(15)
+                self.personal_best_menu.add.label(
+                    "Be the first to set a record!",
+                    font_size=26,
+                    font_color=(150, 150, 150),
+                    font_name=pygame_menu.font.FONT_FRANCHISE
+                )
+                self.personal_best_menu.add.vertical_margin(10)
+                self.personal_best_menu.add.label(
+                    "Play 'Daily Cube' mode to compete!",
+                    font_size=24,
+                    font_color=(240, 198, 38),
                 font_name=pygame_menu.font.FONT_FRANCHISE
             )
             return

@@ -278,12 +278,16 @@ class SupabaseManager:
             with urllib.request.urlopen(request, timeout=10) as response:
                 response_data = response.read().decode('utf-8')
                 if response_data:
-                    return json.loads(response_data)
-                return []
+                    return (json.loads(response_data), False)  # (data, is_offline)
+                return ([], False)
                 
+        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            # Network-related errors (no connection, timeout, DNS failure, etc.)
+            print(f"Network error fetching leaderboard: {e}")
+            return ([], True)  # (empty data, is_offline=True)
         except Exception as e:
             print(f"Error fetching leaderboard: {e}")
-            return []
+            return ([], False)  # Other errors, not necessarily offline
     
     def get_user_ranks(self, game_mode: str = None) -> Dict[str, int]:
         """
@@ -492,12 +496,16 @@ class SupabaseManager:
             with urllib.request.urlopen(request, timeout=10) as response:
                 response_data = response.read().decode('utf-8')
                 if response_data:
-                    return json.loads(response_data)
-                return []
+                    return (json.loads(response_data), False)  # (data, is_offline)
+                return ([], False)
                 
+        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            # Network-related errors (no connection, timeout, DNS failure, etc.)
+            print(f"Network error fetching daily leaderboard: {e}")
+            return ([], True)  # (empty data, is_offline=True)
         except Exception as e:
             print(f"Error fetching daily leaderboard: {e}")
-            return []
+            return ([], False)  # Other errors, not necessarily offline
     
     def has_user_completed_daily(self) -> bool:
         """

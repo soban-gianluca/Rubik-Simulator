@@ -6,6 +6,7 @@ import os
 import time
 import math
 import threading
+from io import BytesIO
 from src.settings_manager import SettingsManager
 from src.sound_manager import SoundManager
 from src.personal_best_manager import PersonalBestManager
@@ -3374,7 +3375,7 @@ class Menu:
             # Category header
             self.achievements_menu.add.label(
                 category_name,
-                font_size=32,
+                font_size=55,
                 font_color=(255, 180, 0),
                 font_name=pygame_menu.font.FONT_FRANCHISE
             )
@@ -3416,95 +3417,135 @@ class Menu:
             font_name=pygame_menu.font.FONT_FRANCHISE
         )
     
-    def _add_achievement_widget(self, achievement):
-        """Add a single achievement widget with progress bar if applicable"""
+    def _create_achievement_surface(self, achievement, width=750, height=110):
+        """Create a surface with the achievement details in a box"""
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        
+        # Colors
+        bg_color = (20, 30, 45, 180)  # Dark background
+        border_color = (60, 70, 90)
+        
         is_unlocked = achievement.get("unlocked", False)
         is_secret = achievement.get("secret", False)
         progress = achievement.get("progress", 0)
         target = achievement.get("target", 1)
         progress_pct = achievement.get("progress_percentage", 0)
         
-        # Icon and name
+        if is_unlocked:
+            border_color = (240, 198, 38) # Gold border
+            bg_color = (30, 40, 60, 220)
+            
+        # Draw box
+        pygame.draw.rect(surface, bg_color, (0, 0, width, height), border_radius=8)
+        pygame.draw.rect(surface, border_color, (0, 0, width, height), 2, border_radius=8)
+        
+        # Font Helper - Optimized with lazy loading
+        if not hasattr(self, '_achievement_title_font'):
+             try:
+                self._achievement_title_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 42)
+             except:
+                self._achievement_title_font = pygame.font.SysFont("arial", 42)
+        
+        if not hasattr(self, '_achievement_desc_font'):
+             try:
+                self._achievement_desc_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 28)
+             except:
+                self._achievement_desc_font = pygame.font.SysFont("arial", 28)
+
+        if not hasattr(self, '_achievement_status_font'):
+             try:
+                self._achievement_status_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 22)
+             except:
+                self._achievement_status_font = pygame.font.SysFont("arial", 22)
+
+        # Content Logic
         icon_path = achievement.get("icon", "")
         name = achievement.get("name", "Unknown")
         description = achievement.get("description", "")
         
-        # For secret achievements, hide details if not unlocked
         if is_secret and not is_unlocked:
             name = "???"
             description = "This is a secret achievement"
-            icon_path = ""  # No icon for secret locked achievements
+            icon_path = ""
+            
+        name_color = (240, 198, 38) if is_unlocked else (180, 180, 180)
+        desc_color = (200, 200, 200) if is_unlocked else (120, 120, 120)
         
-        # Determine colors based on unlock status
-        if is_unlocked:
-            name_color = (240, 198, 38)  # Golden for unlocked
-            desc_color = (200, 200, 200)
-            status_text = "✓ UNLOCKED"
-            status_color = (100, 255, 100)
-        else:
-            name_color = (180, 180, 180)  # Gray for locked
-            desc_color = (120, 120, 120)
-            status_text = f"{progress}/{target}"
-            status_color = (180, 180, 180)
+        # Draw Icon (Left side, square based on height)
+        padding = 10
+        icon_size = height - (padding * 2)
+        icon_rect = pygame.Rect(padding, padding, icon_size, icon_size)
         
-        # Try to load and display the icon image
+        # Icon background/placeholder
+        pygame.draw.rect(surface, (10, 10, 10, 100), icon_rect, border_radius=5)
+        
         if icon_path:
             full_icon_path = resource_path(icon_path)
             if os.path.exists(full_icon_path):
                 try:
-                    # pygame_menu.add.image expects a path string
-                    self.achievements_menu.add.image(
-                        full_icon_path,
-                        scale=(0.8, 0.8),  # Scale to appropriate size
-                        align=ALIGN_LEFT
-                    )
+                    icon_img = pygame.image.load(full_icon_path).convert_alpha()
+                    icon_img = pygame.transform.smoothscale(icon_img, (icon_size, icon_size))
+                    surface.blit(icon_img, icon_rect)
                 except Exception as e:
-                    print(f"Failed to load achievement icon {icon_path}: {e}")
+                    print(f"Error loading icon: {e}")
         
-        # Achievement name
-        self.achievements_menu.add.label(
-            name,
-            font_size=26,
-            font_color=name_color,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            align=ALIGN_LEFT
-        )
+        # Text Area (Right of icon)
+        text_x = padding + icon_size + 20
+        text_width = width - text_x - padding
+        
+        # Name
+        name_surf = self._achievement_title_font.render(name, True, name_color)
+        surface.blit(name_surf, (text_x, 10))
         
         # Description
-        self.achievements_menu.add.label(
-            f"     {description}",
-            font_size=18,
-            font_color=desc_color,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            align=ALIGN_LEFT
-        )
+        desc_surf = self._achievement_desc_font.render(description, True, desc_color)
+        surface.blit(desc_surf, (text_x, 52))
         
-        # Progress bar for progression-type achievements (not yet unlocked)
+        # Progress Bar or Unlocked Text
+        bottom_y = height - 30
+        
         if not is_unlocked and target > 1:
-            # Visual progress bar
-            filled_blocks = int(progress_pct * 20)  # 20 blocks for individual achievements
-            empty_blocks = 20 - filled_blocks
-            bar_text = f"     [{('█' * filled_blocks) + ('░' * empty_blocks)}] {progress}/{target}"
+            # Draw progress bar
+            bar_w = 250
+            bar_h = 10
             
-            bar_color = (100, 180, 255) if progress > 0 else (80, 80, 80)
-            self.achievements_menu.add.label(
-                bar_text,
-                font_size=16,
-                font_color=bar_color,
-                font_name=pygame_menu.font.FONT_FRANCHISE,
-                align=ALIGN_LEFT
-            )
+            # Background
+            pygame.draw.rect(surface, (50, 50, 50), (text_x, bottom_y + 6, bar_w, bar_h), border_radius=5)
+            # Fill
+            fill_w = int(bar_w * progress_pct)
+            if fill_w > 0:
+                pygame.draw.rect(surface, (100, 180, 255), (text_x, bottom_y + 6, fill_w, bar_h), border_radius=5)
+            
+            # Text
+            status_text = f"{progress}/{target}"
+            status_surf = self._achievement_status_font.render(status_text, True, (150, 150, 150))
+            surface.blit(status_surf, (text_x + bar_w + 12, bottom_y))
+            
         elif is_unlocked:
-            # Show unlock status
-            self.achievements_menu.add.label(
-                f"     {status_text}",
-                font_size=16,
-                font_color=status_color,
-                font_name=pygame_menu.font.FONT_FRANCHISE,
-                align=ALIGN_LEFT
-            )
+             status_text = "UNLOCKED"
+             status_surf = self._achievement_status_font.render(status_text, True, (100, 255, 100))
+             surface.blit(status_surf, (text_x, bottom_y))
+
+        return surface
+
+    def _add_achievement_widget(self, achievement):
+        """Add a single achievement widget with progress bar if applicable"""
+        # Create custom surface for the achievement
+        surf = self._create_achievement_surface(achievement)
+
+        # Convert surface to BytesIO for pygame-menu
+        image_bytes = BytesIO()
+        pygame.image.save(surf, image_bytes, "PNG")
+        image_bytes.seek(0)  # Reset pointer to start
         
-        self.achievements_menu.add.vertical_margin(8)
+        # Add surface to menu
+        self.achievements_menu.add.image(
+            image_bytes,
+            align=ALIGN_CENTER,
+            margin=(0, 5)
+        )
+        # Vertical margin already handled by margin(0,5) but maybe add explicit spacer
+        # self.achievements_menu.add.vertical_margin(2)
     
     def _create_personal_best_content(self):
         """Create or refresh statistics menu content with tabs"""

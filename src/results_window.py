@@ -19,6 +19,9 @@ class ResultsWindow:
         # Initialize personal best manager
         self.personal_best_manager = None  # Will be set from game instance
         
+        # Initialize achievements manager
+        self.achievements_manager = None  # Will be set from game instance
+        
         # Results window state
         self.active = False
         self.results_data = {}
@@ -185,12 +188,20 @@ class ResultsWindow:
                 difficulty, solve_time, moves, tps or (moves / solve_time if solve_time > 0 else 0)
             )
         
+        # Track achievements if achievements manager is available
+        newly_unlocked_achievements = []
+        if self.achievements_manager and difficulty and difficulty != "freeplay":
+            newly_unlocked_achievements = self.achievements_manager.record_solve(
+                difficulty, solve_time, moves
+            )
+        
         self.results_data = {
             'moves': moves,
             'time': solve_time,
             'tps': tps or (moves / solve_time if solve_time > 0 else 0),
             'difficulty': difficulty,
-            'new_records': new_records
+            'new_records': new_records,
+            'newly_unlocked_achievements': newly_unlocked_achievements
         }
         
         # Calculate performance rating and get color
@@ -726,3 +737,7 @@ class ResultsWindow:
     def set_personal_best_manager(self, personal_best_manager):
         """Set the personal best manager instance for tracking records"""
         self.personal_best_manager = personal_best_manager
+    
+    def set_achievements_manager(self, achievements_manager):
+        """Set the achievements manager instance for tracking achievements"""
+        self.achievements_manager = achievements_manager

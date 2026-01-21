@@ -14,6 +14,7 @@ from src.results_window import ResultsWindow
 from src.mouse_interaction import MouseInteraction
 from src.game_menu_button import GameMenuButton
 from src.personal_best_manager import PersonalBestManager
+from src.achievements_manager import AchievementsManager
 from src.supabase_manager import get_supabase_manager
 from utils.path_helper import resource_path
 from src.rubiks_cube import RubiksCube
@@ -117,6 +118,9 @@ class Game:
         # Initialize personal best manager
         self.personal_best_manager = PersonalBestManager()
         
+        # Initialize achievements manager
+        self.achievements_manager = AchievementsManager()
+        
         # Initialize Supabase manager for global leaderboard
         self.supabase_manager = get_supabase_manager()
         
@@ -129,6 +133,9 @@ class Game:
         
         # Set the personal best manager in the menu to use the same instance
         self.menu.personal_best_manager = self.personal_best_manager
+        
+        # Set the achievements manager in the menu to use the same instance
+        self.menu.achievements_manager = self.achievements_manager
         
         # Load audio settings into menu's sound manager
         self.menu.sound_manager.load_volumes_from_settings(self.settings)
@@ -144,6 +151,7 @@ class Game:
         self.results_window.set_game_callback(self.handle_results_callback)
         self.results_window.set_sound_manager(self.sound_manager)
         self.results_window.set_personal_best_manager(self.personal_best_manager)
+        self.results_window.set_achievements_manager(self.achievements_manager)
         
         # Initialize menu button
         self.menu_button = GameMenuButton(self.width, self.height)

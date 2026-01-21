@@ -10,6 +10,7 @@ from src.settings_manager import SettingsManager
 from src.sound_manager import SoundManager
 from src.personal_best_manager import PersonalBestManager
 from src.user_manager import UserManager, REGIONS
+from src.achievements_manager import AchievementsManager, ACHIEVEMENTS
 from utils.path_helper import resource_path
 
 # Leaderboard filter options
@@ -39,6 +40,9 @@ class Menu:
         
         # Initialize user manager
         self.user_manager = UserManager()
+        
+        # Initialize achievements manager
+        self.achievements_manager = AchievementsManager()
         
         # Initialize Supabase manager (will be set by game instance)
         self.supabase_manager = None
@@ -126,6 +130,10 @@ class Menu:
         self.edit_icon = None
         self._load_edit_icon()
         
+        # Load the achievements icon
+        self.achievements_icon = None
+        self._load_achievements_icon()
+        
         # Available resolutions
         self.available_resolutions = [
             (1280, 720),
@@ -162,6 +170,10 @@ class Menu:
         # User edit button hover state
         self.user_edit_button_hovered = False
         self.user_edit_rect = None  # Will be set when drawing the button
+        
+        # Achievements button hover state
+        self.achievements_button_hovered = False
+        self.achievements_rect = None  # Will be set when drawing the button
         
         # Initialize difficulty button animation tracking
         self.difficulty_buttons = {}  # Store difficulty buttons with their metadata
@@ -277,12 +289,7 @@ class Menu:
         self.theme.widget_background_color = (0, 0, 0, 0)  # Completely transparent
         self.theme.widget_background_color_disabled = (0, 0, 0, 0)  # Completely transparent
         
-        # Scrollbar styling (for controls menu)
-        # NOTE: pygame-menu uses `scrollbar_thick` (not `scrollbar_thickness`)
-        # Use high-contrast colors so the thumb (slider) is clearly visible.
-        # Use RGB (no per-pixel alpha) because menus are rendered to an SRCALPHA
-        # surface and then faded via set_alpha(); mixing per-pixel alpha here can
-        # make the thumb appear to vanish.
+        # Scrollbar styling
         self.theme.scrollbar_color = (15, 22, 35)              # Track
         self.theme.scrollbar_slider_color = (240, 198, 38)     # Thumb
         self.theme.scrollbar_slider_hover_color = (255, 255, 255)
@@ -330,7 +337,6 @@ class Menu:
             logo_path = resource_path("utils/rubiks_logo.png")
             if os.path.exists(logo_path):
                 self.logo_image = pygame.image.load(logo_path)
-                # Scale the logo to a much smaller size for the menu
                 logo_width = int(self.width * 0.08)  # 8% of screen width
                 logo_height = int(logo_width * 0.24)  # 24% of logo width (preserve aspect ratio)
                 self.logo_image = pygame.transform.scale(self.logo_image, (logo_width, logo_height))
@@ -370,6 +376,21 @@ class Menu:
         except Exception as e:
             print(f"Error loading edit icon: {e}")
             self.edit_icon = None
+    
+    def _load_achievements_icon(self):
+        """Load the achievements icon for the achievements button"""
+        try:
+            # Load the achievements icon
+            achievements_icon_path = resource_path("utils/icons/achievements.png")
+            if os.path.exists(achievements_icon_path):
+                self._achievements_icon_original = pygame.image.load(achievements_icon_path).convert_alpha()
+                self._scale_achievements_icon()
+            else:
+                print(f"Achievements icon not found: {achievements_icon_path}")
+                self.achievements_icon = None
+        except Exception as e:
+            print(f"Error loading achievements icon: {e}")
+            self.achievements_icon = None
 
     def _get_stats_button_metrics(self, screen_width=None, screen_height=None):
         """Calculate sizes for the Statistics button based on screen size"""
@@ -411,9 +432,19 @@ class Menu:
             self.edit_icon = None
             return
 
-        # Keep edit icon proportional to edit button size
+        # Edit icon proportional to edit button size
         edit_icon_size = max(28, min(40, int(self.height * 0.045)))
         self.edit_icon = pygame.transform.smoothscale(self._edit_icon_original, (edit_icon_size, edit_icon_size))
+    
+    def _scale_achievements_icon(self):
+        """Scale the achievements icon based on current resolution"""
+        if not hasattr(self, "_achievements_icon_original") or self._achievements_icon_original is None:
+            self.achievements_icon = None
+            return
+
+        # Achievements icon proportional to button size (same as stats button)
+        icon_size = self._get_stats_button_metrics()["icon_size"]
+        self.achievements_icon = pygame.transform.smoothscale(self._achievements_icon_original, (icon_size, icon_size))
     
     def _customize_button_appearance(self, button):
         """Apply custom styling to a button widget - remove backgrounds"""
@@ -716,6 +747,15 @@ class Menu:
             # Refresh the statistics content before showing
             self._create_personal_best_content()
             self._change_menu(self.personal_best_menu)
+    
+    def _open_achievements(self):
+        """Open achievements submenu"""
+        self.sound_manager.play("menu_select")
+        self._clear_all_hover_effects()  # Clear hover effects when changing menu
+        
+        # Refresh the achievements content before showing
+        self._create_achievements_content()
+        self._change_menu(self.achievements_menu)
     
     def _switch_to_personal_records_tab(self):
         """Switch to personal records tab in statistics"""
@@ -1508,6 +1548,19 @@ class Menu:
                     self._open_personal_best()
                     return True
             
+            # Check if click is on Achievements button in top right (only on main menu)
+            if (event.type == pygame.MOUSEBUTTONDOWN and 
+                self.current_menu == self.main_menu and 
+                hasattr(self, 'achievements_rect') and 
+                self.achievements_rect):
+                
+                mouse_x, mouse_y = event.pos
+                
+                # Check if click is within the Achievements button area
+                if self.achievements_rect.collidepoint(mouse_x, mouse_y):
+                    self._open_achievements()
+                    return True
+            
             # Check if click is on user edit button (only in statistics menu)
             if (event.type == pygame.MOUSEBUTTONDOWN and 
                 self.current_menu == self.personal_best_menu and 
@@ -2007,6 +2060,20 @@ class Menu:
         else:
             self.personal_best_button_hovered = False
         
+        # Check if mouse is over Achievements button (only on main menu)
+        if (self.current_menu == self.main_menu and 
+            hasattr(self, 'achievements_rect') and 
+            self.achievements_rect):
+            
+            if self.achievements_rect.collidepoint(mouse_pos):
+                self.achievements_button_hovered = True
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                return
+            else:
+                self.achievements_button_hovered = False
+        else:
+            self.achievements_button_hovered = False
+        
         # Check if mouse is over user edit button (only in statistics menu)
         if (self.current_menu == self.personal_best_menu and 
             hasattr(self, 'user_edit_rect') and 
@@ -2250,6 +2317,81 @@ class Menu:
                 
                 # Store button rectangle for click detection
                 self.personal_best_rect = button_rect
+                
+                # Draw Achievements button in top right corner (only on main menu)
+                ach_metrics = self._get_stats_button_metrics(screen.get_width(), screen.get_height())
+                ach_button_width = ach_metrics["button_width"]
+                ach_button_height = ach_metrics["button_height"]
+                ach_margin = ach_metrics["margin"]
+                ach_icon_size = ach_metrics["icon_size"]
+                ach_icon_padding = ach_metrics["icon_padding"]
+                
+                # Position in top right
+                ach_button_x = screen.get_width() - ach_button_width - ach_margin
+                ach_button_y = ach_margin
+                
+                # Create button background with hover effects
+                ach_button_rect = pygame.Rect(ach_button_x, ach_button_y, ach_button_width, ach_button_height)
+                
+                if self.achievements_button_hovered:
+                    # Hover state - golden glow for achievements
+                    pygame.draw.rect(screen, (90, 75, 40, 200), ach_button_rect, border_radius=10)
+                    pygame.draw.rect(screen, (240, 198, 38), ach_button_rect, 3, border_radius=10)
+                    
+                    # Add golden glow effect
+                    glow_rect = pygame.Rect(ach_button_x - 2, ach_button_y - 2, ach_button_width + 4, ach_button_height + 4)
+                    pygame.draw.rect(screen, (240, 198, 38, 100), glow_rect, 1, border_radius=10)
+                else:
+                    # Normal state
+                    pygame.draw.rect(screen, (50, 50, 50, 180), ach_button_rect, border_radius=10)
+                    pygame.draw.rect(screen, (100, 100, 100), ach_button_rect, 2, border_radius=10)
+                
+                # Draw the achievements icon if available
+                if hasattr(self, 'achievements_icon') and self.achievements_icon:
+                    if (hasattr(self, "_achievements_icon_original") and self._achievements_icon_original and
+                        (self.achievements_icon.get_width() != ach_icon_size or self.achievements_icon.get_height() != ach_icon_size)):
+                        self.achievements_icon = pygame.transform.smoothscale(self._achievements_icon_original, (ach_icon_size, ach_icon_size))
+                    ach_icon_x = ach_button_x + ach_icon_padding
+                    ach_icon_y = ach_button_y + (ach_button_height - ach_icon_size) // 2
+                    screen.blit(self.achievements_icon, (ach_icon_x, ach_icon_y))
+                    ach_text_x = ach_icon_x + ach_icon_size + max(8, ach_icon_padding // 2)
+                else:
+                    ach_text_x = ach_button_x + ach_icon_padding
+                
+                # Draw the text using the menu's font with hover effects
+                try:
+                    ach_font_size = ach_metrics["hover_font_size"] if self.achievements_button_hovered else ach_metrics["font_size"]
+                    ach_menu_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, ach_font_size)
+                    
+                    # Text color - golden on hover
+                    ach_text_color = (240, 198, 38) if self.achievements_button_hovered else (255, 255, 255)
+                    ach_text_surface = ach_menu_font.render("Achievements", True, ach_text_color)
+                    ach_text_y = ach_button_y + (ach_button_height - ach_text_surface.get_height()) // 2
+                    
+                    # Add shadow effect
+                    ach_shadow_surface = ach_menu_font.render("Achievements", True, (0, 0, 0))
+                    ach_shadow_offset = 2 if self.achievements_button_hovered else 1
+                    screen.blit(ach_shadow_surface, (ach_text_x + ach_shadow_offset, ach_text_y + ach_shadow_offset))
+                    screen.blit(ach_text_surface, (ach_text_x, ach_text_y))
+                    
+                    # Draw unlocked count badge
+                    unlocked, total = self.achievements_manager.get_unlocked_count()
+                    badge_text = f"{unlocked}/{total}"
+                    badge_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, max(14, ach_font_size - 8))
+                    badge_surface = badge_font.render(badge_text, True, (255, 255, 255))
+                    badge_x = ach_button_x + ach_button_width - badge_surface.get_width() - 8
+                    badge_y = ach_button_y + ach_button_height - badge_surface.get_height() - 4
+                    
+                    # Draw badge background
+                    badge_rect = pygame.Rect(badge_x - 4, badge_y - 2, badge_surface.get_width() + 8, badge_surface.get_height() + 4)
+                    badge_color = (240, 198, 38) if unlocked > 0 else (80, 80, 80)
+                    pygame.draw.rect(screen, badge_color, badge_rect, border_radius=6)
+                    screen.blit(badge_surface, (badge_x, badge_y))
+                except:
+                    pass
+                
+                # Store button rectangle for click detection
+                self.achievements_rect = ach_button_rect
             
             # Draw user edit button in Statistics menu (top right corner)
             if (self.current_menu == self.personal_best_menu and 
@@ -2342,6 +2484,7 @@ class Menu:
         # Rescale resolution-dependent icons
         self._scale_record_icon()
         self._scale_edit_icon()
+        self._scale_achievements_icon()
         
         # Clear cached background images since resolution changed
         self.background_capture = None
@@ -2415,6 +2558,7 @@ class Menu:
         # Refresh resolution-dependent assets
         self._scale_record_icon()
         self._scale_edit_icon()
+        self._scale_achievements_icon()
 
         # Clear existing difficulty button tracking when recreating menus
         self.difficulty_buttons.clear()
@@ -2917,6 +3061,17 @@ class Menu:
         # Create statistics menu content
         self._create_personal_best_content()
         
+        # Create achievements menu
+        self.achievements_menu = pygame_menu.Menu(
+            "Achievements",
+            self.width,
+            self.height,
+            theme=self.sub_theme
+        )
+        
+        # Create achievements menu content
+        self._create_achievements_content()
+        
         # Create user setup menu for first-time setup
         self.user_setup_menu = pygame_menu.Menu(
             "Welcome!",
@@ -3151,10 +3306,192 @@ class Menu:
                 self.current_menu = self.user_setup_menu
             elif self.current_menu == self.user_edit_menu:
                 self.current_menu = self.user_edit_menu
+            elif self.current_menu == self.achievements_menu:
+                self.current_menu = self.achievements_menu
             else:
                 self.current_menu = self.main_menu
         else:
             self.current_menu = self.main_menu
+    
+    def _create_achievements_content(self):
+        """Create or refresh achievements menu content with progress bars"""
+        # Clear existing content except title
+        widgets = self.achievements_menu.get_widgets()
+        widgets_to_remove = []
+        
+        # Remove all widgets except the title (first widget)
+        for i, widget in enumerate(widgets):
+            if i > 0:  # Keep only the first widget (title)
+                widgets_to_remove.append(widget)
+        
+        for widget in widgets_to_remove:
+            self.achievements_menu.remove_widget(widget)
+        
+        # Get achievement data
+        unlocked_count, total_count = self.achievements_manager.get_unlocked_count()
+        achievements_by_category = self.achievements_manager.get_achievements_by_category()
+        
+        # Add header with overall progress
+        self.achievements_menu.add.vertical_margin(15)
+        
+        # Overall progress display
+        progress_pct = (unlocked_count / total_count * 100) if total_count > 0 else 0
+        header_text = f"🏆 {unlocked_count} / {total_count} Achievements Unlocked ({progress_pct:.0f}%)"
+        self.achievements_menu.add.label(
+            header_text,
+            font_size=36,
+            font_color=(240, 198, 38),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+        
+        self.achievements_menu.add.vertical_margin(10)
+        
+        # Draw overall progress bar
+        self._add_achievements_progress_bar(progress_pct / 100.0)
+        
+        self.achievements_menu.add.vertical_margin(25)
+        
+        # Category display order and names
+        category_order = ["beginner", "progression", "speed", "challenge", "daily", "efficiency", "secret"]
+        category_names = {
+            "beginner": "🌟 Beginner",
+            "progression": "📈 Progression",
+            "speed": "⚡ Speed",
+            "challenge": "🎯 Challenges",
+            "daily": "🌍 Daily",
+            "efficiency": "💎 Efficiency",
+            "secret": "🔮 Secret"
+        }
+        
+        # Display achievements by category
+        for category in category_order:
+            if category not in achievements_by_category:
+                continue
+            
+            achievements = achievements_by_category[category]
+            category_name = category_names.get(category, category.title())
+            
+            # Category header
+            self.achievements_menu.add.label(
+                category_name,
+                font_size=32,
+                font_color=(255, 180, 0),
+                font_name=pygame_menu.font.FONT_FRANCHISE
+            )
+            self.achievements_menu.add.vertical_margin(8)
+            
+            # Display each achievement in this category
+            for achievement in achievements:
+                self._add_achievement_widget(achievement)
+            
+            self.achievements_menu.add.vertical_margin(15)
+        
+        # Back button
+        self.achievements_menu.add.vertical_margin(20)
+        back_btn = self.achievements_menu.add.button("Back", self._back_to_main)
+        
+        # Apply custom styling
+        self._customize_menu_widgets(self.achievements_menu)
+    
+    def _add_achievements_progress_bar(self, progress):
+        """Add a visual progress bar to the achievements menu"""
+        # Create a frame for the progress bar
+        bar_width = 600
+        bar_height = 25
+        
+        # We'll draw the progress bar as a label with special formatting
+        filled_width = int(bar_width * progress)
+        empty_width = bar_width - filled_width
+        
+        # Create visual representation using block characters
+        filled_blocks = int(progress * 30)  # 30 blocks total
+        empty_blocks = 30 - filled_blocks
+        
+        bar_text = "█" * filled_blocks + "░" * empty_blocks
+        
+        self.achievements_menu.add.label(
+            bar_text,
+            font_size=20,
+            font_color=(240, 198, 38),
+            font_name=pygame_menu.font.FONT_FRANCHISE
+        )
+    
+    def _add_achievement_widget(self, achievement):
+        """Add a single achievement widget with progress bar if applicable"""
+        is_unlocked = achievement.get("unlocked", False)
+        is_secret = achievement.get("secret", False)
+        progress = achievement.get("progress", 0)
+        target = achievement.get("target", 1)
+        progress_pct = achievement.get("progress_percentage", 0)
+        
+        # Icon and name
+        icon = achievement.get("icon", "🏆")
+        name = achievement.get("name", "Unknown")
+        description = achievement.get("description", "")
+        
+        # For secret achievements, hide details if not unlocked
+        if is_secret and not is_unlocked:
+            name = "???"
+            description = "This is a secret achievement"
+            icon = "🔒"
+        
+        # Determine colors based on unlock status
+        if is_unlocked:
+            name_color = (240, 198, 38)  # Golden for unlocked
+            desc_color = (200, 200, 200)
+            status_text = "✓ UNLOCKED"
+            status_color = (100, 255, 100)
+        else:
+            name_color = (180, 180, 180)  # Gray for locked
+            desc_color = (120, 120, 120)
+            status_text = f"{progress}/{target}"
+            status_color = (180, 180, 180)
+        
+        # Achievement name with icon
+        achievement_title = f"{icon}  {name}"
+        self.achievements_menu.add.label(
+            achievement_title,
+            font_size=26,
+            font_color=name_color,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            align=ALIGN_LEFT
+        )
+        
+        # Description
+        self.achievements_menu.add.label(
+            f"     {description}",
+            font_size=18,
+            font_color=desc_color,
+            font_name=pygame_menu.font.FONT_FRANCHISE,
+            align=ALIGN_LEFT
+        )
+        
+        # Progress bar for progression-type achievements (not yet unlocked)
+        if not is_unlocked and target > 1:
+            # Visual progress bar
+            filled_blocks = int(progress_pct * 20)  # 20 blocks for individual achievements
+            empty_blocks = 20 - filled_blocks
+            bar_text = f"     [{('█' * filled_blocks) + ('░' * empty_blocks)}] {progress}/{target}"
+            
+            bar_color = (100, 180, 255) if progress > 0 else (80, 80, 80)
+            self.achievements_menu.add.label(
+                bar_text,
+                font_size=16,
+                font_color=bar_color,
+                font_name=pygame_menu.font.FONT_FRANCHISE,
+                align=ALIGN_LEFT
+            )
+        elif is_unlocked:
+            # Show unlock status
+            self.achievements_menu.add.label(
+                f"     {status_text}",
+                font_size=16,
+                font_color=status_color,
+                font_name=pygame_menu.font.FONT_FRANCHISE,
+                align=ALIGN_LEFT
+            )
+        
+        self.achievements_menu.add.vertical_margin(8)
     
     def _create_personal_best_content(self):
         """Create or refresh statistics menu content with tabs"""

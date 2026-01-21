@@ -2,6 +2,7 @@ import pygame
 import sys
 import time
 import random
+import os
 import threading
 from pygame.locals import *
 from OpenGL.GL import *
@@ -14,7 +15,7 @@ from src.results_window import ResultsWindow
 from src.mouse_interaction import MouseInteraction
 from src.game_menu_button import GameMenuButton
 from src.personal_best_manager import PersonalBestManager
-from src.achievements_manager import AchievementsManager
+from src.achievements_manager import AchievementsManager, ACHIEVEMENTS
 from src.supabase_manager import get_supabase_manager
 from utils.path_helper import resource_path
 from src.rubiks_cube import RubiksCube
@@ -198,6 +199,17 @@ class Game:
         self.banner_duration = 5.0  # 3 seconds total display time
         self.banner_fade_duration = 0.2  # 0.5 seconds for fade in/out
         self.banner_alpha = 0.0
+
+        # Achievement notification queue (side banner)
+        # Items are shown sequentially and become eligible after a short delay.
+        self._achievement_notifications = []  # list[dict]: {id: str, ready_at: float}
+        self._achievement_notification_active = False
+        self._achievement_notification_id = None
+        self._achievement_notification_start_time = 0.0
+        self._achievement_notification_total_duration = 5.0
+        self._achievement_notification_fade_duration = 0.25
+        self._achievement_notification_alpha = 0.0
+        self._achievement_icon_cache = {}  # (achievement_id, size) -> pygame.Surface|None
         
         # Hint system
         self.last_move_time = time.time()  # Track time of last move
@@ -365,9 +377,6 @@ class Game:
             if not solution:
                 print("Cube already solved — no moves needed.")
                 return None
-
-            # CRITICAL: Validate solution using pykociemba's own move semantics
-            # This ensures the moves will actually solve the cube as the solver expects
             try:
                 # Convert current cube state to CubieCube using pykociemba's parser
                 test_cubie = FaceCube(facelets).toCubieCube()
@@ -442,6 +451,167 @@ class Game:
         self.banner_active = True
         self.banner_start_time = time.time()
         self.banner_alpha = 0.0
+
+    def enqueue_achievement_notifications(self, achievement_ids, delay_seconds=0.0):
+        """Queue achievement notifications.
+
+        Notifications are shown one at a time. If `delay_seconds` is provided,
+        each item becomes eligible after that delay from the moment it was queued.
+        """
+        if not achievement_ids:
+            return
+
+        now = time.time()
+        delay = float(delay_seconds)
+        for achievement_id in achievement_ids:
+            if not achievement_id:
+                continue
+            self._achievement_notifications.append({
+                'id': achievement_id,
+                'ready_at': now + delay,
+            })
+
+    def update_achievement_notifications(self):
+        """Advance queued achievement notifications (delayed + sequential)."""
+        now = time.time()
+
+        if self._achievement_notification_active:
+            elapsed = now - self._achievement_notification_start_time
+            fade = self._achievement_notification_fade_duration
+            total = self._achievement_notification_total_duration
+
+            if elapsed < 0:
+                self._achievement_notification_alpha = 0.0
+            elif elapsed < fade:
+                self._achievement_notification_alpha = elapsed / fade
+            elif elapsed < total - fade:
+                self._achievement_notification_alpha = 1.0
+            elif elapsed < total:
+                self._achievement_notification_alpha = 1.0 - ((elapsed - (total - fade)) / fade)
+            else:
+                self._achievement_notification_active = False
+                self._achievement_notification_id = None
+                self._achievement_notification_alpha = 0.0
+
+        # Start next notification if none active
+        if (not self._achievement_notification_active) and self._achievement_notifications:
+            next_item = self._achievement_notifications[0]
+            if now >= float(next_item.get('ready_at', 0.0)):
+                self._achievement_notifications.pop(0)
+                self._achievement_notification_id = next_item.get('id')
+                self._achievement_notification_active = True
+                self._achievement_notification_start_time = now
+                self._achievement_notification_alpha = 0.0
+
+                # Play SFX when the banner actually appears
+                if hasattr(self, 'sound_manager') and self.sound_manager:
+                    self.sound_manager.play('achievement')
+
+    def _get_achievement_icon(self, achievement_id, size):
+        """Load & cache an achievement icon Surface scaled to (size, size)."""
+        key = (achievement_id, int(size))
+        if key in self._achievement_icon_cache:
+            return self._achievement_icon_cache[key]
+
+        achievement = ACHIEVEMENTS.get(achievement_id, {})
+        icon_path = achievement.get('icon', '')
+        if not icon_path:
+            self._achievement_icon_cache[key] = None
+            return None
+
+        full_icon_path = resource_path(icon_path)
+        if not os.path.exists(full_icon_path):
+            self._achievement_icon_cache[key] = None
+            return None
+
+        try:
+            icon_img = pygame.image.load(full_icon_path).convert_alpha()
+            icon_img = pygame.transform.smoothscale(icon_img, (int(size), int(size)))
+            self._achievement_icon_cache[key] = icon_img
+            return icon_img
+        except Exception:
+            self._achievement_icon_cache[key] = None
+            return None
+
+    def _render_achievement_notification_opengl(self):
+        """Render the achievement notification (right-side banner) using OpenGL."""
+        if (not self._achievement_notification_active) or self._achievement_notification_alpha <= 0:
+            return
+
+        achievement_id = self._achievement_notification_id
+        achievement = ACHIEVEMENTS.get(achievement_id, {}) if achievement_id else {}
+
+        try:
+            # Import pygame_menu to access the font (consistent with existing banner rendering)
+            import pygame_menu
+
+            if not hasattr(self, '_achievement_banner_title_font'):
+                try:
+                    self._achievement_banner_title_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 30)
+                    self._achievement_banner_text_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 26)
+                except Exception:
+                    self._achievement_banner_title_font = pygame.font.SysFont('arial', 30, bold=True)
+                    self._achievement_banner_text_font = pygame.font.SysFont('arial', 26)
+
+            banner_width = 460
+            banner_height = 96
+            margin = 18
+
+            a = float(self._achievement_notification_alpha)
+            slide_px = int((1.0 - a) * 60)
+            # Center horizontally at top of screen
+            x = (self.width - banner_width) // 2
+            y = margin
+
+            banner_surface = pygame.Surface((banner_width, banner_height), pygame.SRCALPHA)
+
+            bg_alpha = int(215 * a)
+            border_alpha = int(255 * a)
+            pygame.draw.rect(
+                banner_surface,
+                (20, 20, 28, bg_alpha),
+                (0, 0, banner_width, banner_height),
+                border_radius=14
+            )
+            pygame.draw.rect(
+                banner_surface,
+                (240, 198, 38, border_alpha),
+                (0, 0, banner_width, banner_height),
+                width=2,
+                border_radius=14
+            )
+
+            # Icon
+            icon_size = 72
+            icon = self._get_achievement_icon(achievement_id, icon_size)
+            has_icon = icon is not None
+            if has_icon:
+                icon_alpha = icon.copy()
+                icon_alpha.set_alpha(int(255 * a))
+                banner_surface.blit(icon_alpha, (12, (banner_height - icon_size) // 2))
+
+            # Text
+            title = 'Achievement Unlocked'
+            name = achievement.get('name', 'Unknown Achievement')
+            title_surf = self._achievement_banner_title_font.render(title, True, (240, 198, 38))
+            name_surf = self._achievement_banner_text_font.render(name, True, (255, 255, 255))
+
+            title_surf.set_alpha(int(255 * a))
+            name_surf.set_alpha(int(255 * a))
+
+            text_x = 12 + (icon_size + 14 if has_icon else 0)
+            banner_surface.blit(title_surf, (text_x, 18))
+            banner_surface.blit(name_surf, (text_x, 52))
+
+            texture_data = pygame.image.tostring(banner_surface, 'RGBA', True)
+            # Position at top center: glRasterPos2f positions the lower-left corner,
+            # so add banner_height to place the top edge at y=margin
+            glRasterPos2f(x, y + banner_height)
+            glPixelZoom(1, 1)
+            glDrawPixels(banner_width, banner_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+        except Exception as e:
+            if self.debug_mode:
+                print(f"Achievement banner render error: {e}")
 
     def update_banner(self):
         """Update banner animation and visibility"""
@@ -1310,6 +1480,9 @@ class Game:
         
         # Update banner animation
         self.update_banner()
+
+        # Update achievement notification queue
+        self.update_achievement_notifications()
         
         # Update hint system
         self.update_hint_system()
@@ -1449,21 +1622,22 @@ class Game:
 
                         self.debug_print(f"Cube solved within time/move limits!")
 
-                        # Special messages for challenge modes
-                        if current_difficulty == "limited_time":
-                            remaining_time = max(0, self.time_limit - solve_time)
-                            self.show_banner(f"SOLVED! With {remaining_time:.1f}s to spare!")
-                        elif current_difficulty == "limited_moves":
-                            remaining_moves = max(0, self.move_limit - self.move_counter)
-                            self.show_banner(f"SOLVED! With {remaining_moves} moves to spare!")
-                        else:
-                            self.show_banner("CUBE SOLVED!")
-
-                        # Print to terminal for debug purposes
-                        print(f"CUBE SOLVED!")
+                        # No in-game "cube solved" banner; results window handles the feedback.
+                        # Keep terminal output for debug purposes.
+                        print("CUBE SOLVED!")
 
                         # Show results window
                         self.results_window.show_results(self.move_counter, solve_time, tps, current_difficulty)
+
+                        # Queue achievement notifications if any were unlocked by this solve
+                        try:
+                            unlocked = []
+                            if hasattr(self.results_window, 'results_data') and self.results_window.results_data:
+                                unlocked = self.results_window.results_data.get('newly_unlocked_achievements', []) or []
+                            if unlocked:
+                                self.enqueue_achievement_notifications(unlocked, delay_seconds=0.0)
+                        except Exception:
+                            pass
             
             # Update animation state
             self.renderer._last_animation_state = self.renderer.is_animating
@@ -1522,6 +1696,7 @@ class Game:
         # Render notification banner if active
         if self.banner_active:
             self._render_banner_opengl()
+
         
         # Render hint banner or expanded hint popup
         if self.hint_banner_active or self.hint_expanded:
@@ -1547,6 +1722,10 @@ class Game:
             glRasterPos2f(0, self.height)
             glPixelZoom(1, 1)  # Flip vertically
             glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+
+            # Achievement notifications must appear above the menu overlay
+            if self._achievement_notification_active:
+                self._render_achievement_notification_opengl()
         
         # Render results window overlay if active
         elif self.results_window.active:
@@ -1562,6 +1741,15 @@ class Game:
             glRasterPos2f(0, self.height)
             glPixelZoom(1, 1)  # Flip vertically
             glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+
+            # Achievement notifications must appear above the results overlay
+            if self._achievement_notification_active:
+                self._render_achievement_notification_opengl()
+
+        # If neither menu nor results are drawn this frame, still render notifications on top.
+        else:
+            if self._achievement_notification_active:
+                self._render_achievement_notification_opengl()
     
         # Render menu button when not in menu or results
         if (hasattr(self, 'menu_button') and 

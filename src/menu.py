@@ -2130,11 +2130,11 @@ class Menu:
         if current_alpha <= 0.0:
             return
         
-        # Check if we should use the main menu background (when difficulty change count is 0)
+        # Main menu should never show the blurred in-game capture.
+        # Prefer the static main menu background (if available), otherwise fall back to the solid/gradient.
+        is_on_main_menu = (hasattr(self, 'main_menu') and self.current_menu == self.main_menu)
         should_use_main_background = (
-            hasattr(self, "game") and self.game and 
-            self.game.get_difficulty_change_count() == 0 and 
-            self.main_menu_background is not None
+            is_on_main_menu and self.main_menu_background is not None
         )
         
         # Use main menu background for difficulty change count = 0
@@ -2172,8 +2172,9 @@ class Menu:
                     y = row * tile_height
                     screen.blit(brightened_background, (x, y))
         else:
-            # Use blurred background if available, otherwise fallback to solid overlay
-            if self.blurred_background is not None:
+            # Use blurred background if available, otherwise fallback to solid overlay.
+            # Never use blurred background on the main menu.
+            if self.blurred_background is not None and not is_on_main_menu:
                 # Check if blurred background size matches current screen size
                 bg_size = self.blurred_background.get_size()
                 screen_size = (screen.get_width(), screen.get_height())
@@ -2204,20 +2205,25 @@ class Menu:
                     else:
                         screen.blit(self.blurred_background, (0, 0))
             
-            # Fallback to modern solid background if no blur available
-            if self.blurred_background is None:
-                # Fallback to modern solid background with gradient effect
+            # Fallback to modern solid background if no blur available OR when on main menu
+            if self.blurred_background is None or is_on_main_menu:
                 overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
-                base_alpha = 200  # Slightly more opaque for better readability
-                final_alpha = int(base_alpha * current_alpha)
-                
-                # Create a subtle gradient effect
-                for y in range(screen.get_height()):
-                    alpha_variation = final_alpha + int(20 * math.sin(y * 0.01))
-                    alpha_variation = max(0, min(255, alpha_variation))
-                    color = (8, 12, 28, alpha_variation)  # Dark blue-grey
-                    pygame.draw.line(overlay, color, (0, y), (screen.get_width(), y))
-                
+
+                # On the main menu, fully cover the in-game visuals (no bleed-through).
+                if is_on_main_menu:
+                    base_alpha = 255
+                    final_alpha = int(base_alpha * current_alpha)
+                    overlay.fill((8, 12, 28, max(0, min(255, final_alpha))))
+                else:
+                    # Fallback to modern solid background with subtle gradient effect
+                    base_alpha = 200  # Slightly more opaque for better readability
+                    final_alpha = int(base_alpha * current_alpha)
+                    for y in range(screen.get_height()):
+                        alpha_variation = final_alpha + int(20 * math.sin(y * 0.01))
+                        alpha_variation = max(0, min(255, alpha_variation))
+                        color = (8, 12, 28, alpha_variation)  # Dark blue-grey
+                        pygame.draw.line(overlay, color, (0, y), (screen.get_width(), y))
+
                 screen.blit(overlay, (0, 0))
         
         # Add subtle particle effects with reduced intensity for performance (only when not using main background)
@@ -3475,9 +3481,7 @@ class Menu:
         padding = 10
         icon_size = height - (padding * 2)
         icon_rect = pygame.Rect(padding, padding, icon_size, icon_size)
-        
-        # Icon background/placeholder
-        pygame.draw.rect(surface, (10, 10, 10, 100), icon_rect, border_radius=5)
+        # No icon background: icons should render on the card without a black box behind.
         
         if icon_path:
             full_icon_path = resource_path(icon_path)

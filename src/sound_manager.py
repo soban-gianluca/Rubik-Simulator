@@ -61,6 +61,9 @@ class SoundManager:
             # Load hint sound effect
             self.sounds["hint"] = pygame.mixer.Sound(resource_path("utils/sfx/in-game/hint.mp3"))
 
+            # Load achievement unlocked sound effect
+            self.sounds["achievement"] = pygame.mixer.Sound(resource_path("utils/sfx/in-game/achievement.mp3"))
+
             # Load cube movement sound effects
             cube_sfx_dir = resource_path("utils/sfx/cube_sfx")
             self.cube_sounds = []
@@ -78,6 +81,7 @@ class SoundManager:
             self.sounds["winning"].set_volume(1 * self.effects_volume * self.master_volume)
             self.sounds["fail"].set_volume(0.3 * self.effects_volume * self.master_volume)
             self.sounds["hint"].set_volume(0.2 * self.effects_volume * self.master_volume)
+            self.sounds["achievement"].set_volume(0.4 * self.effects_volume * self.master_volume)
 
         except Exception as e:
             print(f"Error loading sound effects: {e}")
@@ -205,6 +209,10 @@ class SoundManager:
         # Update fail sound volume
         if self.is_enabled and hasattr(self, 'sounds') and "fail" in self.sounds:
             self.sounds["fail"].set_volume(0.7 * self.effects_volume * self.master_volume)
+
+        # Update achievement sound volume
+        if self.is_enabled and hasattr(self, 'sounds') and "achievement" in self.sounds:
+            self.sounds["achievement"].set_volume(0.4 * self.effects_volume * self.master_volume)
     
     def enable(self, enabled=True):
         """Enable or disable sound effects"""

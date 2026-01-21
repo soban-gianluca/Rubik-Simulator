@@ -403,7 +403,7 @@ class Menu:
         button_height = max(52, min(84, int(screen_height * 0.07)))
         button_width = max(170, min(280, int(screen_width * 0.12)))
         margin = max(14, int(screen_width * 0.018))
-        icon_size = max(26, min(48, int(button_height * 0.6)))
+        icon_size = max(26, min(48, int(button_height * 0.8)))
         icon_padding = max(10, int(button_height * 0.22))
         font_size = max(20, int(button_height * 0.46))
         hover_font_size = max(font_size + 2, int(button_height * 0.5))
@@ -2321,8 +2321,8 @@ class Menu:
                 
                 # Draw Achievements button in top right corner (only on main menu)
                 ach_metrics = self._get_stats_button_metrics(screen.get_width(), screen.get_height())
-                ach_button_width = ach_metrics["button_width"]
-                ach_button_height = ach_metrics["button_height"]
+                ach_button_width = int(ach_metrics["button_width"] * 1.05)
+                ach_button_height = int(ach_metrics["button_height"] * 1.6)
                 ach_margin = ach_metrics["margin"]
                 ach_icon_size = ach_metrics["icon_size"]
                 ach_icon_padding = ach_metrics["icon_padding"]
@@ -2378,7 +2378,7 @@ class Menu:
                     # Draw unlocked count badge
                     unlocked, total = self.achievements_manager.get_unlocked_count()
                     badge_text = f"{unlocked}/{total}"
-                    badge_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, max(14, ach_font_size - 8))
+                    badge_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, max(20, ach_font_size - 4))
                     badge_surface = badge_font.render(badge_text, True, (255, 255, 255))
                     badge_x = ach_button_x + ach_button_width - badge_surface.get_width() - 8
                     badge_y = ach_button_y + ach_button_height - badge_surface.get_height() - 4
@@ -3544,8 +3544,6 @@ class Menu:
             align=ALIGN_CENTER,
             margin=(0, 5)
         )
-        # Vertical margin already handled by margin(0,5) but maybe add explicit spacer
-        # self.achievements_menu.add.vertical_margin(2)
     
     def _create_personal_best_content(self):
         """Create or refresh statistics menu content with tabs"""

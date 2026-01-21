@@ -21,7 +21,7 @@ ACHIEVEMENTS = {
     "first_solve": {
         "name": "The Beginning of an Era",
         "description": "Solve your first cube on Easy difficulty",
-        "icon": "🏆",
+        "icon": "utils/icons/achievements/beginner/first-solve.png",
         "category": "beginner",
         "condition_type": "solve_easy",
         "target": 1,
@@ -30,7 +30,7 @@ ACHIEVEMENTS = {
     "first_medium": {
         "name": "Rising Star",
         "description": "Solve your first cube on Medium difficulty",
-        "icon": "⭐",
+        "icon": "utils/icons/achievements/beginner/first-medium.png",
         "category": "beginner",
         "condition_type": "solve_medium",
         "target": 1,
@@ -39,7 +39,7 @@ ACHIEVEMENTS = {
     "first_hard": {
         "name": "Challenge Accepted",
         "description": "Solve your first cube on Hard difficulty",
-        "icon": "🔥",
+        "icon": "utils/icons/achievements/beginner/first-hard.png",
         "category": "beginner",
         "condition_type": "solve_hard",
         "target": 1,
@@ -50,7 +50,7 @@ ACHIEVEMENTS = {
     "solve_5": {
         "name": "Getting Started",
         "description": "Solve 5 cubes in any mode",
-        "icon": "🎯",
+        "icon": "utils/icons/achievements/progression/solve-5.png",
         "category": "progression",
         "condition_type": "total_solves",
         "target": 5,
@@ -59,7 +59,7 @@ ACHIEVEMENTS = {
     "solve_10": {
         "name": "Dedicated Solver",
         "description": "Solve 10 cubes in any mode",
-        "icon": "📈",
+        "icon": "utils/icons/achievements/progression/solve-10.png",
         "category": "progression",
         "condition_type": "total_solves",
         "target": 10,
@@ -68,7 +68,7 @@ ACHIEVEMENTS = {
     "solve_25": {
         "name": "Cube Enthusiast",
         "description": "Solve 25 cubes in any mode",
-        "icon": "💪",
+        "icon": "utils/icons/achievements/progression/solve-25.png",
         "category": "progression",
         "condition_type": "total_solves",
         "target": 25,
@@ -77,7 +77,7 @@ ACHIEVEMENTS = {
     "solve_50": {
         "name": "Rubik's Apprentice",
         "description": "Solve 50 cubes in any mode",
-        "icon": "🎓",
+        "icon": "utils/icons/achievements/progression/solve-50.png",
         "category": "progression",
         "condition_type": "total_solves",
         "target": 50,
@@ -86,7 +86,7 @@ ACHIEVEMENTS = {
     "solve_100": {
         "name": "Century Club",
         "description": "Solve 100 cubes in any mode",
-        "icon": "💯",
+        "icon": "utils/icons/achievements/progression/solve-100.png",
         "category": "progression",
         "condition_type": "total_solves",
         "target": 100,
@@ -97,7 +97,7 @@ ACHIEVEMENTS = {
     "speed_under_2min": {
         "name": "Under Two",
         "description": "Solve a Hard cube in under 2 minutes",
-        "icon": "⚡",
+        "icon": "utils/icons/achievements/speed/under-2min.png",
         "category": "speed",
         "condition_type": "time_under",
         "target": 120,
@@ -107,7 +107,7 @@ ACHIEVEMENTS = {
     "speed_under_1min": {
         "name": "Speed Demon",
         "description": "Solve a Hard cube in under 1 minute",
-        "icon": "🚀",
+        "icon": "utils/icons/achievements/speed/under-1min.png",
         "category": "speed",
         "condition_type": "time_under",
         "target": 60,
@@ -117,7 +117,7 @@ ACHIEVEMENTS = {
     "speed_under_30s": {
         "name": "Lightning Fast",
         "description": "Solve a Hard cube in under 30 seconds",
-        "icon": "⚡",
+        "icon": "utils/icons/achievements/speed/under-30sec.png",
         "category": "speed",
         "condition_type": "time_under",
         "target": 30,
@@ -129,7 +129,7 @@ ACHIEVEMENTS = {
     "limited_time_win": {
         "name": "Beat the Clock",
         "description": "Win a Limited Time challenge",
-        "icon": "⏱️",
+        "icon": "utils/icons/achievements/challenge-mode/limited-time-win.png",
         "category": "challenge",
         "condition_type": "solve_limited_time",
         "target": 1,
@@ -138,7 +138,7 @@ ACHIEVEMENTS = {
     "limited_moves_win": {
         "name": "Efficiency Expert",
         "description": "Win a Limited Moves challenge",
-        "icon": "🎯",
+        "icon": "utils/icons/achievements/challenge-mode/limited-moves-win.png",
         "category": "challenge",
         "condition_type": "solve_limited_moves",
         "target": 1,
@@ -147,7 +147,7 @@ ACHIEVEMENTS = {
     "limited_time_5": {
         "name": "Time Keeper",
         "description": "Win 5 Limited Time challenges",
-        "icon": "⏰",
+        "icon": "utils/icons/achievements/challenge-mode/limited-time-5.png",
         "category": "challenge",
         "condition_type": "solve_limited_time",
         "target": 5,
@@ -156,7 +156,7 @@ ACHIEVEMENTS = {
     "limited_moves_5": {
         "name": "Move Master",
         "description": "Win 5 Limited Moves challenges",
-        "icon": "🎲",
+        "icon": "utils/icons/achievements/challenge-mode/limited-moves-5.png",
         "category": "challenge",
         "condition_type": "solve_limited_moves",
         "target": 5,
@@ -167,7 +167,7 @@ ACHIEVEMENTS = {
     "daily_first": {
         "name": "Daily Challenger",
         "description": "Complete your first Daily Cube",
-        "icon": "🌍",
+        "icon": "utils/icons/achievements/daily/daily-first.png",
         "category": "daily",
         "condition_type": "solve_daily",
         "target": 1,
@@ -176,7 +176,7 @@ ACHIEVEMENTS = {
     "daily_7": {
         "name": "Weekly Warrior",
         "description": "Complete 7 Daily Cubes",
-        "icon": "📅",
+        "icon": "utils/icons/achievements/daily/daily-7.png",
         "category": "daily",
         "condition_type": "solve_daily",
         "target": 7,
@@ -187,7 +187,7 @@ ACHIEVEMENTS = {
     "efficient_easy": {
         "name": "Efficient Beginner",
         "description": "Solve an Easy cube in 10 moves or less",
-        "icon": "✨",
+        "icon": "utils/icons/achievements/efficiency/efficient-easy.png",
         "category": "efficiency",
         "condition_type": "moves_under",
         "target": 10,
@@ -197,7 +197,7 @@ ACHIEVEMENTS = {
     "efficient_medium": {
         "name": "Optimal Solver",
         "description": "Solve a Medium cube in 20 moves or less",
-        "icon": "💎",
+        "icon": "utils/icons/achievements/efficiency/efficient-medium.png",
         "category": "efficiency",
         "condition_type": "moves_under",
         "target": 20,
@@ -209,7 +209,7 @@ ACHIEVEMENTS = {
     "secret_scrambler": {
         "name": "Just Looking",
         "description": "Scramble the cube 10 times without solving",
-        "icon": "🔀",
+        "icon": "utils/icons/achievements/secret/secret-scrambler.png",
         "category": "secret",
         "condition_type": "scramble_count",
         "target": 10,

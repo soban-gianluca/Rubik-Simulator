@@ -3336,7 +3336,7 @@ class Menu:
         
         # Overall progress display
         progress_pct = (unlocked_count / total_count * 100) if total_count > 0 else 0
-        header_text = f"🏆 {unlocked_count} / {total_count} Achievements Unlocked ({progress_pct:.0f}%)"
+        header_text = f"{unlocked_count} / {total_count} Achievements Unlocked ({progress_pct:.0f}%)"
         self.achievements_menu.add.label(
             header_text,
             font_size=36,
@@ -3354,13 +3354,13 @@ class Menu:
         # Category display order and names
         category_order = ["beginner", "progression", "speed", "challenge", "daily", "efficiency", "secret"]
         category_names = {
-            "beginner": "🌟 Beginner",
-            "progression": "📈 Progression",
-            "speed": "⚡ Speed",
-            "challenge": "🎯 Challenges",
-            "daily": "🌍 Daily",
-            "efficiency": "💎 Efficiency",
-            "secret": "🔮 Secret"
+            "beginner": "Beginner",
+            "progression": "Progression",
+            "speed": "Speed",
+            "challenge": "Challenges",
+            "daily": "Daily",
+            "efficiency": "Efficiency",
+            "secret": "Secret"
         }
         
         # Display achievements by category
@@ -3425,7 +3425,7 @@ class Menu:
         progress_pct = achievement.get("progress_percentage", 0)
         
         # Icon and name
-        icon = achievement.get("icon", "🏆")
+        icon_path = achievement.get("icon", "")
         name = achievement.get("name", "Unknown")
         description = achievement.get("description", "")
         
@@ -3433,7 +3433,7 @@ class Menu:
         if is_secret and not is_unlocked:
             name = "???"
             description = "This is a secret achievement"
-            icon = "🔒"
+            icon_path = ""  # No icon for secret locked achievements
         
         # Determine colors based on unlock status
         if is_unlocked:
@@ -3447,10 +3447,23 @@ class Menu:
             status_text = f"{progress}/{target}"
             status_color = (180, 180, 180)
         
-        # Achievement name with icon
-        achievement_title = f"{icon}  {name}"
+        # Try to load and display the icon image
+        if icon_path:
+            full_icon_path = resource_path(icon_path)
+            if os.path.exists(full_icon_path):
+                try:
+                    # pygame_menu.add.image expects a path string
+                    self.achievements_menu.add.image(
+                        full_icon_path,
+                        scale=(0.8, 0.8),  # Scale to appropriate size
+                        align=ALIGN_LEFT
+                    )
+                except Exception as e:
+                    print(f"Failed to load achievement icon {icon_path}: {e}")
+        
+        # Achievement name
         self.achievements_menu.add.label(
-            achievement_title,
+            name,
             font_size=26,
             font_color=name_color,
             font_name=pygame_menu.font.FONT_FRANCHISE,

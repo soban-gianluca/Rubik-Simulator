@@ -1,6 +1,6 @@
-1. Show solution with animations
-2. UI enhancement - menu aspect change
-3. Screen resolution fix (uncommon resolutions)
-4. Add more music tracks (in progress)
-5. Add achievements
-6. Add tutorial mode (?)
+# TODO List
+1. UI enhancement
+2. Screen resolution fix (uncommon resolutions)
+3. Add more music tracks (in progress)
+4. Add achievements
+5. Add tutorial mode (?)

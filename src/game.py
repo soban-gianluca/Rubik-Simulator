@@ -99,6 +99,10 @@ class Game:
         # Initialize renderer
         self.renderer = Renderer(self.width, self.height)
         
+        # Set initial camera position: 45° to the right horizontally and 45° up
+        self.renderer.rotation_y = -45  # 45° to the right (azimuth)
+        self.renderer.rotation_x = 35  # 45° up (elevation)
+        
         # Initialize sound manager
         self.sound_manager = SoundManager()
         

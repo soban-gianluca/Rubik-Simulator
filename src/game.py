@@ -2380,6 +2380,11 @@ class Game:
         self.start_time = None
         self.cube_solved = False
         self.debug_print("Cube scrambled!")
+        
+        # Record scramble for achievements and show notifications if any unlocked
+        newly_unlocked = self.achievements_manager.record_scramble()
+        if newly_unlocked:
+            self.enqueue_achievement_notifications(newly_unlocked, delay_seconds=0.0)
     
     def animated_scramble_cube(self, num_moves):
         """Scramble the cube with animated moves for visual effect"""

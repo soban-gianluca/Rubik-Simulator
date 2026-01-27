@@ -204,11 +204,21 @@ ACHIEVEMENTS = {
         "difficulty": "medium",
         "secret": False
     },
+    "efficient_hard": {
+        "name": "Master of Moves",
+        "description": "Solve a Hard cube in 30 moves or less",
+        "icon": "utils/icons/achievements/efficiency/efficient-hard.png",
+        "category": "efficiency",
+        "condition_type": "moves_under",
+        "moves_threshold": 30,
+        "difficulty": "hard",
+        "secret": False
+    },
     
     # Secret achievements
     "secret_scrambler": {
-        "name": "Just Looking",
-        "description": "Scramble the cube 10 times without solving",
+        "name": "Chaos Theory",
+        "description": "Scramble the cube 10 times",
         "icon": "utils/icons/achievements/secret/secret-scrambler.png",
         "category": "secret",
         "condition_type": "scramble_count",
@@ -418,10 +428,10 @@ class AchievementsManager:
         return self.check_and_unlock()
     
     def record_scramble(self):
-        """Record a scramble action"""
+        """Record a scramble action. Returns list of newly unlocked achievements."""
         self.data["stats"]["scramble_count"] = self.data["stats"].get("scramble_count", 0) + 1
         self.save_data()
-        self.check_and_unlock()
+        return self.check_and_unlock()
     
     def get_all_achievements(self) -> dict:
         """Get all achievements with their status"""

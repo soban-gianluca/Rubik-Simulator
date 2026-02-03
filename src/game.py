@@ -269,6 +269,19 @@ class Game:
         self.game_over = False
         self.game_over_reason = None
         
+        # Reset hint and visual hint system
+        self.hint_banner_active = False
+        self.hint_expanded = False
+        self.hint_banner_alpha = 0.0
+        self.hint_current_suggestion = None
+        self.show_visual_hint = False
+        self.visual_hint_face = None
+        self.hint_moves_sequence = []
+        self.hint_moves_completed = 0
+        self.last_move_time = time.time()
+        with self._solution_lock:
+            self._cached_solution_moves = None
+        
         # Set limits based on current difficulty
         current_difficulty = self.menu.get_selected_difficulty()
         game_mode_config = self.menu.get_game_mode_config(current_difficulty)
@@ -2488,6 +2501,14 @@ class Game:
         self.hint_banner_alpha = 0.0
         self.hint_current_suggestion = None
         self.last_move_time = time.time()
+        
+        # Reset visual hint (3D arrow) state
+        self.show_visual_hint = False
+        self.visual_hint_face = None
+        self.hint_moves_sequence = []
+        self.hint_moves_completed = 0
+        with self._solution_lock:
+            self._cached_solution_moves = None
         
         # Set up challenge limits based on game mode
         if "time_limit" in game_mode_config:

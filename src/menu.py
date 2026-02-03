@@ -754,9 +754,27 @@ class Menu:
         self.sound_manager.play("menu_select")
         self._clear_all_hover_effects()  # Clear hover effects when changing menu
         
+        # Recreate the menu fresh to avoid any state issues (especially with scrollbars/ESC)
+        self.achievements_menu = pygame_menu.Menu(
+            "Achievements",
+            self.width,
+            self.height,
+            theme=self.sub_theme
+        )
+        
         # Refresh the achievements content before showing
         self._create_achievements_content()
         self._change_menu(self.achievements_menu)
+        
+        # Force the menu to update its scroll area and render all widgets
+        try:
+            self.achievements_menu.update([])
+            # Reset scroll position to top to ensure content is visible
+            scroll_area = self.achievements_menu.get_scrollarea()
+            if scroll_area:
+                scroll_area.scroll_to(ORIENTATION_VERTICAL, 0)
+        except Exception:
+            pass
     
     def _switch_to_personal_records_tab(self):
         """Switch to personal records tab in statistics"""
@@ -1578,7 +1596,6 @@ class Menu:
         # Handle menu navigation
         if self.current_menu and self.current_menu.is_enabled():
             if event.type == pygame.KEYDOWN:
-                # For user setup and edit menus, only handle ESC key here
                 # Let all other keys pass through to the text input widget
                 if self.current_menu == self.user_setup_menu:
                     if event.key == pygame.K_ESCAPE:

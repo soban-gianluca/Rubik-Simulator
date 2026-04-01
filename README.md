@@ -1,6 +1,8 @@
 ![Rubik Logo](utils/rubiks_logo.png)
 
-https://giansob.itch.io/rubiks-cube-simulator
+### Play Now on Itch.io: https://giansob.itch.io/rubiks-cube-simulator
+
+### Project Documentation: [Slideshow](utils/docs/Presenatzione%20Rubik's%20Cube%20Simulator%20-%20IT.pdf)
 
 # RubikSimulator
 

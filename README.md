@@ -2,7 +2,7 @@
 
 ### Play Now on Itch.io: https://giansob.itch.io/rubiks-cube-simulator
 
-### Project Documentation: [Slideshow](utils/docs/Presenatzione%20Rubik's%20Cube%20Simulator%20-%20IT.pdf)
+### Project Documentation: [English Slideshow](utils/docs/Presenatzione%20Rubik's%20Cube%20Simulator%20-%20ENG.pdf) - [Italian Slideshow](utils/docs/Presenatzione%20Rubik's%20Cube%20Simulator%20-%20IT.pdf)
 
 # RubikSimulator
 

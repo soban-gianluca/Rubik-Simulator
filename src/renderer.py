@@ -670,14 +670,30 @@ class Renderer:
     
     def rotate_camera(self, azimuth=0, elevation=0):
         """Rotate camera around the cube
-        
+
         Args:
             azimuth: Horizontal rotation angle (around y-axis)
             elevation: Vertical rotation angle (around x-axis)
         """
+        # Pitch (rotation_x) is never clamped, so the camera can loop past vertical
+        # and end up upside down. Once that happens, a rightward mouse drag needs to
+        # keep turning the view the way the (now inverted) viewer expects, so flip the
+        # azimuth input while upside down rather than applying it raw.
+        if self.is_upside_down():
+            azimuth = -azimuth
         self.rotation_y += azimuth
         self.rotation_x += elevation
         # Vertical limit removed to allow unrestricted look-around
+
+    def is_upside_down(self):
+        """
+        Whether pitch (rotation_x) has looped past vertical, flipping the view top-to-bottom.
+
+        Pitch always rotates around the screen-fixed horizontal axis, so it never rolls
+        the view - it only flips "up" into "down" once it passes 90deg/270deg. That flip
+        happens exactly where cos(rotation_x) changes sign, independent of yaw.
+        """
+        return math.cos(math.radians(self.rotation_x)) < 0
         
     def render_cube(self):
         """Render the 3x3x3 Rubik's cube using individual cubes with animation"""

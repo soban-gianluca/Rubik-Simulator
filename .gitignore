@@ -4,3 +4,6 @@ build/
 dist/
 *.spec
 build_game.bat
+
+# CLAUDE
+CLAUDE.md

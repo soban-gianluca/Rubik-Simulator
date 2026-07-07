@@ -316,9 +316,18 @@ class MouseInteraction:
         # Get the grid position (row, col) on the face
         if not hasattr(self, 'detected_grid_pos') or self.detected_grid_pos is None:
             return None
-        
+
         row, col = self.detected_grid_pos
-        
+
+        # When the camera is pitched past vertical (upside down), every screen drag
+        # direction reads backwards relative to an upright camera - both the vertical
+        # component (up/down) and the horizontal component (left/right). Compensate by
+        # flipping the whole drag vector so the direction logic below - which assumes an
+        # upright camera - still produces the correct, non-inverted move.
+        if self.renderer.is_upside_down():
+            dx = -dx
+            dy = -dy
+
         # Calculate drag angle in degrees (0° = right, 90° = down, 180° = left, 270° = up)
         drag_angle = math.degrees(math.atan2(dy, dx)) % 360
         

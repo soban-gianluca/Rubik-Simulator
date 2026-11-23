@@ -1,3 +1,7 @@
+import OpenGL
+# PyOpenGL calls glGetError after every GL call, which stalls the pipeline. Must be set
+# before anything imports OpenGL.GL.
+OpenGL.ERROR_CHECKING = False
 import pygame
 import sys
 import os

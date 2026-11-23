@@ -76,6 +76,7 @@ class Renderer:
         self.create_spherical_skybox_display_list()  # Using spherical skybox for full panoramic image
 
         # Create optimized display list for single cube
+        self.create_cube_materials()
         self.create_display_list()
 
         # Store camera rotation for manual control
@@ -515,159 +516,258 @@ class Renderer:
         """Create optimized display lists for the Rubik's cube"""
         self.create_single_cube_display_list()
 
+    # ------------------------------------------------------------------
+    # Cube materials: procedural grain texture + one small GLSL program
+    # ------------------------------------------------------------------
+    _CUBE_VERT = """
+#version 120
+varying vec3 vObjP;
+varying vec3 vObjN;
+varying vec3 vEyeP;
+void main() {
+    vec4 e = gl_ModelViewMatrix * gl_Vertex;
+    vEyeP = e.xyz;
+    vObjP = gl_Vertex.xyz;
+    vObjN = gl_Normal;
+    gl_Position = gl_ProjectionMatrix * e;
+}
+"""
+
+    _CUBE_FRAG = """
+#version 120
+uniform sampler2D grain;
+uniform vec3 stickers[6];   // sticker color per side: top, bottom, right, left, front, back
+uniform vec4 plate[6];      // flat plate extents per side: amin, amax, bmin, bmax
+varying vec3 vObjP;
+varying vec3 vObjN;
+varying vec3 vEyeP;
+
+const vec3 KEY  = vec3(0.45, 0.70, 0.55);
+const vec3 FILL = vec3(-0.75, 0.10, 0.45);
+const float TILE_HALF = 0.54;    // sticker half size in plate units (0.5 = plate edge)
+const float TILE_RADIUS = 0.15;
+
+float rrect(vec2 p, float half_size, float r) {
+    vec2 q = abs(p) - half_size + r;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
+// Soft, slightly toon-like light: smooth wrap diffuse plus a clean glossy dab
+vec3 shade(vec3 n, vec3 base, float shin, float spec_k, float rim_k) {
+    vec3 v = normalize(-vEyeP);
+    vec3 l0 = normalize(KEY);
+    vec3 l1 = normalize(FILL);
+    float d = 0.60 + 0.40 * smoothstep(-0.25, 0.85, dot(n, l0))
+                   + 0.12 * smoothstep(0.0, 0.8, dot(n, l1));
+    float s = smoothstep(0.35, 0.55, pow(max(dot(n, normalize(l0 + v)), 0.0), shin)) * spec_k;
+    float rim = smoothstep(0.55, 0.9, 1.0 - max(dot(n, v), 0.0)) * rim_k;
+    return base * d + vec3(s) + vec3(0.55, 0.65, 0.85) * rim;
+}
+
+void main() {
+    vec3 on = normalize(vObjN);
+    vec3 a = abs(on);
+
+    // Which side this point belongs to, and its coordinates on that side's plate
+    int side;
+    vec2 q;
+    vec3 T;
+    vec3 B;
+    if (a.y >= a.x && a.y >= a.z) {
+        side = on.y > 0.0 ? 0 : 1; q = vObjP.xz; T = vec3(1.0, 0.0, 0.0); B = vec3(0.0, 0.0, 1.0);
+    } else if (a.x >= a.z) {
+        side = on.x > 0.0 ? 2 : 3; q = vObjP.yz; T = vec3(0.0, 1.0, 0.0); B = vec3(0.0, 0.0, 1.0);
+    } else {
+        side = on.z > 0.0 ? 4 : 5; q = vObjP.xy; T = vec3(1.0, 0.0, 0.0); B = vec3(0.0, 1.0, 0.0);
+    }
+    vec4 pr = plate[side];
+    vec2 p = (q - pr.xz) / (pr.yw - pr.xz) - 0.5;
+
+    // Very light grain (tileable texture, mipmapped so it never shimmers)
+    vec3 w = pow(a, vec3(6.0));
+    w /= (w.x + w.y + w.z);
+    vec2 gx = texture2D(grain, vObjP.yz * 4.0).rg - 0.5;
+    vec2 gy = texture2D(grain, vObjP.xz * 4.0).rg - 0.5;
+    vec2 gz = texture2D(grain, vObjP.xy * 4.0).rg - 0.5;
+    vec3 pert = w.x * (gx.x * vec3(0.0, 1.0, 0.0) + gx.y * vec3(0.0, 0.0, 1.0))
+              + w.y * (gy.x * vec3(1.0, 0.0, 0.0) + gy.y * vec3(0.0, 0.0, 1.0))
+              + w.z * (gz.x * vec3(1.0, 0.0, 0.0) + gz.y * vec3(0.0, 1.0, 0.0));
+
+    mat3 m = mat3(gl_ModelViewMatrix);
+
+    // Body: dark glossy plastic
+    vec3 nb = normalize(m * normalize(on - pert * 0.25));
+    vec3 col = shade(nb, vec3(0.055, 0.058, 0.07), 40.0, 0.22, 0.35);
+
+    // Sticker: rounded tile that wraps slightly over the bevel
+    float d = rrect(p, TILE_HALF, TILE_RADIUS);
+    float aa = max(fwidth(d) * 0.7, 1e-4);
+    float tile = 1.0 - smoothstep(-aa, aa, d);
+    if (tile > 0.0) {
+        float eps = 0.004;
+        vec2 gd = vec2(rrect(p + vec2(eps, 0.0), TILE_HALF, TILE_RADIUS) - d,
+                       rrect(p + vec2(0.0, eps), TILE_HALF, TILE_RADIUS) - d) / eps;
+        float rim = 1.0 - smoothstep(0.0, 0.03, -d);
+        vec3 tilt = (gd.x * T + gd.y * B) * rim * 0.5;
+        vec3 nt = normalize(m * normalize(on - pert * 0.6 + tilt));
+        vec3 sticker = shade(nt, stickers[side], 30.0, 0.20, 0.10);
+        col = mix(col, sticker, tile);
+    }
+    gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+"""
+
+    def create_cube_materials(self):
+        """Build the grain texture and shader used to draw the cube.
+
+        Everything stays tiny on purpose: one 256x256 RGB texture (about 260 KB with
+        mipmaps) shared by every cubie, with the sticker/bezel look done procedurally
+        in the shader. If the shader can't be built the cube falls back to the plain
+        fixed-function look (flat stickers on dark plastic).
+        """
+        self.cube_program = None
+        self.grain_texture = None
+        try:
+            from OpenGL.GL import shaders
+            program = shaders.compileProgram(
+                shaders.compileShader(self._CUBE_VERT, GL_VERTEX_SHADER),
+                shaders.compileShader(self._CUBE_FRAG, GL_FRAGMENT_SHADER),
+                validate=False,
+            )
+            self._grain_loc = glGetUniformLocation(program, "grain")
+            self._stickers_loc = glGetUniformLocation(program, "stickers")
+            self._plate_loc = glGetUniformLocation(program, "plate")
+        except Exception as e:
+            print(f"Cube shader unavailable, using basic shading: {e}")
+            return
+
+        # Tileable band-limited noise -> height, stored as (d/dx, d/dy, height)
+        size = 256
+        rng = np.random.default_rng(7)
+        spectrum = np.fft.fft2(rng.standard_normal((size, size)))
+        fy = np.fft.fftfreq(size)[:, None]
+        fx = np.fft.fftfreq(size)[None, :]
+        r = np.sqrt(fx * fx + fy * fy)
+        r[0, 0] = 1.0
+        shape = np.exp(-(r / 0.22) ** 2) / (r + 0.02)
+        shape[0, 0] = 0.0
+        h = np.fft.ifft2(spectrum * shape).real
+        h = (h - h.mean()) / h.std()
+        dx = (np.roll(h, -1, axis=1) - np.roll(h, 1, axis=1)) * 0.5
+        dy = (np.roll(h, -1, axis=0) - np.roll(h, 1, axis=0)) * 0.5
+        scale = 0.5 / 3.0 / max(dx.std(), dy.std())
+        data = np.empty((size, size, 3), dtype=np.uint8)
+        data[..., 0] = np.clip(0.5 + dx * scale * 0.5, 0, 1) * 255
+        data[..., 1] = np.clip(0.5 + dy * scale * 0.5, 0, 1) * 255
+        data[..., 2] = np.clip(0.5 + h / 6.0, 0, 1) * 255
+
+        tex = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, tex)
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        try:
+            max_aniso = glGetFloatv(0x84FF)  # GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
+            glTexParameterf(GL_TEXTURE_2D, 0x84FE, min(8.0, float(max_aniso)))
+        except Exception:
+            pass
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, size, size, 0, GL_RGB, GL_UNSIGNED_BYTE, data.tobytes())
+        glGenerateMipmap(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, 0)
+
+        self.cube_program = program
+        self.grain_texture = tex
+
     def create_single_cube_display_list(self):
-        """Create optimized display lists for each face of a single cube"""
-        # Create 6 display lists, one for each face
+        """Compile the cubie mesh into display lists.
+
+        The cubie model is a closed rounded cube with one flat plate per side. The
+        six plates become the stickers (one list per side, so each can be drawn in
+        its own color); everything else (the rounded bevels) is the black plastic
+        body, drawn with one list. Vertex normals are smoothed across the bevels.
+        """
+        verts = np.array(self.obj_vertices, dtype=np.float64)
+        faces = self.obj_faces
+        center = (verts.min(axis=0) + verts.max(axis=0)) / 2
+
+        # Smooth vertex normals (area weighted face normals), oriented outward
+        vnormals = np.zeros_like(verts)
+        for f in faces:
+            fn = np.cross(verts[f[1]] - verts[f[0]], verts[f[2]] - verts[f[0]])
+            fn += np.cross(verts[f[2]] - verts[f[0]], verts[f[3]] - verts[f[0]]) if len(f) > 3 else 0
+            if np.dot(fn, verts[f[0]] - center) < 0:
+                fn = -fn
+            for i in f:
+                vnormals[i] += fn
+        lengths = np.linalg.norm(vnormals, axis=1, keepdims=True)
+        vnormals = vnormals / np.where(lengths > 0, lengths, 1)
+
+        # Sticker plates: faces lying entirely on a bounding box side.
+        # (axis, sign) per color index: top, bottom, right, left, front, back.
+        sides = [(1, 1), (1, -1), (0, 1), (0, -1), (2, 1), (2, -1)]
+        tangent_axes = {0: (1, 2), 1: (0, 2), 2: (0, 1)}
+        extreme = {s: (verts[:, s[0]].max() if s[1] > 0 else verts[:, s[0]].min()) for s in sides}
+        plates = [[] for _ in sides]
+        body = []
+        for f in faces:
+            for index, side in enumerate(sides):
+                axis = side[0]
+                if all(abs(verts[i][axis] - extreme[side]) < 1e-4 for i in f):
+                    plates[index].append(f)
+                    break
+            else:
+                body.append(f)
+
+        def emit(face, axis_normal=None):
+            glBegin(GL_QUADS if len(face) == 4 else GL_TRIANGLES)
+            for i in face:
+                glNormal3fv(axis_normal if axis_normal is not None else vnormals[i])
+                glVertex3fv(verts[i])
+            glEnd()
+
+        # Fallback lists (fixed pipeline): one per sticker plate, one for the body
         self.face_display_lists = [glGenLists(1) for _ in range(6)]
-        
-        # Group faces by orientation
-        top_faces = []
-        bottom_faces = []
-        right_faces = []
-        left_faces = []
-        front_faces = []
-        back_faces = []
-        
-        # Identify which faces belong to which orientation based on normals
-        for face in self.obj_faces:
-            # Calculate face normal
-            v0 = self.obj_vertices[face[0]]
-            v1 = self.obj_vertices[face[1]]
-            v2 = self.obj_vertices[face[2]]
-            
-            edge1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]]
-            edge2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]]
-            
-            normal = [
-                edge1[1] * edge2[2] - edge1[2] * edge2[1],
-                edge1[2] * edge2[0] - edge1[0] * edge2[2],
-                edge1[0] * edge2[1] - edge1[1] * edge2[0]
-            ]
-            
-            # Normalize
-            length = (normal[0]**2 + normal[1]**2 + normal[2]**2)**0.5
-            if length > 0:
-                normal = [n/length for n in normal]
-            
-            # Identify face orientation
-            abs_normal = [abs(n) for n in normal]
-            max_idx = abs_normal.index(max(abs_normal))
-            
-            if max_idx == 1:  # Y-axis
-                if normal[1] > 0:
-                    top_faces.append(face)
-                else:
-                    bottom_faces.append(face)
-            elif max_idx == 0:  # X-axis
-                if normal[0] > 0:
-                    right_faces.append(face)
-                else:
-                    left_faces.append(face)
-            elif max_idx == 2:  # Z-axis
-                if normal[2] > 0:
-                    front_faces.append(face)
-                else:
-                    back_faces.append(face)
-        
-        # Create display list for top faces (index 0)
-        glNewList(self.face_display_lists[0], GL_COMPILE)
-        for face in top_faces:
-            if len(face) == 3:
-                glBegin(GL_TRIANGLES)
-            elif len(face) == 4:
-                glBegin(GL_QUADS)
-            else:
-                glBegin(GL_POLYGON)
-            
-            for vertex_index in face:
-                glVertex3fv(self.obj_vertices[vertex_index])
-            
-            glEnd()
+        plate_ranges = []
+        plate_normals = []
+        for index, (axis, sign) in enumerate(sides):
+            normal = [0.0, 0.0, 0.0]
+            normal[axis] = float(sign)
+            plate_normals.append(normal)
+            a, b = tangent_axes[axis]
+            idx = sorted({i for f in plates[index] for i in f})
+            plate_ranges.append([verts[idx, a].min(), verts[idx, a].max(),
+                                 verts[idx, b].min(), verts[idx, b].max()])
+            glNewList(self.face_display_lists[index], GL_COMPILE)
+            for f in plates[index]:
+                emit(f, normal)
+            glEndList()
+
+        self.body_display_list = glGenLists(1)
+        glNewList(self.body_display_list, GL_COMPILE)
+        for f in body:
+            emit(f)
         glEndList()
-        
-        # Create display list for bottom faces (index 1)
-        glNewList(self.face_display_lists[1], GL_COMPILE)
-        for face in bottom_faces:
-            if len(face) == 3:
-                glBegin(GL_TRIANGLES)
-            elif len(face) == 4:
-                glBegin(GL_QUADS)
-            else:
-                glBegin(GL_POLYGON)
-            
-            for vertex_index in face:
-                glVertex3fv(self.obj_vertices[vertex_index])
-            
-            glEnd()
+
+        # Shader path: the whole cubie in one list, the sticker colors come as a uniform
+        self.full_display_list = glGenLists(1)
+        glNewList(self.full_display_list, GL_COMPILE)
+        for f in body:
+            emit(f)
+        for index in range(6):
+            for f in plates[index]:
+                emit(f, plate_normals[index])
         glEndList()
-        
-        # Create display list for right faces (index 2)
-        glNewList(self.face_display_lists[2], GL_COMPILE)
-        for face in right_faces:
-            if len(face) == 3:
-                glBegin(GL_TRIANGLES)
-            elif len(face) == 4:
-                glBegin(GL_QUADS)
-            else:
-                glBegin(GL_POLYGON)
-            
-            for vertex_index in face:
-                glVertex3fv(self.obj_vertices[vertex_index])
-            
-            glEnd()
-        glEndList()
-        
-        # Create display list for left faces (index 3)
-        glNewList(self.face_display_lists[3], GL_COMPILE)
-        for face in left_faces:
-            if len(face) == 3:
-                glBegin(GL_TRIANGLES)
-            elif len(face) == 4:
-                glBegin(GL_QUADS)
-            else:
-                glBegin(GL_POLYGON)
-            
-            for vertex_index in face:
-                glVertex3fv(self.obj_vertices[vertex_index])
-            
-            glEnd()
-        glEndList()
-        
-        # Create display list for front faces (index 4)
-        glNewList(self.face_display_lists[4], GL_COMPILE)
-        for face in front_faces:
-            if len(face) == 3:
-                glBegin(GL_TRIANGLES)
-            elif len(face) == 4:
-                glBegin(GL_QUADS)
-            else:
-                glBegin(GL_POLYGON)
-            
-            for vertex_index in face:
-                glVertex3fv(self.obj_vertices[vertex_index])
-            
-            glEnd()
-        glEndList()
-        
-        # Create display list for back faces (index 5)
-        glNewList(self.face_display_lists[5], GL_COMPILE)
-        for face in back_faces:
-            if len(face) == 3:
-                glBegin(GL_TRIANGLES)
-            elif len(face) == 4:
-                glBegin(GL_QUADS)
-            else:
-                glBegin(GL_POLYGON)
-            
-            for vertex_index in face:
-                glVertex3fv(self.obj_vertices[vertex_index])
-            
-            glEnd()
-        glEndList()
-        
+
+        if self.cube_program:
+            glUseProgram(self.cube_program)
+            glUniform4fv(self._plate_loc, 6, np.array(plate_ranges, dtype=np.float32))
+            glUseProgram(0)
+
         # Keep single_cube_display_list for backward compatibility
         self.single_cube_display_list = self.face_display_lists[0]
-    
+
     def rotate_camera(self, azimuth=0, elevation=0):
         """Rotate camera around the cube
 
@@ -703,6 +803,17 @@ class Renderer:
         # Get current animation angle
         animation_angle = self.update_animation()
         
+        textured = self.cube_program is not None
+        if textured:
+            glUseProgram(self.cube_program)
+            glUniform1i(self._grain_loc, 0)
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, self.grain_texture)
+        else:
+            glEnable(GL_NORMALIZE)
+        body_color = (0.04, 0.04, 0.045)
+        glEnable(GL_CULL_FACE)  # the cubie mesh is closed and wound outward
+
         # Render each small cube
         for cube in self.cubes:
             position = cube['position']
@@ -739,12 +850,25 @@ class Renderer:
             # Scale the cube
             glScalef(0.8, 0.8, 0.8)
             
-            # Draw each face with its proper color
-            for i in range(6):
-                glColor3fv(colors[i])  # Set color using glColor3fv instead of material
-                glCallList(self.face_display_lists[i])
-            
+            if textured:
+                glUniform3fv(self._stickers_loc, 6, [c for color in colors for c in color])
+                glCallList(self.full_display_list)
+            else:
+                # Black plastic body, then each sticker plate in its color
+                glColor3fv(body_color)
+                glCallList(self.body_display_list)
+                for i in range(6):
+                    glColor3fv(colors[i])
+                    glCallList(self.face_display_lists[i])
+
             glPopMatrix()
+
+        glDisable(GL_CULL_FACE)
+        if textured:
+            glUseProgram(0)
+            glBindTexture(GL_TEXTURE_2D, 0)
+        else:
+            glDisable(GL_NORMALIZE)
 
     def render_frame(self, debug_callback=None):
         """Render a frame and return the surface (for compatibility with existing code)
@@ -798,7 +922,16 @@ class Renderer:
                 glDeleteLists(display_list, 1)
             self.face_display_lists = None
             self.single_cube_display_list = None
-        
+            glDeleteLists(self.body_display_list, 1)
+            glDeleteLists(self.full_display_list, 1)
+
+        if self.grain_texture:
+            glDeleteTextures([self.grain_texture])
+            self.grain_texture = None
+        if self.cube_program:
+            glDeleteProgram(self.cube_program)
+            self.cube_program = None
+
         # Clean up skybox resources
         if self.skybox_texture:
             glDeleteTextures([self.skybox_texture])

@@ -142,8 +142,15 @@ def display_hdr_info(display_index):
 
 
 # ---------------------------------------------------------------- window setup
-def request_framebuffer(hdr):
-    """Set the OpenGL pixel format for the next window: 16-bit float for HDR."""
+def request_framebuffer(hdr, msaa=True):
+    """Set the OpenGL pixel format for the next window: 16-bit float for HDR.
+
+    Standard windows get 4x multisampling (smooth cube edges). The HDR path renders
+    into its own offscreen buffer, so it doesn't use it.
+    """
+    samples = 4 if (msaa and not hdr) else 0
+    pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1 if samples else 0)
+    pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, samples)
     bits = 16 if hdr else 8
     pygame.display.gl_set_attribute(pygame.GL_RED_SIZE, bits)
     pygame.display.gl_set_attribute(pygame.GL_GREEN_SIZE, bits)

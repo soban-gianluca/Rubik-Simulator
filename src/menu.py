@@ -1,234 +1,157 @@
-import pygame
-import pygame_menu
-from pygame_menu import themes
-from pygame_menu.locals import *
 import os
 import time
-import math
 import threading
-from io import BytesIO
+from datetime import datetime, timezone
+
+import pygame
+import pygame_menu
+from pygame_menu.locals import (ALIGN_CENTER, ALIGN_LEFT, ALIGN_RIGHT, ORIENTATION_VERTICAL,
+                                POSITION_CENTER, POSITION_EAST)
+
 from src.settings_manager import SettingsManager
 from src.sound_manager import SoundManager
 from src.personal_best_manager import PersonalBestManager
 from src.user_manager import UserManager, REGIONS
-from src.achievements_manager import AchievementsManager, ACHIEVEMENTS
+from src.achievements_manager import AchievementsManager
+from src import display_manager
+from src import hdr as hdr_output
+from src import ui_style as ui
 from utils.path_helper import resource_path
 
 # Leaderboard filter options
 GAME_MODE_OPTIONS = ["All Modes", "easy", "medium", "hard", "limited_time", "limited_moves"]
 GAME_MODE_DISPLAY = {
-    "All Modes": "All Modes",
+    "All Modes": "All modes",
     "easy": "Easy",
-    "medium": "Medium", 
+    "medium": "Medium",
     "hard": "Hard",
     "limited_time": "Limited Time",
     "limited_moves": "Limited Moves"
 }
 REGION_OPTIONS = ["All Regions"] + REGIONS
+REGION_DISPLAY = {"All Regions": "All regions"}
+
+NAV_KEYS = (pygame.K_UP, pygame.K_DOWN, pygame.K_TAB)
+
+
+class _Layout:
+    """Screen geometry for the current resolution."""
+
+    def __init__(self, width, height):
+        ui.set_screen(width, height)
+        self.width, self.height = width, height
+        self.margin = max(ui.px(32), int(width * 0.035))
+        self.header_h = ui.px(124)
+        self.sb_space = max(8, ui.px(16))
+        self.content_w = min(ui.px(1180), width - 2 * self.margin - 2 * self.sb_space)
+        self.content_x = (width - self.content_w) // 2
+        self.panel_w = max(min(int(width * 0.33), ui.px(620)), min(ui.px(440), int(width * 0.45)))
+        self.panel_pad = ui.px(48)
+        self.gap = ui.px(20)
+
 
 class Menu:
     def __init__(self, screen_width, screen_height, game_instance=None):
         self.width = screen_width
         self.height = screen_height
-        self.screen = pygame.display.get_surface()
-        self.game = game_instance  # Store reference to game instance
-        
-        # Initialize settings manager directly
+        self.game = game_instance
+        self.debug_mode = False
+
         self.settings_manager = SettingsManager()
-        
-        # Initialize personal best manager
         self.personal_best_manager = PersonalBestManager()
-        
-        # Initialize user manager
         self.user_manager = UserManager()
-        
-        # Initialize achievements manager
         self.achievements_manager = AchievementsManager()
-        
-        # Initialize Supabase manager (will be set by game instance)
-        self.supabase_manager = None
-        
-        # Initialize sound manager for menu sounds
+        self.supabase_manager = None  # set by the game instance
+
         self.sound_manager = SoundManager()
-        
-        # Load audio settings from settings manager
         self.sound_manager.load_volumes_from_settings(self.settings_manager)
-        
+
         # Menu state
         self.active = False
         self.resolution_changed_flag = False
         self.settings_changed = False
-        self.selected_difficulty = "freeplay"  # Default difficulty - start in free play mode
-        self.has_difficulty_changed = False  # Track if difficulty has been changed at least once
-        self.difficulty_ever_selected = False  # Track if any difficulty has ever been selected
-        
-        # User setup state
-        self.user_setup_active = False  # Track if user setup dialog is shown
-        self.user_setup_username = ""  # Temporary storage for username input
-        self.user_setup_region_index = 0  # Temporary storage for region selection
-        self.username_error = None  # Error message for username validation
-        
-        # Statistics tab state
-        self.statistics_tab = "personal_records"  # "personal_records", "global_leaderboard", or "daily_leaderboard"
-        
-        # Leaderboard state
-        self.leaderboard_data = []  # Cached leaderboard data
-        self.leaderboard_loading = False  # Flag for async loading
-        self.leaderboard_error = None  # Error message if fetch failed
-        self.leaderboard_is_offline = False  # Flag for offline/network error state
-        self.leaderboard_filter_mode = "All Modes"  # Current game mode filter
-        self.leaderboard_filter_region = "All Regions"  # Current region filter
-        self.leaderboard_last_fetch = 0  # Timestamp of last fetch
-        self.leaderboard_ui_refresh_pending = False  # Flag to prevent concurrent UI refreshes
-        
+        self.selected_difficulty = "freeplay"
+        self.has_difficulty_changed = False
+        self.difficulty_ever_selected = False
+        self.game_rendered = False
+
+        # Profile form state
+        self.user_setup_active = False
+        self.user_setup_username = ""
+        self.user_setup_region_index = 0
+        self.username_error = None
+
+        # Statistics tab: "personal_records", "global_leaderboard" or "daily_leaderboard"
+        self.statistics_tab = "personal_records"
+
+        # Global leaderboard state
+        self.leaderboard_data = []
+        self.leaderboard_loading = False
+        self.leaderboard_error = None
+        self.leaderboard_is_offline = False
+        self.leaderboard_filter_mode = "All Modes"
+        self.leaderboard_filter_region = "All Regions"
+        self.leaderboard_last_fetch = 0
+        self.leaderboard_ui_refresh_pending = False
+
         # Daily leaderboard state
-        self.daily_leaderboard_data = []  # Cached daily leaderboard data
-        self.daily_leaderboard_loading = False  # Flag for async loading
-        self.daily_leaderboard_error = None  # Error message if fetch failed
-        self.daily_leaderboard_is_offline = False  # Flag for offline/network error state
-        self.daily_leaderboard_filter_region = "All Regions"  # Current region filter for daily
-        self.daily_leaderboard_last_fetch = 0  # Timestamp of last fetch
-        self.daily_leaderboard_ui_refresh_pending = False  # Flag to prevent concurrent UI refreshes
-        
-        # Limited time mode settings
-        self.selected_time_limit = 180  # Default 3 minutes in seconds
-        self.time_limit_options = [60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 720, 780, 840, 900]  # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 minutes
+        self.daily_leaderboard_data = []
+        self.daily_leaderboard_loading = False
+        self.daily_leaderboard_error = None
+        self.daily_leaderboard_is_offline = False
+        self.daily_leaderboard_filter_region = "All Regions"
+        self.daily_leaderboard_last_fetch = 0
+        self.daily_leaderboard_ui_refresh_pending = False
 
-        # Limited moves mode settings
-        self.selected_move_limit = 25  # Default 25 moves
-        self.move_limit_options = list(range(15, 51))  # 15 to 50 moves
+        # Challenge settings
+        self.selected_time_limit = 300
+        self.time_limit_options = [60, 300, 600, 900]
+        self.selected_move_limit = 25
+        self.move_limit_options = list(range(15, 51, 5))
 
-        # Initialize game modes configuration as instance variable
         self.game_modes = self._initialize_game_modes()
-        
-        # Animation state for smooth transitions
+
+        # Open/close fade
         self.is_animating = False
         self.animation_start_time = 0
-        self.animation_duration = 0.3  # 300ms transition
-        self.is_opening = False  # True when opening, False when closing
-        self.target_alpha = 1.0  # Target alpha value (0.0 to 1.0)
-        self.current_alpha = 0.0  # Current alpha value for animation
-        
-        # Blur effect properties
-        self.background_capture = None
-        self.blurred_background = None
-        self.game_rendered = False  # Track if game has rendered at least once
-        self.frames_rendered = 0  # Count frames to ensure proper initialization
-        
-        # Main menu background image for when difficulty change index is 0
-        self.main_menu_background = None
-        self._load_main_menu_background()
-        
-        # Load the logo image for the main menu title
-        self.logo_image = None
-        self._load_logo_image()
-        
-        # Load the record icon for the personal best button
-        self.record_icon = None
-        self._load_record_icon()
-        
-        # Load the edit icon for user edit button
-        self.edit_icon = None
-        self._load_edit_icon()
-        
-        # Load the achievements icon
-        self.achievements_icon = None
-        self._load_achievements_icon()
-        
-        # Available resolutions
-        self.available_resolutions = [
-            (1280, 720),
-            (1366, 768),
-            (1920, 1080)
-        ]
-        
-        # Load settings from file
-        self.current_resolution_index = 0
-        current_res = (screen_width, screen_height)
-        if current_res in self.available_resolutions:
-            self.current_resolution_index = self.available_resolutions.index(current_res)
-        
-        self.volume = int(self.settings_manager.settings.get("volume", 50))
+        self.animation_duration = 0.2
+        self.is_opening = False
+        self.target_alpha = 1.0
+        self.current_alpha = 0.0
+
+        # Settings values
         self.show_fps = self.settings_manager.settings.get("show_fps", False)
-        self.fullscreen = self.settings_manager.settings.get("fullscreen", False)
-        
-        # Load audio settings
+        self.hints_enabled = self.settings_manager.get_hints_enabled()
         self.master_volume = self.settings_manager.get_master_volume()
         self.music_volume = self.settings_manager.get_music_volume()
         self.effects_volume = self.settings_manager.get_effects_volume()
         self.menu_volume = self.settings_manager.get_menu_volume()
-        
-        # Load hints setting
-        self.hints_enabled = self.settings_manager.get_hints_enabled()
-        
-        # Initialize hover tracking
-        self.hovered_widgets = set()  # Track which widgets are currently hovered
-        
-        # Statistics button hover state (renamed from personal_best)
-        self.personal_best_button_hovered = False
-        self.personal_best_rect = None  # Will be set when drawing the button
-        
-        # User edit button hover state
-        self.user_edit_button_hovered = False
-        self.user_edit_rect = None  # Will be set when drawing the button
-        
-        # Achievements button hover state
-        self.achievements_button_hovered = False
-        self.achievements_rect = None  # Will be set when drawing the button
-        
-        # Initialize difficulty button animation tracking
-        self.difficulty_buttons = {}  # Store difficulty buttons with their metadata
-        self.button_animations = {}  # Track animation state for each button
-        
-        # Tooltip system for difficulty buttons
-        self.tooltip_active = False
-        self.tooltip_text = ""
-        self.tooltip_start_time = 0
-        self.tooltip_delay = 0.5  # 500ms delay before showing tooltip
-        self.tooltip_font = None
-        self.tooltip_surface = None
-        self.tooltip_rect = None
-        self.current_tooltip_button = None
-        
-        # Keyboard navigation state
-        self.keyboard_navigation_enabled = False  # Enable on first arrow key press
-        self.focused_button_index = -1  # Currently focused button index (-1 = none)
-        self.navigable_widgets = []  # List of widgets that can be navigated
+        self.volume = int(self.settings_manager.settings.get("volume", 50))
+        self._load_display_state()
 
-        # Prevent double-calling pygame-menu update() in the same frame
-        # (event handler already calls update([event]) for interactive input).
+        # Interaction state
+        self.pages = {}
+        self._sliders = []
+        self.hover_widget = None
+        self.keyboard_mode = False
+        self.header_back_rect = None
         self._skip_pygame_menu_update_once = False
+        self._ach_icon_cache = {}
 
-        # Patch pygame-menu scrollbar rendering once so the thumb never drifts off
-        # the track (prevents "invisible thumb" and avoids hover flicker).
         self._patch_pygame_menu_scrollbar_render()
-        
-        # Create custom fancy theme with improved styling
-        self._create_custom_theme()
-        
-        # Create menus
         self._create_menus()
-        
-        # Set current menu to main menu
         self.current_menu = self.main_menu
 
+    # ================================================================ setup
     @staticmethod
     def _patch_pygame_menu_scrollbar_render() -> None:
-        """Monkeypatch pygame-menu ScrollBar._render to clamp thumb cross-axis.
-
-        The root issue was the thumb rect cross-axis drifting (e.g., x for vertical)
-        which makes the thumb render outside the track. Fixing it inside _render()
-        ensures every internal render is correct and avoids visible flicker from
-        external forced re-renders.
-        """
+        """Clamp the scrollbar thumb to its track (pygame-menu can let it drift off)."""
         try:
             from pygame_menu.widgets.widget.scrollbar import ScrollBar
         except Exception:
             return
-
         if getattr(ScrollBar, '_rubik_sim_render_patched', False):
             return
-
         original_render = getattr(ScrollBar, '_render', None)
         if original_render is None:
             return
@@ -248,1083 +171,659 @@ class Menu:
 
         ScrollBar._render = _render_patched  # type: ignore[assignment]
         ScrollBar._rubik_sim_render_patched = True
-    
-    def _create_custom_theme(self):
-        """Create a fancy custom theme with better styling"""
-        # Start with the blue theme as base
-        self.theme = pygame_menu.themes.THEME_BLUE.copy()
-        
-        # Background styling
-        self.theme.background_color = (10, 15, 25, 220)  # Dark blue with transparency
-        
-        # Title styling
-        self.theme.title_font = pygame_menu.font.FONT_FRANCHISE
-        title_font_size = max(38, min(70, int(self.height * 0.085)))
-        self.theme.title_font_size = title_font_size
-        self.theme.title_font_color = (255, 255, 255)
-        self.theme.title_font_shadow = True
-        self.theme.title_font_shadow_color = (0, 0, 0)
-        self.theme.title_font_shadow_offset = 3
-        self.theme.title_background_color = (5, 10, 20, 240)  # More opaque dark background for better visibility
-        self.theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_ADAPTIVE
-        # Try different title properties to center it
-        self.theme.title_alignment = ALIGN_CENTER
-        self.theme.title_position = (50, 50)  # Try positioning the title
-        self.theme.title_offset = (0, 0)
-        
-        # Widget styling
-        self.theme.widget_font = pygame_menu.font.FONT_FRANCHISE
-        widget_font_size = max(28, min(54, int(self.height * 0.065)))
-        self.theme.widget_font_size = widget_font_size
-        self.theme.widget_font_color = (255, 255, 255)  # White text
-        self.theme.widget_font_shadow = True
-        self.theme.widget_font_shadow_color = (0, 0, 0)
-        self.theme.widget_font_shadow_offset = 2
-        self.theme.widget_margin = (0, max(3, int(self.height * 0.007)))
-        self.theme.widget_padding = (max(10, int(self.width * 0.008)), max(6, int(self.height * 0.01)))
-        
-        # Button styling - use NoneSelection for now and handle custom effects manually
-        self.theme.widget_selection_effect = pygame_menu.widgets.NoneSelection()
-        
-        # Button background colors - make them transparent/invisible
-        self.theme.widget_background_color = (0, 0, 0, 0)  # Completely transparent
-        self.theme.widget_background_color_disabled = (0, 0, 0, 0)  # Completely transparent
-        
-        # Scrollbar styling
-        self.theme.scrollbar_color = (15, 22, 35)              # Track
-        self.theme.scrollbar_slider_color = (240, 198, 38)     # Thumb
-        self.theme.scrollbar_slider_hover_color = (255, 255, 255)
-        self.theme.scrollbar_slider_pad = 1  # pygame-menu expects int padding
-        self.theme.scrollbar_thick = 14
-        self.theme.scrollbar_shadow = True  # Add shadow for better visibility
-        self.theme.scrollbar_shadow_color = (0, 0, 0)
-        self.theme.scrollbar_shadow_offset = 1
-        
-        # Border styling - remove borders
-        self.theme.widget_border_color = (0, 0, 0, 0)  # Transparent border
-        self.theme.widget_border_width = 0  # No border
-        
-        # Menu bar styling
-        self.theme.menubar_close_button = False
-        
-        # Custom colors for specific widgets - transparent backgrounds
-        self.button_color_normal = (0, 0, 0, 0)  # Transparent
-        self.button_color_hover = (30, 50, 80, 100)  # Subtle hover effect
-        self.button_color_pressed = (0, 0, 0, 0)  # Transparent
-        
-        # Text colors
-        self.text_color_normal = (255, 255, 255)  # White color for normal text
-        self.text_color_hover = (240, 198, 38)   # Hover color
-        self.text_color_selected = (255, 18, 18)  # Red color for selected
-    
-    def _load_main_menu_background(self):
-        """Load the main menu background image"""
-        try:
-            # Load the main menu background image
-            background_path = resource_path("utils/main_menu_background.png")
-            if os.path.exists(background_path):
-                self.main_menu_background = pygame.image.load(background_path)
-            else:
-                print(f"Main menu background not found: {background_path}")
-                self.main_menu_background = None
-        except Exception as e:
-            print(f"Error loading main menu background: {e}")
-            self.main_menu_background = None
-    
-    def _load_logo_image(self):
-        """Load the Rubik's Cube logo image"""
-        try:
-            # Load the logo image
-            logo_path = resource_path("utils/rubiks_logo.png")
-            if os.path.exists(logo_path):
-                self.logo_image = pygame.image.load(logo_path)
-                logo_width = int(self.width * 0.08)  # 8% of screen width
-                logo_height = int(logo_width * 0.24)  # 24% of logo width (preserve aspect ratio)
-                self.logo_image = pygame.transform.scale(self.logo_image, (logo_width, logo_height))
-            else:
-                print(f"Logo image not found: {logo_path}")
-                self.logo_image = None
-        except Exception as e:
-            print(f"Error loading logo image: {e}")
-            self.logo_image = None
-    
-    def _load_record_icon(self):
-        """Load the record icon for the personal best button"""
-        try:
-            # Load the record icon
-            record_icon_path = resource_path("utils/icons/statistics.png")
-            if os.path.exists(record_icon_path):
-                self._record_icon_original = pygame.image.load(record_icon_path).convert_alpha()
-                self._scale_record_icon()
-            else:
-                print(f"Record icon not found: {record_icon_path}")
-                self.record_icon = None
-        except Exception as e:
-            print(f"Error loading record icon: {e}")
-            self.record_icon = None
-    
-    def _load_edit_icon(self):
-        """Load the edit icon for the user edit button"""
-        try:
-            # Load the edit icon
-            edit_icon_path = resource_path("utils/icons/user-edit.png")
-            if os.path.exists(edit_icon_path):
-                self._edit_icon_original = pygame.image.load(edit_icon_path).convert_alpha()
-                self._scale_edit_icon()
-            else:
-                print(f"Edit icon not found: {edit_icon_path}")
-                self.edit_icon = None
-        except Exception as e:
-            print(f"Error loading edit icon: {e}")
-            self.edit_icon = None
-    
-    def _load_achievements_icon(self):
-        """Load the achievements icon for the achievements button"""
-        try:
-            # Load the achievements icon
-            achievements_icon_path = resource_path("utils/icons/achievements.png")
-            if os.path.exists(achievements_icon_path):
-                self._achievements_icon_original = pygame.image.load(achievements_icon_path).convert_alpha()
-                self._scale_achievements_icon()
-            else:
-                print(f"Achievements icon not found: {achievements_icon_path}")
-                self.achievements_icon = None
-        except Exception as e:
-            print(f"Error loading achievements icon: {e}")
-            self.achievements_icon = None
 
-    def _get_stats_button_metrics(self, screen_width=None, screen_height=None):
-        """Calculate sizes for the Statistics button based on screen size"""
-        if screen_width is None:
-            screen_width = self.width
-        if screen_height is None:
-            screen_height = self.height
+        # The focus dimming replaces pixels on our transparent overlay, which
+        # punches holes in it; the menu has its own scrim, so turn it off.
+        pygame_menu.Menu._draw_focus_widget = lambda self, surface, widget, force=False: None
 
-        button_height = max(52, min(84, int(screen_height * 0.07)))
-        button_width = max(170, min(280, int(screen_width * 0.12)))
-        margin = max(14, int(screen_width * 0.018))
-        icon_size = max(26, min(48, int(button_height * 0.8)))
-        icon_padding = max(10, int(button_height * 0.22))
-        font_size = max(20, int(button_height * 0.46))
-        hover_font_size = max(font_size + 2, int(button_height * 0.5))
+    def _build_theme(self):
+        t = pygame_menu.themes.THEME_DARK.copy()
+        t.background_color = (0, 0, 0, 0)
+        t.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_NONE
+        t.title_font = ui.FONT_DISPLAY
+        t.title_font_color = ui.TEXT
+        t.title_font_shadow = False
+        t.widget_font = ui.FONT_BODY
+        t.widget_font_size = ui.fs(ui.SIZE_BODY)
+        t.widget_font_color = ui.TEXT
+        t.widget_font_shadow = False
+        t.widget_font_antialias = True
+        t.widget_selection_effect = pygame_menu.widgets.NoneSelection()
+        t.widget_background_color = (0, 0, 0, 0)
+        t.widget_border_width = 0
+        t.widget_padding = 0
+        t.widget_margin = (0, 0)
+        t.widget_alignment = ALIGN_CENTER
+        t.selection_color = ui.ACCENT
+        t.cursor_color = ui.ACCENT
+        t.cursor_selection_color = (*ui.ACCENT, 90)
+        t.readonly_font_color = ui.DIM
+        t.readonly_selected_color = ui.DIM
+        t.focus_background_color = (*ui.BG, 150)
+        t.scrollbar_color = ui.BG
+        t.scrollbar_slider_color = ui.SURFACE_3
+        t.scrollbar_slider_hover_color = ui.MUTED
+        t.scrollbar_slider_pad = 0
+        t.scrollbar_thick = max(6, ui.px(8))
+        t.scrollbar_shadow = False
+        t.scrollarea_position = POSITION_EAST
+        t.scrollarea_outer_margin = (0, 0)
+        t.menubar_close_button = False
+        t.title_updates_pygame_display = False  # keep the window caption
+        self.theme = t
 
-        return {
-            "button_width": button_width,
-            "button_height": button_height,
-            "margin": margin,
-            "icon_size": icon_size,
-            "icon_padding": icon_padding,
-            "font_size": font_size,
-            "hover_font_size": hover_font_size
-        }
-
-    def _scale_record_icon(self):
-        """Scale the record icon based on current resolution"""
-        if not hasattr(self, "_record_icon_original") or self._record_icon_original is None:
-            self.record_icon = None
-            return
-
-        icon_size = self._get_stats_button_metrics()["icon_size"]
-        self.record_icon = pygame.transform.smoothscale(self._record_icon_original, (icon_size, icon_size))
-
-    def _scale_edit_icon(self):
-        """Scale the edit icon based on current resolution"""
-        if not hasattr(self, "_edit_icon_original") or self._edit_icon_original is None:
-            self.edit_icon = None
-            return
-
-        # Edit icon proportional to edit button size
-        edit_icon_size = max(28, min(40, int(self.height * 0.045)))
-        self.edit_icon = pygame.transform.smoothscale(self._edit_icon_original, (edit_icon_size, edit_icon_size))
-    
-    def _scale_achievements_icon(self):
-        """Scale the achievements icon based on current resolution"""
-        if not hasattr(self, "_achievements_icon_original") or self._achievements_icon_original is None:
-            self.achievements_icon = None
-            return
-
-        # Achievements icon proportional to button size (same as stats button)
-        icon_size = self._get_stats_button_metrics()["icon_size"]
-        self.achievements_icon = pygame.transform.smoothscale(self._achievements_icon_original, (icon_size, icon_size))
-    
-    def _customize_button_appearance(self, button):
-        """Apply custom styling to a button widget - remove backgrounds"""
-        try:
-            # Only set background color to transparent
-            if hasattr(button, 'set_background_color'):
-                button.set_background_color((0, 0, 0, 0))
-            
-        except Exception as e:
-            # Silently ignore errors to avoid spam
-            pass
-    
-    def _customize_menu_widgets(self, menu):
-        """Apply custom styling to all widgets in a menu - remove backgrounds"""
-        try:
-            for widget in menu.get_widgets():
-                # Get widget type by checking the class name
-                widget_class_name = widget.__class__.__name__
-                
-                if widget_class_name == 'Button':
-                    # Get button title to check if it's a special button
-                    button_title = ""
-                    if hasattr(widget, 'get_title'):
-                        button_title = widget.get_title()
-                    
-                    # Check if this is a settings button that should keep its color
-                    if button_title in ["Apply Changes", "Back"]:
-                        # Skip styling for these buttons - they will be styled separately
-                        pass
-                    # Also skip if this is the stored apply button reference
-                    elif hasattr(self, 'apply_button') and widget == self.apply_button:
-                        # Skip styling for apply button - handled separately
-                        pass
-                    # Check if this is a difficulty button (has background color set)
-                    elif (hasattr(widget, '_background_color') and 
-                        widget._background_color and 
-                        widget._background_color != (0, 0, 0, 0)):
-                        # This is a difficulty button with custom background, keep it
-                        pass
-                    else:
-                        # This is a regular button, make it transparent
-                        self._customize_button_appearance(widget)
-                elif widget_class_name in ['DropSelect', 'ToggleSwitch', 'RangeSlider']:
-                    # Remove background squares from other interactive widgets
-                    if hasattr(widget, 'set_background_color'):
-                        widget.set_background_color((0, 0, 0, 0))  # Transparent
-                        
-        except Exception as e:
-            # Silently ignore errors to avoid spam
-            pass
-    
-    def _style_settings_buttons(self, apply_btn, back_btn):
-        """Apply specific colors and rounded backgrounds to the settings buttons, directly drawing rounded buttons."""
-        import pygame
-        def draw_rounded_button(widget, surface, *args, **kwargs):
-            rect = widget.get_rect(to_real_position=True)
-            color = widget._background_color if hasattr(widget, '_background_color') else (80, 80, 80, 150)
-            border_radius = 16
-            pygame.draw.rect(surface, color, rect, border_radius=border_radius)
-            pygame.draw.rect(surface, (120, 120, 120, 180), rect, width=2, border_radius=border_radius)
-            if hasattr(widget, 'get_title') and hasattr(widget, '_font'):
-                text = widget.get_title()
-                font = widget._font
-                font_color = widget._font_color if hasattr(widget, '_font_color') else (255, 255, 255)
-                text_surf = font.render(text, True, font_color)
-                text_rect = text_surf.get_rect(center=rect.center)
-                surface.blit(text_surf, text_rect)
-        try:
-            if hasattr(apply_btn, 'set_background_color'):
-                if self.settings_changed:
-                    apply_btn.set_background_color((46, 125, 50, 200))  # Green color
-                    if hasattr(apply_btn, 'is_enabled'):
-                        apply_btn.is_enabled = True
-                    if hasattr(apply_btn, '_font_color'):
-                        apply_btn._font_color = (255, 255, 255)
-                else:
-                    apply_btn.set_background_color((80, 80, 80, 150))  # Light gray color
-                    if hasattr(apply_btn, 'is_enabled'):
-                        apply_btn.is_enabled = False
-                    if hasattr(apply_btn, '_font_color'):
-                        apply_btn._font_color = (150, 150, 150)
-                apply_btn._original_draw = apply_btn.draw
-                apply_btn.draw = lambda surface, *a, **k: draw_rounded_button(apply_btn, surface, *a, **k)
-            if hasattr(back_btn, 'set_background_color'):
-                back_btn.set_background_color((66, 66, 66, 200))
-                back_btn._original_draw = back_btn.draw
-                back_btn.draw = lambda surface, *a, **k: draw_rounded_button(back_btn, surface, *a, **k)
-        except Exception:
-            pass
-
-    def _style_difficulty_buttons(self):
-        """Apply rounded backgrounds and custom colors to difficulty selection buttons."""
-        import pygame
-        for button, info in self.difficulty_buttons.items():
-            def draw_rounded_difficulty(widget, surface, *args, **kwargs):
-                rect = widget.get_rect(to_real_position=True)
-                color = widget._background_color if hasattr(widget, '_background_color') else info['base_color']
-                border_radius = 18
-                pygame.draw.rect(surface, color, rect, border_radius=border_radius)
-                pygame.draw.rect(surface, (120, 120, 120, 180), rect, width=2, border_radius=border_radius)
-                if hasattr(widget, 'get_title') and hasattr(widget, '_font'):
-                    text = widget.get_title()
-                    font = widget._font
-                    font_color = widget._font_color if hasattr(widget, '_font_color') else (255, 255, 255)
-                    text_surf = font.render(text, True, font_color)
-                    text_rect = text_surf.get_rect(center=rect.center)
-                    surface.blit(text_surf, text_rect)
-            button._original_draw = button.draw
-            button.draw = lambda surface, *a, btn=button, **k: draw_rounded_difficulty(btn, surface, *a, **k)
-    
-    def _update_apply_button_state(self):
-        """Update the apply button's appearance based on settings_changed state"""
-        if hasattr(self, 'apply_button') and self.apply_button:
-            try:
-                if hasattr(self.apply_button, 'set_background_color'):
-                    if self.settings_changed:
-                        # Enabled state - green background
-                        self.apply_button.set_background_color((46, 125, 50, 200))  # Green color
-                        # Set normal text color
-                        if hasattr(self.apply_button, '_font_color'):
-                            self.apply_button._font_color = (255, 255, 255)  # White text
-                    else:
-                        # Disabled state - lighter/grayed out background
-                        self.apply_button.set_background_color((80, 80, 80, 150))  # Light gray color
-                        # Set gray text color
-                        if hasattr(self.apply_button, '_font_color'):
-                            self.apply_button._font_color = (150, 150, 150)  # Gray text
-            except Exception as e:
-                # Silently ignore errors
-                pass
-    
     def _initialize_game_modes(self):
-        """Initialize available game modes with their configurations.
-        This structure makes it easy to add new difficulties and game modes."""
+        """Available game modes and their configuration."""
         return {
             "freeplay": {
                 "name": "Free Play",
-                "description": "Practice with an unscrambled cube",
-                "scramble_moves": 0,  # No scrambling - cube stays solved
-                "timer_enabled": False,  # No timer for free play
+                "description": "A solved cube, no timer. Press X to scramble it whenever you like.",
+                "scramble_moves": 0,
+                "timer_enabled": False,
             },
             "easy": {
                 "name": "Easy",
-                "description": "Perfect for beginners - 5 moves scramble",
-                "scramble_moves": 5,  # Easy scramble
-                "timer_enabled": True,  # Future: enable/disable timer
+                "description": "Five move scramble. A gentle warm up.",
+                "scramble_moves": 5,
+                "timer_enabled": True,
             },
             "medium": {
-                "name": "Medium", 
-                "description": "Standard difficulty - 10 moves scramble",
+                "name": "Medium",
+                "description": "Ten move scramble. Plan a few moves ahead.",
                 "scramble_moves": 10,
                 "timer_enabled": True,
             },
             "hard": {
                 "name": "Hard",
-                "description": "Completely random scramble",
-                "scramble_moves": -1,  # Special value for total random scramble
+                "description": "Fully random scramble. The real thing.",
+                "scramble_moves": -1,
                 "timer_enabled": True,
             },
             "limited_time": {
                 "name": "Limited Time",
-                "description": "Solve the cube before time runs out! - 15 moves scramble",
+                "description": "Solve a 15 move scramble before the clock runs out.",
                 "scramble_moves": 15,
                 "timer_enabled": True,
                 "countdown_mode": True,
             },
             "limited_moves": {
                 "name": "Limited Moves",
-                "description": "Solve the cube with limited moves! - 15 moves scramble",
+                "description": "Solve a 15 move scramble within a move budget.",
                 "scramble_moves": 15,
                 "timer_enabled": True,
                 "countdown_moves": True,
             },
             "daily_cube": {
                 "name": "Daily Cube",
-                "description": "Same scramble for all players today! Compete globally!",
-                "scramble_moves": 20,  # Fixed scramble based on date
+                "description": "One scramble for everyone today, ranked worldwide.",
+                "scramble_moves": 20,
                 "timer_enabled": True,
                 "daily_mode": True,
             }
         }
-    
+
     def get_game_mode_config(self, difficulty):
-        """Get the configuration for a specific game mode"""
-        # Update limited_time configuration with current selected time limit
+        """Configuration for a game mode, including the chosen challenge limits."""
         if difficulty == "limited_time":
             self.game_modes["limited_time"]["time_limit"] = self.selected_time_limit
-            # Also update the description to reflect current time
-            time_display = self._format_time_display(self.selected_time_limit)
-            self.game_modes["limited_time"]["description"] = f"Solve the cube before time runs out! ({time_display})"
-        
-        # Update limited_moves configuration with current selected move limit
         if difficulty == "limited_moves":
             self.game_modes["limited_moves"]["move_limit"] = self.selected_move_limit
-            # Also update the description to reflect current move limit
-            self.game_modes["limited_moves"]["description"] = f"Solve the cube with limited moves! ({self.selected_move_limit} moves max)"
-        
         return self.game_modes.get(difficulty, self.game_modes["medium"])
-    
-    def _start_game(self, difficulty="normal"):
-        """Start the game (close menu) with specified difficulty"""
+
+    # ================================================================ display settings
+    def _load_display_state(self):
+        mode, index, size = display_manager.resolve(self.settings_manager.settings)
+        self.display_mode = mode
+        self.display_index = index
+        saved = self.settings_manager.settings.get("resolution") or {}
+        saved_size = (int(saved.get("width", size[0])), int(saved.get("height", size[1])))
+        self.display_size = size if mode != "borderless" else saved_size
+        self.pending_mode = self.display_mode
+        self.pending_index = self.display_index
+        self.pending_size = size
+        self.fullscreen = self.display_mode != "windowed"
+        settings = self.settings_manager.settings
+        self.hdr_enabled = bool(settings.get("hdr_enabled", False))
+        self.pending_hdr = self.hdr_enabled
+        self.hdr_paper_white = int(settings.get("hdr_paper_white", hdr_output.PAPER_WHITE_DEFAULT))
+        self.settings_changed = False
+
+    def _pending_options(self):
+        options = display_manager.resolutions_for(self.pending_mode, self.pending_index)
+        # A custom window size (e.g. from an older version) stays selectable as is
+        current = (self.width, self.height)
+        if (self.pending_mode == "windowed" and self.display_mode == "windowed"
+                and self.pending_index == self.display_index and current not in options):
+            options = sorted(options + [current], key=lambda s: (s[0], s[1]), reverse=True)
+        return options
+
+    def _resolution_items(self):
+        items = []
+        for i, (w, h) in enumerate(self._pending_options()):
+            items.append((f"{w} x {h}   {ui.aspect_label(w, h)}", i))
+        return items
+
+    def _refresh_pending_resolution(self):
+        options = self._pending_options()
+        if self.pending_mode == "borderless":
+            self.pending_size = options[0]
+        else:
+            preferred = self.display_size if self.display_mode != "borderless" else self.pending_size
+            self.pending_size = display_manager.nearest(preferred, options)
+        if getattr(self, "resolution_select", None) is not None:
+            try:
+                items = self._resolution_items()
+                self.resolution_select.update_items(items)
+                self.resolution_select.set_value(options.index(self.pending_size))
+                self.resolution_select.readonly = self.pending_mode == "borderless"
+            except Exception as e:
+                print(f"Could not refresh resolution list: {e}")
+        self._update_settings_changed()
+
+    def _update_settings_changed(self):
+        current_size = (self.width, self.height)
+        self.settings_changed = (
+            self.pending_mode != self.display_mode
+            or self.pending_index != self.display_index
+            or (self.pending_mode != "borderless" and self.pending_size != current_size)
+            or self.pending_hdr != self.hdr_enabled
+        )
+        if getattr(self, "apply_button", None) is not None:
+            self.apply_button.readonly = not self.settings_changed
+
+    def _on_display_mode_change(self, selected, index):
         self.sound_manager.play("menu_select")
-        # Clear hover effects before starting game
-        self._clear_all_hover_effects()
-        
-        # Check if difficulty is different from current selection OR this is the first selection
+        self.pending_mode = display_manager.MODES[index]
+        self._refresh_pending_resolution()
+
+    def _on_monitor_change(self, selected, index):
+        self.sound_manager.play("menu_select")
+        self.pending_index = index
+        self._refresh_pending_resolution()
+        if not hdr_output.display_hdr_info(index)[0]:
+            self.pending_hdr = False
+            self._update_settings_changed()
+        # HDR options depend on the monitor: rebuild the page to show them
+        self._rebuild_settings_page("display_monitor")
+
+    def _rebuild_settings_page(self, select):
+        self._build_settings_page(self.settings_menu)
+        try:
+            self.settings_menu.select_widget(select)
+        except Exception:
+            pass
+
+    def _on_hdr_toggle(self, value):
+        self.sound_manager.play("menu_select")
+        self.pending_hdr = bool(value)
+        self._update_settings_changed()
+        # The brightness slider only exists while HDR is on
+        self._rebuild_settings_page("display_hdr")
+
+    def _on_paper_white_change(self, value):
+        self._slider_dirty = True
+        self.hdr_paper_white = int(round(value / 5) * 5)
+        self.settings_manager.settings["hdr_paper_white"] = self.hdr_paper_white
+        self.settings_manager.save_settings()
+        presenter = getattr(self.game, "hdr_presenter", None) if self.game else None
+        if presenter is not None:
+            presenter.paper_white = self.hdr_paper_white  # applies on the next frame
+        if getattr(self, "paper_white_label", None) is not None:
+            self.paper_white_label.set_title(f"{self.hdr_paper_white:>3} nits")
+
+    def _on_resolution_change(self, selected, index):
+        self.sound_manager.play("menu_select")
+        options = self._pending_options()
+        if 0 <= index < len(options):
+            self.pending_size = options[index]
+        self._update_settings_changed()
+
+    def _apply_settings(self):
+        """Ask the game to switch to the pending display settings."""
+        if not self.settings_changed:
+            return
+        self.sound_manager.play("menu_apply")
+        self.fullscreen = self.pending_mode != "windowed"
+        self.resolution_changed_flag = True
+
+    def get_display_request(self):
+        return self.pending_mode, self.pending_index, self.pending_size, self.pending_hdr
+
+    def get_current_resolution(self):
+        return self.pending_size
+
+    def resolution_changed(self):
+        return self.resolution_changed_flag
+
+    def reset_resolution_changed(self):
+        self.resolution_changed_flag = False
+
+    def get_setting(self, name):
+        if name == "show_fps":
+            return self.show_fps
+        if name == "fullscreen":
+            return self.fullscreen
+        if name == "volume":
+            return self.volume
+        if name == "difficulty":
+            return self.selected_difficulty
+        return None
+
+    def get_selected_difficulty(self):
+        return self.selected_difficulty
+
+    # ================================================================ simple settings
+    def _on_fps_toggle(self, value):
+        self.sound_manager.play("menu_select")
+        self.show_fps = value
+        self.settings_manager.settings["show_fps"] = value
+        self.settings_manager.save_settings()
+        if self.game:
+            self.game.show_fps = value
+
+    def _on_hints_toggle(self, value):
+        self.sound_manager.play("menu_select")
+        self.hints_enabled = value
+        self.settings_manager.set_hints_enabled(value)
+        if self.game:
+            self.game.hints_enabled = value
+            if not value:
+                self.game.hint_banner_active = False
+                self.game.hint_expanded = False
+                self.game.hint_banner_alpha = 0.0
+
+    def _set_volume(self, key, value):
+        value = int(value)
+        self._slider_dirty = True
+        setattr(self, key, value)
+        setter = {
+            "master_volume": self.sound_manager.set_master_volume,
+            "music_volume": self.sound_manager.set_music_volume,
+            "effects_volume": self.sound_manager.set_effects_volume,
+            "menu_volume": self.sound_manager.set_menu_volume,
+        }[key]
+        setter(value / 100.0)
+        self.settings_manager.set_audio_volume(key, value)
+        self.settings_manager.save_settings()
+        if self.game:
+            self.game.sound_manager.load_volumes_from_settings(self.settings_manager)
+        label = self.volume_labels.get(key)
+        if label is not None:
+            label.set_title(f"{value:>3}%")
+
+    # ================================================================ navigation actions
+    def _in_game(self):
+        return bool(self.game and getattr(self.game, "difficulty_change_count", 0) >= 1)
+
+    def _change_menu(self, new_menu):
+        self.current_menu = new_menu
+        self.hover_widget = None
+        self.keyboard_mode = False
+        try:
+            new_menu.get_scrollarea().scroll_to(ORIENTATION_VERTICAL, 0)
+        except Exception:
+            pass
+
+    def _go(self, menu):
+        self.sound_manager.play("menu_select")
+        self._change_menu(menu)
+
+    def _go_back(self):
+        page = self.pages.get(self.current_menu, {})
+        back = page.get("back")
+        if back:
+            back()
+
+    def _start_game(self, difficulty="normal"):
+        """Start a game in the given mode and close the menu"""
+        self.sound_manager.play("menu_select")
         difficulty_changed = (difficulty != self.selected_difficulty) or not self.difficulty_ever_selected
-        
-        # Store the selected difficulty for future use
         self.selected_difficulty = difficulty
-        
-        # Track that difficulty has been changed at least once
         if difficulty_changed:
             self.has_difficulty_changed = True
             self.difficulty_ever_selected = True
-            # Increment difficulty change count in game instance
-            if hasattr(self, "game") and self.game:
+            if self.game:
                 self.game.increment_difficulty_change_count()
-                # Refresh main menu buttons to reflect the change
-                self.refresh_main_menu_buttons()
-            
-            if hasattr(self, "debug_mode") and self.debug_mode:
-                print(f"Difficulty selected: {difficulty} (ESC now enabled)")
-        
-        # Change background based on difficulty (procedural, no external images)
-        if hasattr(self, "game") and self.game:
+        if self.game:
             self.game.renderer.reload_skybox_texture(difficulty)
-            if hasattr(self, "debug_mode") and self.debug_mode:
-                print(f"Changed background preset to difficulty: {difficulty}")
-            
-            # Only request a new game if difficulty changed and we have changed it before
-            # or if this is the very first time a difficulty is selected
             if difficulty_changed:
                 self.game.request_new_game()
-        
-        if hasattr(self, "debug_mode") and self.debug_mode:
-            print(f"Starting game with difficulty: {difficulty}")
-        
-        # Start closing animation instead of immediately setting active to False
-        if not self.is_animating:  # Prevent multiple animations
+        self.refresh_main_menu_buttons()
+        if not self.is_animating:
             self.toggle()
 
-    def _play_current_difficulty(self):
-        """Play with the current difficulty without changing it (just closes menu)"""
+    def _start_challenge(self, difficulty):
+        """Challenges always start a fresh game"""
         self.sound_manager.play("menu_select")
-        # Clear hover effects before starting game
-        self._clear_all_hover_effects()
-        
-        if hasattr(self, "debug_mode") and self.debug_mode:
-            print(f"Playing with current difficulty: {self.selected_difficulty}")
-        
-        # Start closing animation instead of immediately setting active to False
-        if not self.is_animating:  # Prevent multiple animations
+        self.selected_difficulty = difficulty
+        self.has_difficulty_changed = True
+        self.difficulty_ever_selected = True
+        if self.game:
+            self.game.increment_difficulty_change_count()
+            self.game.renderer.reload_skybox_texture(difficulty)
+            self.game.request_new_game()
+        self.refresh_main_menu_buttons()
+        if not self.is_animating:
             self.toggle()
-    
+
+    def _start_limited_time_game(self):
+        self._start_challenge("limited_time")
+
+    def _start_limited_moves_game(self):
+        self._start_challenge("limited_moves")
+
+    def _play_current_difficulty(self):
+        """Resume the current game"""
+        self.sound_manager.play("menu_select")
+        if not self.is_animating:
+            self.toggle()
+
     def _open_difficulty_select(self):
-        """Open difficulty selection submenu or user setup if needed"""
         self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        
-        # Check if user setup is needed first
         if not self.user_manager.is_setup_completed():
             self.show_user_setup()
         else:
+            self._build_modes_page(self.difficulty_menu)
             self._change_menu(self.difficulty_menu)
-    
+
     def _open_settings(self):
-        """Open settings submenu"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self._change_menu(self.settings_menu)
-    
+        self._load_display_state()
+        self._build_settings_page(self.settings_menu)
+        self._go(self.settings_menu)
+
+    def _open_audio_settings(self):
+        self._open_settings()
+
     def _open_controls(self):
-        """Open controls submenu"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self._change_menu(self.controls_menu)
-    
+        self._go(self.controls_menu)
+
     def _show_quit_confirmation(self):
-        """Show confirmation dialog before quitting"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self._change_menu(self.quit_confirmation_menu)
-    
-    def _cancel_quit(self):
-        """Cancel quit and return to main menu"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()
-        self._change_menu(self.main_menu)
-    
-    def _open_personal_best(self):
-        """Open statistics submenu (renamed from personal best)"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        
-        # Check if user setup is needed first
-        if not self.user_manager.is_setup_completed():
-            self.show_user_setup()
-        else:
-            # Refresh the statistics content before showing
-            self._create_personal_best_content()
-            self._change_menu(self.personal_best_menu)
-    
-    def _open_achievements(self):
-        """Open achievements submenu"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        
-        # Recreate the menu fresh to avoid any state issues (especially with scrollbars/ESC)
-        self.achievements_menu = pygame_menu.Menu(
-            "Achievements",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Refresh the achievements content before showing
-        self._create_achievements_content()
-        self._change_menu(self.achievements_menu)
-        
-        # Force the menu to update its scroll area and render all widgets
+        self._go(self.quit_confirmation_menu)
         try:
-            self.achievements_menu.update([])
-            # Reset scroll position to top to ensure content is visible
-            scroll_area = self.achievements_menu.get_scrollarea()
-            if scroll_area:
-                scroll_area.scroll_to(ORIENTATION_VERTICAL, 0)
+            self.quit_confirmation_menu.select_widget("quit_cancel")
         except Exception:
             pass
-    
-    def _switch_to_personal_records_tab(self):
-        """Switch to personal records tab in statistics"""
+
+    def _cancel_quit(self):
+        self._back_to_main()
+
+    def _quit_game(self):
         self.sound_manager.play("menu_select")
-        self.statistics_tab = "personal_records"
-        self._create_personal_best_content()
-    
-    def _switch_to_leaderboard_tab(self):
-        """Switch to global leaderboard tab in statistics"""
+        if self.game:
+            self.game.running = False
+        else:
+            pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+    def _open_personal_best(self):
         self.sound_manager.play("menu_select")
-        self.statistics_tab = "global_leaderboard"
-        # Fetch leaderboard data when switching to the tab
-        self._fetch_leaderboard_data()
+        if not self.user_manager.is_setup_completed():
+            self.show_user_setup()
+            return
+        if self.statistics_tab == "global_leaderboard":
+            self._fetch_leaderboard_data()
+        elif self.statistics_tab == "daily_leaderboard":
+            self._fetch_daily_leaderboard_data()
         self._create_personal_best_content()
-    
-    def _switch_to_daily_leaderboard_tab(self):
-        """Switch to daily leaderboard tab in statistics"""
+        self._change_menu(self.personal_best_menu)
+
+    def _open_achievements(self):
         self.sound_manager.play("menu_select")
-        self.statistics_tab = "daily_leaderboard"
-        # Fetch daily leaderboard data when switching to the tab
-        self._fetch_daily_leaderboard_data()
+        self._create_achievements_content()
+        self._change_menu(self.achievements_menu)
+
+    def _open_time_selection(self):
+        self._go(self.time_selection_menu)
+
+    def _open_moves_selection(self):
+        self._go(self.moves_selection_menu)
+
+    def _back_to_main(self):
+        self.sound_manager.play("menu_select")
+        self.refresh_main_menu_buttons()
+        self._change_menu(self.main_menu)
+
+    def _back_to_difficulty(self):
+        self._go(self.difficulty_menu)
+
+    def _back_to_settings(self):
+        self._go(self.settings_menu)
+
+    def _back_to_statistics(self):
+        self.sound_manager.play("menu_select")
         self._create_personal_best_content()
-    
+        self._change_menu(self.personal_best_menu)
+
+    def _close_from_main(self):
+        if not self.is_animating:
+            self.toggle()
+
+    # ================================================================ challenge limits
+    def _format_time_display(self, seconds):
+        minutes = seconds // 60
+        return f"{minutes} min"
+
+    def _on_time_limit_change_and_update_display(self, value):
+        self.selected_time_limit = self.time_limit_options[int(round(value))]
+        self._slider_dirty = True
+        if getattr(self, "time_display_label", None) is not None:
+            self.time_display_label.set_title(self._format_time_display(self.selected_time_limit).replace(" ", "  "))
+
+    def _on_move_limit_change_and_update_display(self, value):
+        self.selected_move_limit = self.move_limit_options[int(round(value))]
+        self._slider_dirty = True
+        if getattr(self, "moves_display_label", None) is not None:
+            self.moves_display_label.set_title(f"{self.selected_move_limit}  moves")
+
+    # ================================================================ leaderboards
+    def _switch_tab(self, tab):
+        self.sound_manager.play("menu_select")
+        self.statistics_tab = tab
+        if tab == "global_leaderboard":
+            self._fetch_leaderboard_data()
+        elif tab == "daily_leaderboard":
+            self._fetch_daily_leaderboard_data()
+        self._create_personal_best_content(select_id=f"tab_{tab}")
+
     def _fetch_leaderboard_data(self, force_refresh=False):
-        """Fetch leaderboard data from Supabase in background thread."""
-        # Don't fetch if already loading
+        """Fetch the global leaderboard in a background thread."""
         if self.leaderboard_loading:
             return
-        
-        # Check if we should use cached data (cache for 30 seconds)
-        current_time = time.time()
-        if not force_refresh and self.leaderboard_data and (current_time - self.leaderboard_last_fetch) < 30:
+        if not force_refresh and self.leaderboard_data and (time.time() - self.leaderboard_last_fetch) < 30:
             return
-        
-        # Check if Supabase is configured
         if not self.supabase_manager or not self.supabase_manager.is_configured():
-            self.leaderboard_error = "Leaderboard not configured"
+            self.leaderboard_error = "not_configured"
             self.leaderboard_data = []
             return
-        
+
         self.leaderboard_loading = True
         self.leaderboard_error = None
         self.leaderboard_ui_refresh_pending = True
-        
+
         def fetch_task():
             try:
-                # Get filter values
                 game_mode = None if self.leaderboard_filter_mode == "All Modes" else self.leaderboard_filter_mode
                 region = None if self.leaderboard_filter_region == "All Regions" else self.leaderboard_filter_region
-                
-                # Fetch data (returns tuple: data, is_offline)
                 data, is_offline = self.supabase_manager.get_leaderboard(
-                    game_mode=game_mode,
-                    region=region,
-                    sort_by="best_time",
-                    limit=50,
-                    ascending=True
-                )
-                
+                    game_mode=game_mode, region=region, sort_by="best_time", limit=50, ascending=True)
                 self.leaderboard_data = data if data else []
                 self.leaderboard_last_fetch = time.time()
                 self.leaderboard_is_offline = is_offline
                 self.leaderboard_error = None
             except Exception as e:
                 print(f"Error fetching leaderboard: {e}")
-                self.leaderboard_error = "Failed to load leaderboard"
+                self.leaderboard_error = "failed"
                 self.leaderboard_is_offline = False
                 self.leaderboard_data = []
             finally:
                 self.leaderboard_loading = False
-                # Mark that UI needs refresh - will be handled in main thread
                 if self.statistics_tab == "global_leaderboard":
                     self.leaderboard_ui_refresh_pending = True
-        
-        thread = threading.Thread(target=fetch_task, daemon=True)
-        thread.start()
-    
+
+        threading.Thread(target=fetch_task, daemon=True).start()
+
     def _fetch_daily_leaderboard_data(self, force_refresh=False):
-        """Fetch daily leaderboard data from Supabase in background thread."""
-        # Don't fetch if already loading
+        """Fetch the daily leaderboard in a background thread."""
         if self.daily_leaderboard_loading:
             return
-        
-        # Check if we should use cached data (cache for 30 seconds)
-        current_time = time.time()
-        if not force_refresh and self.daily_leaderboard_data and (current_time - self.daily_leaderboard_last_fetch) < 30:
+        if (not force_refresh and self.daily_leaderboard_data
+                and (time.time() - self.daily_leaderboard_last_fetch) < 30):
             return
-        
-        # Check if Supabase is configured
         if not self.supabase_manager or not self.supabase_manager.is_configured():
-            self.daily_leaderboard_error = "Leaderboard not configured"
+            self.daily_leaderboard_error = "not_configured"
             self.daily_leaderboard_data = []
             return
-        
+
         self.daily_leaderboard_loading = True
         self.daily_leaderboard_error = None
         self.daily_leaderboard_ui_refresh_pending = True
-        
+
         def fetch_task():
             try:
-                # Get filter values
                 region = None if self.daily_leaderboard_filter_region == "All Regions" else self.daily_leaderboard_filter_region
-                
-                # Fetch daily leaderboard data (returns tuple: data, is_offline)
-                data, is_offline = self.supabase_manager.get_daily_leaderboard(
-                    region=region,
-                    limit=50
-                )
-                
+                data, is_offline = self.supabase_manager.get_daily_leaderboard(region=region, limit=50)
                 self.daily_leaderboard_data = data if data else []
                 self.daily_leaderboard_last_fetch = time.time()
                 self.daily_leaderboard_is_offline = is_offline
                 self.daily_leaderboard_error = None
             except Exception as e:
                 print(f"Error fetching daily leaderboard: {e}")
-                self.daily_leaderboard_error = "Failed to load daily leaderboard"
+                self.daily_leaderboard_error = "failed"
                 self.daily_leaderboard_is_offline = False
                 self.daily_leaderboard_data = []
             finally:
                 self.daily_leaderboard_loading = False
-                # Mark that UI needs refresh - will be handled in main thread
                 if self.statistics_tab == "daily_leaderboard":
                     self.daily_leaderboard_ui_refresh_pending = True
-        
-        thread = threading.Thread(target=fetch_task, daemon=True)
-        thread.start()
-    
-    def _on_daily_leaderboard_region_filter_change(self, selected_tuple, index):
-        """Handle region filter change in daily leaderboard."""
+
+        threading.Thread(target=fetch_task, daemon=True).start()
+
+    def _on_leaderboard_mode_filter_change(self, selected, index):
         self.sound_manager.play("menu_select")
-        # Use index to get the actual region value from REGION_OPTIONS
-        if 0 <= index < len(REGION_OPTIONS):
-            self.daily_leaderboard_filter_region = REGION_OPTIONS[index]
-        else:
-            self.daily_leaderboard_filter_region = "All Regions"
-        # Fetch will auto-refresh UI when data is ready
-        self._fetch_daily_leaderboard_data(force_refresh=True)
-    
-    def _refresh_daily_leaderboard(self):
-        """Force refresh the daily leaderboard data."""
-        self.sound_manager.play("menu_select")
-        self._fetch_daily_leaderboard_data(force_refresh=True)
-    
-    def _on_leaderboard_mode_filter_change(self, selected_tuple, index):
-        """Handle game mode filter change in leaderboard."""
-        self.sound_manager.play("menu_select")
-        # Use index to get the actual game mode value (lowercase) from GAME_MODE_OPTIONS
-        # The selected_tuple contains the display text
-        if 0 <= index < len(GAME_MODE_OPTIONS):
-            self.leaderboard_filter_mode = GAME_MODE_OPTIONS[index]
-        else:
-            self.leaderboard_filter_mode = "All Modes"
-        # Fetch will auto-refresh UI when data is ready
+        self.leaderboard_filter_mode = GAME_MODE_OPTIONS[index] if 0 <= index < len(GAME_MODE_OPTIONS) else "All Modes"
         self._fetch_leaderboard_data(force_refresh=True)
-    
-    def _on_leaderboard_region_filter_change(self, selected_tuple, index):
-        """Handle region filter change in leaderboard."""
+
+    def _on_leaderboard_region_filter_change(self, selected, index):
         self.sound_manager.play("menu_select")
-        # Use index to get the actual region value from REGION_OPTIONS
-        if 0 <= index < len(REGION_OPTIONS):
-            self.leaderboard_filter_region = REGION_OPTIONS[index]
-        else:
-            self.leaderboard_filter_region = "All Regions"
-        # Fetch will auto-refresh UI when data is ready
+        self.leaderboard_filter_region = REGION_OPTIONS[index] if 0 <= index < len(REGION_OPTIONS) else "All Regions"
         self._fetch_leaderboard_data(force_refresh=True)
-    
+
+    def _on_daily_leaderboard_region_filter_change(self, selected, index):
+        self.sound_manager.play("menu_select")
+        self.daily_leaderboard_filter_region = REGION_OPTIONS[index] if 0 <= index < len(REGION_OPTIONS) else "All Regions"
+        self._fetch_daily_leaderboard_data(force_refresh=True)
+
     def _refresh_leaderboard(self):
-        """Manually refresh the leaderboard data."""
         self.sound_manager.play("menu_select")
-        # Fetch will auto-refresh UI when data is ready
         self._fetch_leaderboard_data(force_refresh=True)
-    
-    def _open_user_edit(self):
-        """Open user edit dialog"""
+
+    def _refresh_daily_leaderboard(self):
         self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()
-        # Pre-fill with current user data
-        self.user_setup_username = self.user_manager.get_username()
-        current_region = self.user_manager.get_region()
-        if current_region in REGIONS:
-            self.user_setup_region_index = REGIONS.index(current_region)
-        else:
-            self.user_setup_region_index = 0
-        self.username_error = None  # Clear any previous error
+        self._fetch_daily_leaderboard_data(force_refresh=True)
+
+    # ================================================================ profile
+    def _open_user_edit(self):
+        self.sound_manager.play("menu_select")
+        self.user_setup_username = self.user_manager.get_username() or ""
+        region = self.user_manager.get_region()
+        self.user_setup_region_index = REGIONS.index(region) if region in REGIONS else 0
+        self.username_error = None
         self._create_user_edit_content()
         self._change_menu(self.user_edit_menu)
-    
-    def _open_audio_settings(self):
-        """Open audio settings submenu"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self._change_menu(self.audio_settings_menu)
-    
-    def _open_time_selection(self):
-        """Open time selection submenu for limited time mode"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self._change_menu(self.time_selection_menu)
-    
-    def _on_time_limit_change(self, value):
-        """Handle time limit change from slider"""
-        # Convert slider value (0-6) to actual time in seconds
-        self.selected_time_limit = self.time_limit_options[int(value)]
-        self.sound_manager.play("menu_select")
-    
-    def _on_time_limit_change_and_update_display(self, value):
-        """Handle time limit change from slider and update display"""
-        self._on_time_limit_change(value)
-        # Update the display label
-        if hasattr(self, 'time_display_label'):
-            self.time_display_label.set_title(f"Time Limit: {self._format_time_display(self.selected_time_limit)}")
-    
-    def _back_to_difficulty(self):
-        """Go back to difficulty selection menu"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()
-        self._change_menu(self.difficulty_menu)
-    
-    def _format_time_display(self, seconds):
-        """Format time in seconds to display string"""
-        if seconds < 60:
-            return f"{seconds} sec"
-        elif seconds < 3600:
-            minutes = seconds // 60
-            return f"{minutes} min"
-        else:
-            hours = seconds // 3600
-            minutes = (seconds % 3600) // 60
-            if minutes > 0:
-                return f"{hours}h {minutes}m"
-            return f"{hours}h"
-    
-    def _start_limited_time_game(self):
-        """Start the limited time game with selected time limit - always starts fresh"""
-        self.sound_manager.play("menu_select")
-        # Clear hover effects before starting game
-        self._clear_all_hover_effects()
-        
-        # Always set the difficulty and mark as changed to force new game
-        self.selected_difficulty = "limited_time"
-        self.has_difficulty_changed = True
-        self.difficulty_ever_selected = True
-        
-        # Update game instance and force new game
-        if hasattr(self, "game") and self.game:
-            # Increment difficulty change count to ensure menu shows ESC option
-            self.game.increment_difficulty_change_count()
-            # Refresh main menu buttons to reflect the change
-            self.refresh_main_menu_buttons()
-            
-            # Change background based on difficulty (procedural, no external images)
-            self.game.renderer.reload_skybox_texture("limited_time")
-            
-            # Always request a new game when starting from time selection menu
-            self.game.request_new_game()
-            
-            if hasattr(self, "debug_mode") and self.debug_mode:
-                print(f"Starting fresh limited time game with {self.selected_time_limit} seconds")
-        
-        # Start closing animation instead of immediately setting active to False
-        if not self.is_animating:  # Prevent multiple animations
-            self.toggle()
-    
-    def _open_moves_selection(self):
-        """Open moves selection submenu for limited moves mode"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self._change_menu(self.moves_selection_menu)
-    
-    def _on_move_limit_change(self, value):
-        """Handle move limit change from slider"""
-        # Convert slider value (0-35) to actual move count (15-50)
-        self.selected_move_limit = self.move_limit_options[int(value)]
-        self.sound_manager.play("menu_select")
-    
-    def _on_move_limit_change_and_update_display(self, value):
-        """Handle move limit change from slider and update display"""
-        self._on_move_limit_change(value)
-        # Update the display label
-        if hasattr(self, 'moves_display_label'):
-            self.moves_display_label.set_title(f"Move Limit: {self.selected_move_limit} moves")
-    
-    def _start_limited_moves_game(self):
-        """Start the limited moves game with selected move limit - always starts fresh"""
-        self.sound_manager.play("menu_select")
-        # Clear hover effects before starting game
-        self._clear_all_hover_effects()
-        
-        # Always set the difficulty and mark as changed to force new game
-        self.selected_difficulty = "limited_moves"
-        self.has_difficulty_changed = True
-        self.difficulty_ever_selected = True
-        
-        # Update game instance and force new game
-        if hasattr(self, "game") and self.game:
-            # Increment difficulty change count to ensure menu shows ESC option
-            self.game.increment_difficulty_change_count()
-            # Refresh main menu buttons to reflect the change
-            self.refresh_main_menu_buttons()
-            
-            # Change background based on difficulty (procedural, no external images)
-            self.game.renderer.reload_skybox_texture("limited_moves")
-            
-            # Always request a new game when starting from moves selection menu
-            self.game.request_new_game()
-            
-            if hasattr(self, "debug_mode") and self.debug_mode:
-                print(f"Starting fresh limited moves game with {self.selected_move_limit} moves")
-        
-        # Start closing animation instead of immediately setting active to False
-        if not self.is_animating:  # Prevent multiple animations
-            self.toggle()
+        self._focus_input(self.user_edit_menu, "edit_username_input")
 
-    def _on_resolution_change(self, selected_tuple, index):
-        """Handle resolution change from dropdown"""
-        # Play selection sound
-        self.sound_manager.play("menu_select")
-        
-        # The dropselect widget passes: (selected_tuple, index)
-        # where selected_tuple is (display_text, value)
-        
-        if hasattr(self, "debug_mode") and self.debug_mode:
-            print(f"Resolution change: {selected_tuple}, {index}")
-        
-        # Extract the index from the tuple (res, i)
-        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
-            self.current_resolution_index = selected_tuple[1]  # Use the value part of the tuple
-        else:
-            self.current_resolution_index = index
-        
-        if hasattr(self, "debug_mode") and self.debug_mode:
-            print(f"New resolution index: {self.current_resolution_index}")
-        
-        self.settings_changed = True
-        self._update_apply_button_state()
-    
-    def _on_fullscreen_change(self, selected_tuple, index):
-        """Handle fullscreen toggle from dropdown"""
-        # Play selection sound
-        self.sound_manager.play("menu_select")
-        
-        # Extract the boolean value from the selected tuple
-        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
-            self.fullscreen = selected_tuple[1]  # Extract boolean value
-        else:
-            self.fullscreen = bool(index)  # Convert index to boolean
-        
-        self.settings_changed = True
-        self._update_apply_button_state()
-    
-    def _on_fps_toggle(self, value):
-        """Handle FPS toggle"""
-        # Play selection sound
-        self.sound_manager.play("menu_select")
-        
-        self.show_fps = value
-        self.settings_changed = True
-        self._update_apply_button_state()
-    
-    def _on_hints_toggle(self, value):
-        """Handle hints toggle"""
-        # Play selection sound
-        self.sound_manager.play("menu_select")
-        
-        self.hints_enabled = value
-        
-        # Save to settings immediately
-        self.settings_manager.set_hints_enabled(value)
-        
-        # Also update the game's hints_enabled if available
-        if hasattr(self, "game") and self.game:
-            self.game.hints_enabled = value
-            # Close any active hint banners if hints are disabled
-            if not value:
-                self.game.hint_banner_active = False
-                self.game.hint_expanded = False
-                self.game.hint_banner_alpha = 0.0
-    
-    def _on_volume_change(self, value):
-        """Handle volume slider change"""
-        # Play selection sound with slider-specific debouncing
-        self.sound_manager.play_slider_sound("menu_select")
-        
-        self.volume = int(value)  # Ensure volume is stored as integer
-        
-        # Update the slider title to show the current volume value
-        if hasattr(self, 'volume_slider'):
-            self.volume_slider.set_title(f"Volume: {self.volume}%")
-        
-        # Apply volume immediately if we can
-        if pygame.mixer.get_init() and self.game:
-            pygame.mixer.music.set_volume(self.volume / 100)
-        
-        # Save to settings immediately
-        self.settings_manager.settings["volume"] = self.volume
-        self.settings_manager.save_settings()
-        
-        # Also update the game's settings manager if available
-        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
-            self.game.settings.settings["volume"] = self.volume
-            
-        # Note: Volume changes are applied immediately, no need to set settings_changed
-    
-    def _on_master_volume_change(self, value):
-        """Handle master volume slider change"""
-        self.sound_manager.play_slider_sound("menu_select")
-        self.master_volume = int(value)
-        
-        # Update the slider title
-        if hasattr(self, 'master_volume_slider'):
-            self.master_volume_slider.set_title(f"Master Volume: {self.master_volume}%")
-        
-        # Apply volume immediately
-        self.sound_manager.set_master_volume(self.master_volume / 100.0)
-        
-        # Save to settings immediately
-        self.settings_manager.set_audio_volume("master_volume", self.master_volume)
-        self.settings_manager.save_settings()
-        
-        # Also update the game's settings manager if available
-        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
-            self.game.settings.set_audio_volume("master_volume", self.master_volume)
-        
-        # Note: Volume changes are applied immediately, no need to set settings_changed
-    
-    def _on_music_volume_change(self, value):
-        """Handle music volume slider change"""
-        self.sound_manager.play_slider_sound("menu_select")
-        self.music_volume = int(value)
-        
-        # Update the slider title
-        if hasattr(self, 'music_volume_slider'):
-            self.music_volume_slider.set_title(f"Music Volume: {self.music_volume}%")
-        
-        # Apply volume immediately
-        self.sound_manager.set_music_volume(self.music_volume / 100.0)
-        
-        # Save to settings immediately
-        self.settings_manager.set_audio_volume("music_volume", self.music_volume)
-        self.settings_manager.save_settings()
-        
-        # Also update the game's settings manager if available
-        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
-            self.game.settings.set_audio_volume("music_volume", self.music_volume)
-        
-        # Note: Volume changes are applied immediately, no need to set settings_changed
-    
-    def _on_effects_volume_change(self, value):
-        """Handle effects volume slider change"""
-        self.sound_manager.play_slider_sound("menu_select")
-        self.effects_volume = int(value)
-        
-        # Update the slider title
-        if hasattr(self, 'effects_volume_slider'):
-            self.effects_volume_slider.set_title(f"Effects Volume: {self.effects_volume}%")
-        
-        # Apply volume immediately
-        self.sound_manager.set_effects_volume(self.effects_volume / 100.0)
-        
-        # Save to settings immediately
-        self.settings_manager.set_audio_volume("effects_volume", self.effects_volume)
-        self.settings_manager.save_settings()
-        
-        # Also update the game's settings manager if available
-        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
-            self.game.settings.set_audio_volume("effects_volume", self.effects_volume)
-        
-        # Note: Volume changes are applied immediately, no need to set settings_changed
-    
-    def _on_menu_volume_change(self, value):
-        """Handle menu volume slider change"""
-        self.sound_manager.play_slider_sound("menu_select")
-        self.menu_volume = int(value)
-        
-        # Update the slider title
-        if hasattr(self, 'menu_volume_slider'):
-            self.menu_volume_slider.set_title(f"Menu Volume: {self.menu_volume}%")
-        
-        # Apply volume immediately
-        self.sound_manager.set_menu_volume(self.menu_volume / 100.0)
-        
-        # Save to settings immediately
-        self.settings_manager.set_audio_volume("menu_volume", self.menu_volume)
-        self.settings_manager.save_settings()
-        
-        # Also update the game's settings manager if available
-        if hasattr(self, "game") and self.game and hasattr(self.game, "settings"):
-            self.game.settings.set_audio_volume("menu_volume", self.menu_volume)
-        
-        # Note: Volume changes are applied immediately, no need to set settings_changed
-    
-    def _apply_settings(self):
-        """Apply all settings changes"""
+    def needs_user_setup(self) -> bool:
+        return not self.user_manager.is_setup_completed()
+
+    def show_user_setup(self):
+        self.user_setup_active = True
+        self.user_setup_username = ""
+        self.user_setup_region_index = 0
+        self.username_error = None
+        self._create_user_setup_content()
+        self._change_menu(self.user_setup_menu)
+        self._focus_input(self.user_setup_menu, "username_input")
+
+    def _focus_input(self, menu, input_id):
         try:
-            # Don't apply if no changes have been made
-            if not self.settings_changed:
-                return
-            
-            # Play apply settings sound
-            self.sound_manager.play("menu_apply")
-            
-            if self.settings_changed:
-                # Set the resolution changed flag to trigger resolution update in game.py
-                self.resolution_changed_flag = True
-                
-                # Get the resolution that will be applied
-                new_width, new_height = self.get_current_resolution()
-                if hasattr(self, "debug_mode") and self.debug_mode:
-                    print(f"Applying settings - Resolution: {new_width}x{new_height}, Fullscreen: {self.fullscreen}")
-                
-                # Update settings object directly
-                self.settings_manager.settings["resolution"]["width"] = new_width
-                self.settings_manager.settings["resolution"]["height"] = new_height
-                self.settings_manager.settings["fullscreen"] = self.fullscreen
-                self.settings_manager.settings["show_fps"] = self.show_fps
-                
-                # Note: Audio settings are handled immediately in their change handlers, no need to update here
-                
-                self.settings_manager.save_settings()
-                
-                # Update sound effects volume based on new audio settings
-                self.sound_manager.load_volumes_from_settings(self.settings_manager)
-                
-                self.settings_changed = False
-                self._update_apply_button_state()
-                
-            # Return to main menu after applying settings
-            self._back_to_main()
-            
+            menu.select_widget(input_id)
         except Exception as e:
-            print(f"Error applying settings: {e}")
-    
-    def _back_to_main(self):
-        """Return to the main menu"""
+            print(f"Error focusing text input: {e}")
+
+    def _on_username_change(self, value):
+        self.user_setup_username = value
+
+    def _on_region_change(self, selected, index):
         self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        # Refresh main menu buttons in case difficulty change count has changed
+        self.user_setup_region_index = index
+
+    _on_edit_username_change = _on_username_change
+    _on_edit_region_change = _on_region_change
+
+    def _confirm_user_setup(self):
+        username = self.user_setup_username.strip()
+        if not username:
+            self.username_error = "Enter a username to continue."
+            self._create_user_setup_content()
+            self._focus_input(self.user_setup_menu, "username_input")
+            return
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            if self.supabase_manager.is_username_taken(username):
+                self.username_error = "That username is taken. Try another one."
+                self.sound_manager.play("menu_select")
+                self._create_user_setup_content()
+                self._focus_input(self.user_setup_menu, "username_input")
+                return
+
+        self.username_error = None
+        region = REGIONS[self.user_setup_region_index]
+        self.user_manager.complete_setup(username, region)
+        self.sound_manager.play("menu_apply")
+        self.user_setup_active = False
+
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            self.supabase_manager.set_user_hash(
+                self.user_manager.get_user_id(),
+                self.user_manager.user_data.get("created_at", "")
+            )
+            if self.personal_best_manager:
+                self.personal_best_manager.sync_all_to_cloud()
+
         self.refresh_main_menu_buttons()
-        self._change_menu(self.main_menu)
-    
-    def _back_to_settings(self):
-        """Return to the settings menu"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-        self._change_menu(self.settings_menu)
-    
+        self._build_modes_page(self.difficulty_menu)
+        self._change_menu(self.difficulty_menu)
+
+    def _save_user_edit(self):
+        username = self.user_setup_username.strip()
+        if not username:
+            self.username_error = "Enter a username to continue."
+            self._create_user_edit_content()
+            self._focus_input(self.user_edit_menu, "edit_username_input")
+            return
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            current_user_hash = self.supabase_manager.get_user_hash()
+            if self.supabase_manager.is_username_taken(username, exclude_user_hash=current_user_hash):
+                self.username_error = "That username is taken. Try another one."
+                self.sound_manager.play("menu_select")
+                self._create_user_edit_content()
+                self._focus_input(self.user_edit_menu, "edit_username_input")
+                return
+
+        self.username_error = None
+        region = REGIONS[self.user_setup_region_index]
+        if self.supabase_manager and self.supabase_manager.is_configured():
+            # Keep the same user hash, only rename existing records
+            self.supabase_manager.update_user_profile(username, region)
+        self.user_manager.update_user(username, region)
+        self.sound_manager.play("menu_apply")
+        self.refresh_main_menu_buttons()
+        self._open_personal_best()
+
+    def _back_from_user_setup(self):
+        self.user_setup_active = False
+        self._back_to_main()
+
+    # ================================================================ open / close
     def update(self):
-        """Update animation state and alpha values"""
-        # Run pygame-menu internal update each frame so scrollbars/scrollareas are computed.
-        # Avoid doing it twice in the same frame if handle_event() already updated the menu.
         if self.active and self.current_menu and self.current_menu.is_enabled():
             if self._skip_pygame_menu_update_once:
                 self._skip_pygame_menu_update_once = False
@@ -1334,3346 +833,1403 @@ class Menu:
                 except Exception:
                     pass
 
-        # Check if global leaderboard UI needs refresh (from background thread)
         if self.leaderboard_ui_refresh_pending and not self.leaderboard_loading:
             if self.statistics_tab == "global_leaderboard":
                 self.leaderboard_ui_refresh_pending = False
-                self._create_personal_best_content()
-        
-        # Check if daily leaderboard UI needs refresh (from background thread)
+                self._create_personal_best_content(keep_selection=True)
         if self.daily_leaderboard_ui_refresh_pending and not self.daily_leaderboard_loading:
             if self.statistics_tab == "daily_leaderboard":
                 self.daily_leaderboard_ui_refresh_pending = False
-                self._create_personal_best_content()
-        
-        # Always update button animations regardless of menu animation state
-        self._update_button_animations()
-        
-        # Update tooltip state
-        self._update_tooltip()
-        
+                self._create_personal_best_content(keep_selection=True)
+
         if not self.is_animating:
             return
-            
-        current_time = time.time()
-        elapsed_time = current_time - self.animation_start_time
-        
-        # Calculate animation progress (0.0 to 1.0)
-        progress = min(elapsed_time / self.animation_duration, 1.0)
-        
-        # Use smooth easing function for better animation feel
-        # Ease-out quadratic function: t * (2 - t)
-        eased_progress = progress * (2 - progress)
-        
-        if self.is_opening:
-            # Opening animation: alpha goes from 0 to 1
-            self.current_alpha = eased_progress
-        else:
-            # Closing animation: alpha goes from 1 to 0
-            self.current_alpha = 1.0 - eased_progress
-        
-        # Check if animation is complete
+        progress = min((time.time() - self.animation_start_time) / self.animation_duration, 1.0)
+        eased = 1 - (1 - progress) ** 3
+        self.current_alpha = eased if self.is_opening else 1.0 - eased
         if progress >= 1.0:
             self.is_animating = False
             self.current_alpha = self.target_alpha
-            
-            # If we just finished closing, deactivate the menu
             if not self.is_opening:
                 self.active = False
-    
+
     def get_current_alpha(self):
-        """Get the current alpha value for rendering"""
         if not self.is_animating and not self.active:
             return 0.0
         return self.current_alpha if self.is_animating else 1.0
-    
+
     def is_fully_visible(self):
-        """Check if menu is fully visible (not animating or fully open)"""
         return self.active and (not self.is_animating or self.current_alpha >= 1.0)
 
     def toggle(self):
-        """Toggle the menu visibility with smooth animation"""
-        # Start animation
+        """Fade the menu in or out"""
         self.is_animating = True
         self.animation_start_time = time.time()
-        
         if self.active:
-            # Menu is currently active, start closing animation
             self.is_opening = False
             self.target_alpha = 0.0
-            # Clear hover effects when starting to close
-            self._clear_all_hover_effects()
+            self.hover_widget = None
         else:
-            # Menu is currently inactive, start opening animation
             self.is_opening = True
             self.target_alpha = 1.0
-            self.active = True  # Set active immediately for opening so events are handled
-            # Play sound when opening menu
+            self.active = True
             self.sound_manager.play("menu_open")
-            # Always reset to main menu when opening from in-game
+            self.refresh_main_menu_buttons()
             self._change_menu(self.main_menu)
-            
-            # Capture and blur the background when opening the menu (if game has rendered)
-            # Only capture if difficulty change count > 0 (don't blur when using main menu background)
-            # Always try to recapture to ensure we have the current resolution
-            should_capture_background = (
-                self.game_rendered and 
-                hasattr(self, "game") and self.game and 
-                self.game.get_difficulty_change_count() > 0
-            )
-            if should_capture_background:
-                self._capture_and_blur_background()
-    
-    def _capture_and_blur_background(self):
-        """Capture the current screen and create a blurred version for the background"""
-        # Only capture if the game has rendered at least once
-        if not self.game_rendered:
-            self.background_capture = None
-            self.blurred_background = None
-            return
-            
-        try:
-            # Get the current framebuffer data
-            screen_width = self.width
-            screen_height = self.height
-            
-            # Read the current OpenGL framebuffer
-            from OpenGL.GL import glReadPixels, GL_RGB, GL_UNSIGNED_BYTE
-            
-            # Capture the screen buffer
-            glPixels = glReadPixels(0, 0, screen_width, screen_height, GL_RGB, GL_UNSIGNED_BYTE)
-            
-            # Convert to pygame surface (much simpler approach)
-            self.background_capture = pygame.image.fromstring(glPixels, (screen_width, screen_height), 'RGB')
-            
-            # Flip vertically (OpenGL coordinates are flipped)
-            self.background_capture = pygame.transform.flip(self.background_capture, False, True)
-            
-            # Apply fast blur effect
-            self._apply_fast_blur_effect()
-            
-        except Exception as e:
-            print(f"Error capturing background: {e}")
-            # Fallback to None - will use solid background
-            self.background_capture = None
-            self.blurred_background = None
-            self.blurred_background = None
-    
-    def _apply_fast_blur_effect(self):
-        """Apply a fast blur effect using pygame's built-in scaling and smoothing"""
-        if self.background_capture is None:
-            return
-            
-        try:
-            original_size = self.background_capture.get_size()
-            
-            # Use enhanced scaling method for fast, smooth blur (no scipy dependency)
-            blurred_surface = self.background_capture.copy()
-            
-            # First pass: Scale down more aggressively for stronger blur
-            small_size = (original_size[0] // 8, original_size[1] // 8)  # Strong downscaling for blur effect
-            
-            # Multiple downscale-upscale passes for smoother blur
-            for _ in range(3):  # Multiple passes for smoother blur
-                # Scale down with smoothing
-                small_surface = pygame.transform.smoothscale(blurred_surface, small_size)
-                # Scale back up with smoothing
-                blurred_surface = pygame.transform.smoothscale(small_surface, original_size)
-            
-            # Additional blur pass with intermediate scaling for even smoother result
-            medium_size = (original_size[0] // 3, original_size[1] // 3)
-            medium_surface = pygame.transform.smoothscale(blurred_surface, medium_size)
-            blurred_surface = pygame.transform.smoothscale(medium_surface, original_size)
-            
-            self.blurred_background = blurred_surface
-            
-            # Add subtle darkening for better contrast with menu text
-            dark_overlay = pygame.Surface(original_size, pygame.SRCALPHA)
-            dark_overlay.fill((0, 0, 0, 80))  # Darkening for better readability
-            self.blurred_background.blit(dark_overlay, (0, 0))
-            
-        except Exception as e:
-            print(f"Error applying blur: {e}")
-            # Fallback to original capture
-            self.blurred_background = self.background_capture
-    
+
     def is_active(self):
-        """Check if menu is active"""
         return self.active
-    
-    def get_current_resolution(self):
-        """Get the currently selected resolution"""
-        index = min(self.current_resolution_index, len(self.available_resolutions) - 1)
-        return self.available_resolutions[index]
-    
-    def resolution_changed(self):
-        """Check if resolution was changed"""
-        return self.resolution_changed_flag
-    
-    def reset_resolution_changed(self):
-        """Reset the resolution changed flag"""
-        self.resolution_changed_flag = False
-    
-    def get_setting(self, name):
-        """Get a setting value"""
-        if name == "show_fps":
-            return self.show_fps
-        elif name == "fullscreen":
-            return self.fullscreen
-        elif name == "volume":
-            return self.volume
-        elif name == "difficulty":
-            return self.selected_difficulty
+
+    def set_game_instance(self, game):
+        self.game = game
+        # Share one settings object with the game so saves never overwrite each other
+        self.settings_manager = game.settings
+        self._load_display_state()
+        self.refresh_main_menu_buttons()
+
+    def notify_game_rendered(self):
+        self.game_rendered = True
+
+    def force_background_recapture(self):
+        """Kept for compatibility: the menu draws over the live scene now."""
+
+    # ================================================================ input
+    def _is_selectable(self, widget):
+        sel = getattr(widget, "is_selectable", False)
+        sel = sel() if callable(sel) else sel
+        return bool(sel) and widget.is_visible()
+
+    def _view_rect(self, menu):
+        page = self.pages.get(menu)
+        return page["rect"] if page else pygame.Rect(0, 0, self.width, self.height)
+
+    def _widget_at(self, pos):
+        menu = self.current_menu
+        if not menu or not self._view_rect(menu).collidepoint(pos):
+            return None
+        for widget in menu.get_widgets():
+            try:
+                if self._is_selectable(widget) and widget.get_rect(to_real_position=True).collidepoint(pos):
+                    return widget
+            except Exception:
+                continue
         return None
-    
-    def get_selected_difficulty(self):
-        """Get the currently selected difficulty"""
-        return self.selected_difficulty
-    
+
+    def _update_hover(self, pos):
+        new = self._widget_at(pos)
+        if new is not self.hover_widget:
+            self.hover_widget = new
+
     def handle_event(self, event):
-        """Handle events specific to the menu with enhanced feedback.
-        Returns True if the event was handled by the menu."""
-        # Only handle events if menu is active and not in closing animation
+        """Handle an event. Returns True if the menu consumed it."""
         if not self.active or (self.is_animating and not self.is_opening):
             return False
-
-        # Ignore TEXTINPUT events and rely on KEYDOWN.
-        if (
-            self.current_menu in (getattr(self, 'user_setup_menu', None), getattr(self, 'user_edit_menu', None))
-            and event.type == pygame.TEXTINPUT
-        ):
-            return True
-        
-        # Disable keyboard navigation on mouse movement
-        if event.type == pygame.MOUSEMOTION:
-            self._disable_keyboard_navigation_on_mouse()
-            self.update_cursor(event.pos)
-            self._update_hover_effects(event.pos)
-        
-        # Clear hover effects on mouse button clicks to prevent sticky hover
-        if event.type in [pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP]:
-            self._disable_keyboard_navigation_on_mouse()
-            self._clear_all_hover_effects()
-            
-            # Check if click is on Statistics button in bottom right (only on main menu)
-            if (event.type == pygame.MOUSEBUTTONDOWN and 
-                self.current_menu == self.main_menu and 
-                hasattr(self, 'personal_best_rect') and
-                self.personal_best_rect is not None):
-                
-                mouse_x, mouse_y = event.pos
-                
-                # Check if click is within the Statistics button area
-                if self.personal_best_rect.collidepoint(mouse_x, mouse_y):
-                    self._open_personal_best()
-                    return True
-            
-            # Check if click is on Achievements button in top right (only on main menu)
-            if (event.type == pygame.MOUSEBUTTONDOWN and 
-                self.current_menu == self.main_menu and 
-                hasattr(self, 'achievements_rect') and 
-                self.achievements_rect is not None):
-                
-                mouse_x, mouse_y = event.pos
-                
-                # Check if click is within the Achievements button area
-                if self.achievements_rect.collidepoint(mouse_x, mouse_y):
-                    self._open_achievements()
-                    return True
-            
-            # Check if click is on user edit button (only in statistics menu)
-            if (event.type == pygame.MOUSEBUTTONDOWN and 
-                self.current_menu == self.personal_best_menu and 
-                hasattr(self, 'user_edit_rect') and 
-                self.user_edit_rect):
-                
-                mouse_x, mouse_y = event.pos
-                
-                if self.user_edit_rect.collidepoint(mouse_x, mouse_y):
-                    self._open_user_edit()
-                    return True
-        
-        # Handle menu navigation
-        if self.current_menu and self.current_menu.is_enabled():
-            if event.type == pygame.KEYDOWN:
-                # Let all other keys pass through to the text input widget
-                if self.current_menu == self.user_setup_menu:
-                    if event.key == pygame.K_ESCAPE:
-                        # Don't allow escaping from user setup
-                        return True
-                    # Pass all other keys to pygame-menu for text input
-                    updated = self.current_menu.update([event])
-                    self._skip_pygame_menu_update_once = True
-                    return updated or self.active
-                elif self.current_menu == self.user_edit_menu:
-                    if event.key == pygame.K_ESCAPE:
-                        # Go back to statistics
-                        self._back_to_statistics()
-                        return True
-                    # Pass all other keys to pygame-menu for text input
-                    updated = self.current_menu.update([event])
-                    self._skip_pygame_menu_update_once = True
-                    return updated or self.active
-                
-                # Handle keyboard navigation (arrow keys, Tab, Enter, Space)
-                # But not for text input menus
-                if self._handle_keyboard_navigation(event):
-                    return True
-                
-                # Handle ESC key
-                if event.key == pygame.K_ESCAPE:
-                    if self.current_menu == self.main_menu:
-                        # Start closing animation instead of immediately setting active to False
-                        if not self.is_animating:  # Prevent multiple toggle calls during animation
-                            self.toggle()
-                        return True
-                    elif self.current_menu == self.quit_confirmation_menu:
-                        # Go back to main menu when pressing ESC in quit confirmation
-                        self._cancel_quit()
-                        return True
-                    elif self.current_menu == self.audio_settings_menu:
-                        self.sound_manager.play("menu_select")
-                        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-                        self._change_menu(self.settings_menu)
-                        return True
-                    else:
-                        self.sound_manager.play("menu_select")
-                        self._clear_all_hover_effects()  # Clear hover effects when changing menu
-                        self._change_menu(self.main_menu)
-                        return True
-        
-        # Let pygame-menu handle the event
-        updated = self.current_menu.update([event])
-        self._skip_pygame_menu_update_once = True
-        
-        # Check if we need to go back to main menu (after pygame-menu processes the event)
-        return updated or self.active
-    
-    def _clear_all_hover_effects(self):
-        """Clear hover effects from all widgets and hide tooltips"""
-        for widget in self.hovered_widgets.copy():
-            self._apply_hover_effect(widget, False)
-        self.hovered_widgets.clear()
-        
-        # Hide any active tooltips
-        self._hide_tooltip()
-    
-    def _update_hover_effects(self, mouse_pos):
-        """Update hover effects for widgets based on mouse position"""
-        if not self.current_menu:
-            return
-            
-        widgets = self.current_menu.get_widgets()
-        currently_hovered = set()
-
-        for widget in widgets:
-            try:
-                # Use to_real_position=True for correct rect in scrollable menus
-                widget_rect = widget.get_rect(to_real_position=True)
-                widget_class_name = widget.__class__.__name__
-
-                # Check if this widget should have hover effects
-                if widget_class_name in ['Button', 'DropSelect', 'ToggleSwitch']:
-                    if widget_rect.collidepoint(mouse_pos):
-                        currently_hovered.add(widget)
-
-                        # If this is a new hover, apply hover effect
-                        if widget not in self.hovered_widgets:
-                            self._apply_hover_effect(widget, True)
-
-                            # Play subtle hover sound (with debouncing)
-                            if hasattr(self, 'sound_manager'):
-                                self.sound_manager.play_slider_sound("menu_select")
-
-                    elif widget in self.hovered_widgets:
-                        # Mouse left this widget, remove hover effect
-                        self._apply_hover_effect(widget, False)
-
-            except Exception:
-                # If widget doesn't support get_rect(), skip it
-                continue
-
-        # Update the tracked hovered widgets
-        self.hovered_widgets = currently_hovered
-    
-    def _apply_hover_effect(self, widget, is_hovered):
-        """Apply or remove hover effect from a widget"""
-        try:
-            widget_class_name = widget.__class__.__name__
-            
-            if widget_class_name == 'Button':
-                # Check if this is the disabled apply button
-                if (hasattr(self, 'apply_button') and widget == self.apply_button and 
-                    not self.settings_changed):
-                    # Skip hover effects for disabled apply button
-                    return
-                
-                # Check if this is a difficulty button
-                if widget in self.difficulty_buttons:
-                    self._animate_difficulty_button(widget, is_hovered)
-                else:
-                    # Check if this is a "Start Game" button with golden background
-                    is_golden_start_button = (
-                        (hasattr(self, 'time_start_btn') and widget == self.time_start_btn) or
-                        (hasattr(self, 'moves_start_btn') and widget == self.moves_start_btn)
-                    )
-                    
-                    # Regular button hover effect (text color change)
-                    if hasattr(widget, '_font_color'):
-                        if is_hovered:
-                            if is_golden_start_button:
-                                # Use black text for better visibility on golden background
-                                widget._font_color = (0, 0, 0)  # Black
-                            else:
-                                widget._font_color = self.text_color_hover
-                        else:
-                            widget._font_color = self.text_color_normal
-                            
-                    # Also try to update the button's style if possible
-                    if hasattr(widget, 'update_font'):
-                        hover_color = (0, 0, 0) if is_golden_start_button and is_hovered else (self.text_color_hover if is_hovered else self.text_color_normal)
-                        widget.update_font({
-                            'color': hover_color
-                        })
-                    
-        except Exception as e:
-            # Silently handle any errors
-            pass
-    
-    def _animate_difficulty_button(self, button, is_hovered):
-        """Apply animated hover effect to difficulty buttons and handle tooltips"""
-        if button not in self.button_animations:
-            return
-            
-        animation_state = self.button_animations[button]
-        current_time = time.time()
-        
-        if is_hovered:
-            if not animation_state['is_hovering']:
-                # Start hover animation
-                animation_state['is_hovering'] = True
-                animation_state['animation_start_time'] = current_time
-                
-                # Start tooltip timer
-                self._start_tooltip(button)
-        else:
-            if animation_state['is_hovering']:
-                # Start unhover animation
-                animation_state['is_hovering'] = False
-                animation_state['animation_start_time'] = current_time
-                
-                # Hide tooltip
-                self._hide_tooltip()
-    
-    def _start_tooltip(self, button):
-        """Start tooltip timer for a difficulty button"""
-        if button in self.difficulty_buttons:
-            self.current_tooltip_button = button
-            self.tooltip_start_time = time.time()
-            self.tooltip_text = self.difficulty_buttons[button]['description']
-            # Tooltip will become active after delay in update method
-    
-    def _hide_tooltip(self):
-        """Hide the current tooltip"""
-        self.tooltip_active = False
-        self.current_tooltip_button = None
-        self.tooltip_text = ""
-        self.tooltip_surface = None
-        self.tooltip_rect = None
-    
-    def _update_tooltip(self):
-        """Update tooltip state and create tooltip surface if needed"""
-        if not self.current_tooltip_button or not self.tooltip_text:
-            return
-            
-        # Check if enough time has passed to show tooltip
-        current_time = time.time()
-        if (current_time - self.tooltip_start_time >= self.tooltip_delay and 
-            not self.tooltip_active):
-            self.tooltip_active = True
-            self._create_tooltip_surface()
-    
-    def _create_tooltip_surface(self):
-        """Create the tooltip surface with description text"""
-        if not self.tooltip_text:
-            return
-            
-        # Initialize tooltip font if needed
-        if not self.tooltip_font:
-            try:
-                self.tooltip_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, 28)
-            except:
-                # Fallback to default font if franchise font fails
-                self.tooltip_font = pygame.font.Font(None, 28)
-        
-        # Create tooltip surface
-        padding = 15
-        text_color = (255, 255, 255)
-        bg_color = (20, 20, 30, 240)  # Dark semi-transparent background
-        border_color = (100, 150, 200, 255)  # Light blue border
-        
-        # Render text
-        text_surface = self.tooltip_font.render(self.tooltip_text, True, text_color)
-        text_width, text_height = text_surface.get_size()
-        
-        # Create tooltip background
-        tooltip_width = text_width + (padding * 2)
-        tooltip_height = text_height + (padding * 2)
-        
-        self.tooltip_surface = pygame.Surface((tooltip_width, tooltip_height), pygame.SRCALPHA)
-        
-        # Draw background with rounded corners
-        pygame.draw.rect(self.tooltip_surface, bg_color, 
-                        (0, 0, tooltip_width, tooltip_height), border_radius=8)
-        pygame.draw.rect(self.tooltip_surface, border_color, 
-                        (0, 0, tooltip_width, tooltip_height), width=2, border_radius=8)
-        
-        # Draw text
-        self.tooltip_surface.blit(text_surface, (padding, padding))
-        
-        # Calculate tooltip position (centered below mouse, but keep on screen)
-        mouse_pos = pygame.mouse.get_pos()
-        tooltip_x = mouse_pos[0] - tooltip_width // 2
-        tooltip_y = mouse_pos[1] + 20  # 20px below cursor
-        
-        # Keep tooltip on screen
-        if tooltip_x < 10:
-            tooltip_x = 10
-        elif tooltip_x + tooltip_width > self.width - 10:
-            tooltip_x = self.width - tooltip_width - 10
-            
-        if tooltip_y + tooltip_height > self.height - 10:
-            tooltip_y = mouse_pos[1] - tooltip_height - 10  # Show above cursor instead
-        
-        self.tooltip_rect = pygame.Rect(tooltip_x, tooltip_y, tooltip_width, tooltip_height)
-    
-    def _draw_tooltip(self, screen):
-        """Draw the tooltip if active"""
-        if (self.tooltip_active and self.tooltip_surface and self.tooltip_rect and 
-            self.current_menu == self.difficulty_menu):  # Only show in difficulty menu
-            
-            # Apply menu alpha to tooltip
-            current_alpha = self.get_current_alpha()
-            if current_alpha > 0.0:
-                if current_alpha < 1.0:
-                    tooltip_surface = self.tooltip_surface.copy()
-                    tooltip_surface.set_alpha(int(255 * current_alpha))
-                    screen.blit(tooltip_surface, self.tooltip_rect.topleft)
-                else:
-                    screen.blit(self.tooltip_surface, self.tooltip_rect.topleft)
-    
-    def _update_button_animations(self):
-        """Update all button animations"""
-        current_time = time.time()
-        animation_duration = 0.2  # 200ms animation
-        
-        for button, animation_state in self.button_animations.items():
-            if button not in self.difficulty_buttons:
-                continue
-                
-            # Calculate animation progress
-            elapsed_time = current_time - animation_state['animation_start_time']
-            progress = min(1.0, elapsed_time / animation_duration)
-            
-            # Smooth easing function (ease out)
-            eased_progress = 1 - (1 - progress) ** 3
-            
-            # Update glow intensity only
-            if animation_state['is_hovering']:
-                animation_state['glow_intensity'] = eased_progress * 0.3  # Max glow intensity
-            else:
-                animation_state['glow_intensity'] = (1 - eased_progress) * 0.3
-            
-            # Apply visual effects to the button
-            self._apply_button_visual_effects(button, animation_state)
-    
-    def _apply_button_visual_effects(self, button, animation_state):
-        """Apply visual effects to a difficulty button based on animation state"""
-        try:
-            if button not in self.difficulty_buttons:
-                return
-                
-            button_info = self.difficulty_buttons[button]
-            base_color = button_info['base_color']
-            
-            # Calculate enhanced color with glow effect
-            glow_intensity = animation_state['glow_intensity']
-            enhanced_color = (
-                min(255, int(base_color[0] + glow_intensity * 60)),  # Add red glow
-                min(255, int(base_color[1] + glow_intensity * 60)),  # Add green glow  
-                min(255, int(base_color[2] + glow_intensity * 60)),  # Add blue glow
-                min(255, int(base_color[3] + glow_intensity * 50))   # Add alpha glow
-            )
-            
-            # Apply the enhanced color to the button
-            if hasattr(button, 'set_background_color'):
-                button.set_background_color(enhanced_color)
-            
-            # Also change text color for extra effect
-            if hasattr(button, '_font_color'):
-                if animation_state['is_hovering']:
-                    # Check if this is a button with yellow/golden background
-                    if button_info['difficulty'] in ['limited_time', 'limited_moves']:
-                        # Use black text for better visibility on yellow background
-                        button._font_color = (0, 0, 0)  # Black
-                    else:
-                        button._font_color = self.text_color_hover
-                else:
-                    button._font_color = self.text_color_normal
-                    
-        except Exception as e:
-            # Silently handle any errors
-            pass
-    
-    def _update_navigable_widgets(self):
-        """Update the list of navigable widgets for keyboard navigation"""
-        self.navigable_widgets = []
-        if not self.current_menu:
-            return
-            
-        widgets = self.current_menu.get_widgets()
-        for widget in widgets:
-            widget_class_name = widget.__class__.__name__
-            # Only include buttons, dropdowns, and toggle switches
-            if widget_class_name in ['Button', 'DropSelect', 'ToggleSwitch']:
-                # Skip disabled widgets - check both as property and method
+        # Sliders click once when the value is released, not on every step while dragging
+        if (event.type in (pygame.MOUSEBUTTONUP, pygame.KEYUP)
+                and getattr(self, "_slider_dirty", False)):
+            self._slider_dirty = False
+            self.sound_manager.play("menu_select")
+            for slider in self._sliders:
                 try:
-                    if hasattr(widget, 'is_selectable'):
-                        is_selectable = widget.is_selectable() if callable(widget.is_selectable) else widget.is_selectable
-                        if not is_selectable:
-                            continue
-                except:
+                    value = slider.get_value()
+                    if value != slider.snap_value(value):
+                        slider.set_value(slider.snap_value(value))
+                except Exception:
                     pass
-                self.navigable_widgets.append(widget)
-    
-    def _handle_keyboard_navigation(self, event):
-        """Handle keyboard navigation (arrow keys, Enter, Space)"""
-        if event.type != pygame.KEYDOWN:
-            return False
-            
-        # Arrow keys or Tab - enable keyboard navigation and move focus
-        if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_TAB]:
-            # Enable keyboard navigation on first arrow key press
-            if not self.keyboard_navigation_enabled:
-                self.keyboard_navigation_enabled = True
-                self._update_navigable_widgets()
-                
-                # Start with first widget focused
-                if self.navigable_widgets:
-                    self.focused_button_index = 0
-                    self._apply_keyboard_focus(self.navigable_widgets[0], True)
-                    return True
-            
-            # Navigate between widgets
-            if not self.navigable_widgets:
-                self._update_navigable_widgets()
-                
-            if self.navigable_widgets:
-                # Clear current focus
-                if 0 <= self.focused_button_index < len(self.navigable_widgets):
-                    self._apply_keyboard_focus(self.navigable_widgets[self.focused_button_index], False)
-                
-                # Move focus
-                if event.key in [pygame.K_DOWN, pygame.K_RIGHT] or (event.key == pygame.K_TAB and not (pygame.key.get_mods() & pygame.KMOD_SHIFT)):
-                    self.focused_button_index = (self.focused_button_index + 1) % len(self.navigable_widgets)
-                elif event.key in [pygame.K_UP, pygame.K_LEFT] or (event.key == pygame.K_TAB and (pygame.key.get_mods() & pygame.KMOD_SHIFT)):
-                    self.focused_button_index = (self.focused_button_index - 1) % len(self.navigable_widgets)
-                
-                # Apply new focus
-                self._apply_keyboard_focus(self.navigable_widgets[self.focused_button_index], True)
-                
-                # Play navigation sound
-                if hasattr(self, 'sound_manager'):
-                    self.sound_manager.play_slider_sound("menu_select")
-                
+        menu = self.current_menu
+        text_menu = menu in (getattr(self, "user_setup_menu", None), getattr(self, "user_edit_menu", None))
+
+        # Text inputs read KEYDOWN, ignore TEXTINPUT so characters are not doubled
+        if text_menu and event.type == pygame.TEXTINPUT:
+            return True
+
+        if event.type == pygame.MOUSEMOTION:
+            self.keyboard_mode = False
+            self._update_hover(event.pos)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.keyboard_mode = False
+            if (self.pages.get(menu, {}).get("kind") == "page" and self.header_back_rect
+                    and self.header_back_rect.collidepoint(event.pos)):
+                self._go_back()
                 return True
-                
-        # Enter or Space - activate focused widget
-        elif event.key in [pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE]:
-            if self.keyboard_navigation_enabled and 0 <= self.focused_button_index < len(self.navigable_widgets):
-                focused_widget = self.navigable_widgets[self.focused_button_index]
-                
-                # Simulate click on the focused widget
-                if focused_widget.__class__.__name__ == 'Button':
-                    # Play click sound
-                    if hasattr(self, 'sound_manager'):
-                        self.sound_manager.play("menu_select")
-                    
-                    # Trigger button action
-                    focused_widget.apply()
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self._go_back()
+                return True
+            if event.key in NAV_KEYS:
+                if not self.keyboard_mode:
+                    # First key press only reveals where the focus is
+                    self.keyboard_mode = True
                     return True
-                elif focused_widget.__class__.__name__ == 'ToggleSwitch':
-                    # Toggle the switch
-                    focused_widget.change()
-                    return True
-                elif focused_widget.__class__.__name__ == 'DropSelect':
-                    # Open dropdown (let pygame-menu handle this)
-                    return False
-        
-        return False
-    
-    def _apply_keyboard_focus(self, widget, is_focused):
-        """Apply or remove keyboard focus visual effect from a widget"""
+                if event.key == pygame.K_TAB:
+                    shift = pygame.key.get_mods() & pygame.KMOD_SHIFT
+                    event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP if shift else pygame.K_DOWN,
+                                               mod=0, unicode="", scancode=0)
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_LEFT, pygame.K_RIGHT, pygame.K_SPACE):
+                self.keyboard_mode = True
+                selected = menu.get_selected_widget()
+                if event.key == pygame.K_SPACE and selected is not None and hasattr(selected, "_ui"):
+                    event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=0, unicode="\r", scancode=0)
+
         try:
-            if is_focused:
-                # Apply focus effect similar to hover
-                self._apply_hover_effect(widget, True)
-                
-                # Add additional visual indicator (border or background change)
-                if hasattr(widget, 'set_border'):
-                    widget.set_border(2, (255, 255, 255))
-                    
-            else:
-                # Remove focus effect
-                self._apply_hover_effect(widget, False)
-                
-                # Remove border
-                if hasattr(widget, 'set_border'):
-                    widget.set_border(0, (0, 0, 0, 0))
-                    
-        except Exception:
-            pass
-    
-    def _disable_keyboard_navigation_on_mouse(self):
-        """Disable keyboard navigation when mouse is used"""
-        if self.keyboard_navigation_enabled:
-            # Clear current focus
-            if 0 <= self.focused_button_index < len(self.navigable_widgets):
-                self._apply_keyboard_focus(self.navigable_widgets[self.focused_button_index], False)
-            
-            self.keyboard_navigation_enabled = False
-            self.focused_button_index = -1
-    
-    def _reset_keyboard_navigation(self):
-        """Reset keyboard navigation state (called when changing menus)"""
-        # Clear current focus if active
-        if self.keyboard_navigation_enabled and 0 <= self.focused_button_index < len(self.navigable_widgets):
-            self._apply_keyboard_focus(self.navigable_widgets[self.focused_button_index], False)
-        
-        # Reset state
-        self.keyboard_navigation_enabled = False
-        self.focused_button_index = -1
-        self.navigable_widgets = []
-    
-    def _change_menu(self, new_menu):
-        """Change to a new menu and reset keyboard navigation"""
-        self._reset_keyboard_navigation()
-        self.current_menu = new_menu
-    
+            menu.update([event])
+        except Exception as e:
+            if self.debug_mode:
+                print(f"Menu event error: {e}")
+        self._skip_pygame_menu_update_once = True
+        return True
+
     def update_cursor(self, mouse_pos):
-        """Update cursor based on menu interaction with enhanced feedback"""
         if not self.active:
             return
-        
-        # Check if mouse is over Statistics button (only on main menu)
-        if (self.current_menu == self.main_menu and 
-            hasattr(self, 'personal_best_rect') and 
-            self.personal_best_rect):
-            
-            if self.personal_best_rect.collidepoint(mouse_pos):
-                self.personal_best_button_hovered = True
-                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-                return
-            else:
-                self.personal_best_button_hovered = False
+        hand = False
+        if (self.pages.get(self.current_menu, {}).get("kind") == "page" and self.header_back_rect
+                and self.header_back_rect.collidepoint(mouse_pos)):
+            hand = True
         else:
-            self.personal_best_button_hovered = False
-        
-        # Check if mouse is over Achievements button (only on main menu)
-        if (self.current_menu == self.main_menu and 
-            hasattr(self, 'achievements_rect') and 
-            self.achievements_rect):
-            
-            if self.achievements_rect.collidepoint(mouse_pos):
-                self.achievements_button_hovered = True
-                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-                return
-            else:
-                self.achievements_button_hovered = False
+            widget = self._widget_at(mouse_pos)
+            hand = widget is not None and not getattr(widget, "readonly", False)
+        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND if hand else pygame.SYSTEM_CURSOR_ARROW)
+
+    # ================================================================ widget helpers
+    def _page(self, title, back, kind="page", width=None, motion_select=True):
+        L = self.L
+        if kind == "main":
+            w, h, x, y = L.panel_w, self.height, 0, 0
+            center = True
+        elif kind == "dialog":
+            w = width + 2 * L.sb_space
+            h = self.height - 2 * L.margin
+            x, y = (self.width - w) // 2, L.margin
+            center = True
         else:
-            self.achievements_button_hovered = False
-        
-        # Check if mouse is over user edit button (only in statistics menu)
-        if (self.current_menu == self.personal_best_menu and 
-            hasattr(self, 'user_edit_rect') and 
-            self.user_edit_rect):
-            
-            if self.user_edit_rect.collidepoint(mouse_pos):
-                self.user_edit_button_hovered = True
-                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-                return
-            else:
-                self.user_edit_button_hovered = False
-        else:
-            self.user_edit_button_hovered = False
-        
-        if self.current_menu:
-            # Check if mouse is over any interactive widget
-            selected_widget = self.current_menu.get_selected_widget()
+            w = (width or L.content_w) + 2 * L.sb_space
+            h = self.height - L.header_h
+            x, y = (self.width - w) // 2, L.header_h
+            center = False
+        menu = pygame_menu.Menu("", w, h, theme=self.theme, position=(x, y, False), center_content=center,
+                                mouse_motion_selection=motion_select, screen_dimension=(self.width, self.height))
+        # The background is transparent; skip blitting an empty full-size surface every frame
+        menu.get_scrollarea()._area_color = None
+        # pygame-menu moves the mouse pointer onto a widget it selects itself (for example
+        # after a page is rebuilt when switching tabs). Never move the player's pointer.
+        menu._disable_widget_update_mousepos_mouseselection = True
+        self.pages[menu] = {"title": title, "back": back, "kind": kind, "width": width or L.content_w,
+                            "rect": pygame.Rect(x, y, w, h)}
+        return menu
 
-            # Get the widget under mouse position
-            widgets = self.current_menu.get_widgets()
-            mouse_over_widget = False
+    def _size_widget(self, widget, w, h):
+        widget.set_padding(0)
+        cw, ch = widget.get_width(), widget.get_height()
+        dx, dy = max(0, int(w) - cw), max(0, int(h) - ch)
+        widget.set_padding((dy // 2, dx - dx // 2, dy - dy // 2, dx // 2))
 
-            for widget in widgets:
-                try:
-                    # Use to_real_position=True for correct rect in scrollable menus
-                    widget_rect = widget.get_rect(to_real_position=True)
-                    if widget_rect.collidepoint(mouse_pos):
-                        mouse_over_widget = True
-                        # Check if it's an interactive widget by class name
-                        widget_class_name = widget.__class__.__name__
-                        if widget_class_name in ['Button', 'DropSelect', 'ToggleSwitch', 'RangeSlider']:
-                            # Check if this is the disabled apply button
-                            if (hasattr(self, 'apply_button') and widget == self.apply_button and 
-                                not self.settings_changed):
-                                # Show regular arrow cursor for disabled button
-                                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
-                            else:
-                                # Show hand cursor for enabled interactive widgets
-                                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-                            return
-                except:
-                    # If widget doesn't support get_rect(), skip it
-                    continue
+    def _custom_button(self, menu, label, action, w, h, painter, button_id="", **data):
+        widget = menu.add.button(label, action, button_id=button_id, font_size=10, font_name=ui.FONT_BODY,
+                                 font_color=(0, 0, 0, 0), background_color=(0, 0, 0, 0))
+        self._size_widget(widget, w, h)
+        widget._ui = dict(painter=painter, label=label, **data)
+        widget._draw = lambda surface, _w=widget: self._paint(_w, surface)
+        return widget
 
-            # If not over any interactive widget, use arrow cursor
-            if not mouse_over_widget:
-                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
-    
-    def draw(self, screen):
-        """Draw the menu on the screen with blur effect and alpha animation"""
-        # Don't draw if completely invisible
-        current_alpha = self.get_current_alpha()
-        if current_alpha <= 0.0:
+    def _paint(self, widget, surface):
+        hovered = widget is self.hover_widget or (self.keyboard_mode and widget.is_selected())
+        focused = self.keyboard_mode and widget.is_selected()
+        disabled = bool(getattr(widget, "readonly", False))
+        widget._ui["painter"](surface, widget.get_rect(), widget._ui, hovered and not disabled, focused, disabled)
+
+    def _button(self, menu, label, action, w=None, h=None, variant="secondary", icon_name=None, button_id=""):
+        w = w or ui.px(260)
+        h = h or ui.px(58)
+        return self._custom_button(menu, label, action, w, h, self._paint_button, button_id=button_id,
+                                   variant=variant, icon=icon_name)
+
+    def _spacer(self, menu, ref):
+        menu.add.vertical_margin(ui.px(ref))
+
+    def _surface(self, menu, surf):
+        return menu.add.surface(surf)
+
+    def _text_surface(self, text, fnt, color, width, align="left", line_gap=None):
+        lines = ui.wrap(text, fnt, width)
+        line_h = fnt.get_linesize() + (line_gap if line_gap is not None else ui.px(2))
+        surf = pygame.Surface((width, max(1, line_h * len(lines))), pygame.SRCALPHA)
+        for i, line in enumerate(lines):
+            r = ui.render(line, fnt, color)
+            x = 0 if align == "left" else (width - r.get_width()) // 2
+            surf.blit(r, (x, i * line_h))
+        return surf
+
+    def _text(self, menu, text, fnt=None, color=ui.MUTED, width=None, align="left"):
+        width = width or self.pages[menu]["width"]
+        return self._surface(menu, self._text_surface(text, fnt or ui.body_font(), color, width, align))
+
+    def _section(self, menu, title, top=36, width=None):
+        width = width or self.pages[menu]["width"]
+        self._spacer(menu, top)
+        fnt = ui.display_font(ui.SIZE_H3)
+        surf = pygame.Surface((width, fnt.get_height()), pygame.SRCALPHA)
+        ui.draw_text(surf, title, fnt, ui.MUTED, (0, 0))
+        self._surface(menu, surf)
+        self._spacer(menu, 12)
+
+    def _hairline(self, menu, width=None):
+        width = width or self.pages[menu]["width"]
+        surf = pygame.Surface((width, max(1, ui.px(1.5))), pygame.SRCALPHA)
+        surf.fill(ui.LINE)
+        self._surface(menu, surf)
+
+    def _row(self, menu, label, controls, desc=None, separator=True):
+        """A settings row: label on the left, controls packed on the right."""
+        width = self.pages[menu]["width"]
+        controls_w = sum(c.get_width() for c in controls) + ui.px(16) * (len(controls) - 1)
+        fnt = ui.body_font()
+        small = ui.body_font(ui.SIZE_SMALL)
+        label_w = max(ui.px(120), width - controls_w - ui.px(32))
+        lines = [(ui.ellipsize(label, fnt, label_w), fnt, ui.TEXT)]
+        if desc:
+            for line in ui.wrap(desc, small, label_w)[:2]:
+                lines.append((line, small, ui.MUTED))
+        text_h = sum(f.get_linesize() for _, f, _ in lines)
+        row_h = max(ui.px(72), text_h + ui.px(24), max(c.get_height() for c in controls) + ui.px(16))
+        label_surf = pygame.Surface((label_w, text_h), pygame.SRCALPHA)
+        y = 0
+        for text, f, color in lines:
+            label_surf.blit(f.render(text, True, color), (0, y))
+            y += f.get_linesize()
+
+        frame = menu.add.frame_h(width, row_h, padding=0)
+        frame._pack_margin_warning = False
+        frame.pack(menu.add.surface(label_surf), align=ALIGN_LEFT, vertical_position=POSITION_CENTER)
+        for i, control in enumerate(controls):
+            frame.pack(control, align=ALIGN_RIGHT, vertical_position=POSITION_CENTER,
+                       margin=(ui.px(16) if i else 0, 0))
+        if separator:
+            self._hairline(menu)
+        return frame
+
+    def _dropselect(self, menu, items, default, onchange, width, visible=6, title="", widget_id=""):
+        d = menu.add.dropselect(
+            title, items, default=default, onchange=onchange, dropselect_id=widget_id,
+            font_name=ui.FONT_BODY, font_size=ui.fs(ui.SIZE_BODY), font_color=ui.TEXT,
+            selection_box_width=width, selection_box_height=visible,
+            selection_box_bgcolor=ui.SURFACE_2, selection_box_border_color=ui.LINE,
+            selection_box_border_width=max(1, ui.px(1.5)), selection_box_arrow_color=ui.MUTED,
+            selection_box_arrow_margin=(ui.px(14), ui.px(14), 0),
+            selection_box_text_margin=ui.px(14), selection_box_margin=(ui.px(14) if title else 0, 0),
+            selection_box_inflate=(0, ui.px(22)),
+            selection_option_font=ui.FONT_BODY, selection_option_font_size=ui.fs(ui.SIZE_SMALL),
+            selection_option_font_color=ui.TEXT, selection_option_selected_bgcolor=ui.SURFACE_3,
+            selection_option_selected_font_color=ui.ACCENT, selection_option_border_width=0,
+            selection_option_padding=(ui.px(10), ui.px(14)),
+            scrollbar_color=ui.SURFACE_2, scrollbar_slider_color=ui.SURFACE_3,
+            scrollbar_slider_hover_color=ui.MUTED, scrollbar_thick=max(6, ui.px(8)),
+            placeholder="Select", placeholder_add_to_selection_box=False)
+        return d
+
+    def _toggle(self, menu, default, onchange, widget_id=""):
+        return menu.add.toggle_switch(
+            "", default, onchange=onchange, single_click=True, toggleswitch_id=widget_id, state_text=("Off", "On"),
+            width=ui.px(110), font_size=ui.fs(ui.SIZE_SMALL),
+            state_text_font=ui.FONT_BODY_BOLD, state_text_font_size=ui.fs(ui.SIZE_SMALL),
+            state_color=(ui.SURFACE_3, ui.ACCENT), state_text_font_color=(ui.MUTED, ui.ON_ACCENT),
+            slider_color=ui.TEXT, slider_thickness=0, switch_border_color=ui.LINE,
+            switch_border_width=max(1, ui.px(1.5)), switch_height=1.6, switch_margin=(0, 0))
+
+    def _slider(self, menu, default, range_values, increment, onchange, width):
+        """Range slider that follows the pointer freely and settles on a multiple of `increment`
+        when released. The value passed to `onchange` is always snapped."""
+        low, high = range_values
+
+        def snap(value):
+            return max(low, min(high, low + round((value - low) / increment) * increment))
+
+        def changed(value):
+            onchange(snap(value))
+
+        slider = menu.add.range_slider(
+            "", default, range_values, increment=increment, onchange=changed, width=width,
+            font_size=ui.fs(ui.SIZE_SMALL), range_margin=(0, 0),
+            range_line_color=ui.SURFACE_3, range_line_height=max(2, ui.px(6)),
+            range_box_color=ui.ACCENT, range_box_single_slider=True, range_box_height_factor=0.32,
+            range_text_value_enabled=False, slider_color=ui.TEXT, slider_selected_color=ui.ACCENT,
+            slider_thickness=max(8, ui.px(16)), slider_height_factor=0.9, slider_sel_highlight_enabled=False,
+            slider_text_value_enabled=False, value_format=lambda x: "", repeat_keys=True)
+        slider.snap_value = snap
+        # A generous grab area around the handle (the default is the handle itself)
+        grab = ui.px(26)
+        raw_rect = slider._get_slider_inflate_rect
+        slider._get_slider_inflate_rect = lambda pos, inflate=None, **kw: raw_rect(
+            pos, inflate if inflate is not None else ((grab, grab) if kw.get("to_real_position") else None), **kw)
+        self._sliders.append(slider)
+        return slider
+
+    # ================================================================ painters
+    def _paint_button(self, surface, rect, d, hovered, focused, disabled):
+        ui.button(surface, rect, d["label"], variant=d.get("variant", "secondary"), hovered=hovered,
+                  focused=focused, disabled=disabled, icon_name=d.get("icon"))
+
+    def _paint_main_primary(self, surface, rect, d, hovered, focused, disabled):
+        fill = (255, 222, 110) if hovered else ui.ACCENT
+        ui.fill_rect(surface, fill, rect, ui.radius(12))
+        if focused:
+            ui.focus_ring(surface, rect, ui.radius(12), color=ui.TEXT)
+        fnt = ui.display_font(ui.SIZE_H3 + 4)
+        ui.draw_text(surface, d["label"], fnt, ui.ON_ACCENT, (rect.x + ui.px(24), rect.centery + ui.px(2)), "midleft")
+        meta = d.get("meta")
+        if meta:
+            ui.draw_text(surface, meta, ui.body_font(ui.SIZE_SMALL, bold=True), ui.ON_ACCENT,
+                         (rect.right - ui.px(24), rect.centery), "midright")
+
+    def _paint_nav(self, surface, rect, d, hovered, focused, disabled):
+        if hovered:
+            ui.fill_rect(surface, ui.SURFACE_2, rect, ui.radius(10))
+            bar = pygame.Rect(rect.x, rect.y + ui.px(14), max(3, ui.px(4)), rect.height - ui.px(28))
+            ui.fill_rect(surface, ui.ACCENT, bar, bar.width // 2)
+        if focused:
+            ui.focus_ring(surface, rect, ui.radius(10))
+        fnt = ui.display_font(ui.SIZE_H3 + 2)
+        ui.draw_text(surface, d["label"], fnt, ui.TEXT if hovered else (205, 209, 216),
+                     (rect.x + ui.px(24), rect.centery + ui.px(2)), "midleft")
+        meta = d.get("meta")
+        if meta:
+            ui.draw_text(surface, meta, ui.body_font(ui.SIZE_SMALL), ui.MUTED,
+                         (rect.right - ui.px(20), rect.centery), "midright")
+
+    def _paint_mode_card(self, surface, rect, d, hovered, focused, disabled):
+        mode = d["mode"]
+        color = ui.MODE_COLORS.get(mode, ui.ACCENT)
+        rad = ui.radius(14)
+        ui.fill_rect(surface, ui.SURFACE_2 if hovered else ui.SURFACE, rect, rad)
+        ui.fill_rect(surface, color if hovered else ui.LINE, rect, rad, width=max(1, ui.px(2 if hovered else 1.5)))
+        if focused:
+            ui.focus_ring(surface, rect, rad)
+
+        pad = ui.px(24)
+        name_font = ui.display_font(ui.SIZE_H2)
+        desc_font = ui.body_font(ui.SIZE_SMALL)
+        config = self.game_modes[mode]
+        x = rect.x + pad
+        # Name line: color marker, name, optional "Current"
+        name_cy = rect.centery + ui.px(2) if d.get("wide") else rect.y + pad + name_font.get_height() // 2
+        cell = ui.px(32)
+        marker = ui.mode_icon(mode, cell)
+        if marker:
+            surface.blit(marker, (x, name_cy - cell // 2 - ui.px(2)))
+        marker_w = cell
+        name_r = ui.draw_text(surface, config["name"], name_font, ui.TEXT, (x + marker_w + ui.px(12), name_cy), "midleft")
+        if d.get("current"):
+            ui.draw_text(surface, "Current", ui.body_font(ui.SIZE_CAPTION, bold=True), ui.MUTED,
+                         (rect.right - pad, name_cy - ui.px(2)), "midright")
+
+        if d.get("wide"):
+            avail = rect.right - pad - name_r.right - ui.px(32) - (ui.px(90) if d.get("current") else 0)
+            if avail > ui.px(160):
+                ui.draw_text(surface, ui.ellipsize(config["description"], desc_font, avail), desc_font, ui.MUTED,
+                             (name_r.right + ui.px(28), rect.centery), "midleft")
             return
-        
-        # Main menu should never show the blurred in-game capture.
-        # Prefer the static main menu background (if available), otherwise fall back to the solid/gradient.
-        is_on_main_menu = (hasattr(self, 'main_menu') and self.current_menu == self.main_menu)
-        should_use_main_background = (
-            is_on_main_menu and self.main_menu_background is not None
-        )
-        
-        # Use main menu background for difficulty change count = 0
-        if should_use_main_background:
-            # Tile the main menu background 4 times (2x2 grid) to avoid zooming
-            screen_size = (screen.get_width(), screen.get_height())
-            bg_size = self.main_menu_background.get_size()
-            
-            # Calculate tile size (each tile is 1/4 of the screen)
-            tile_width = screen_size[0] // 2
-            tile_height = screen_size[1] // 2
-            
-            # Scale the background to fit each tile
-            scaled_background = pygame.transform.scale(self.main_menu_background, (tile_width, tile_height))
-            
-            # Apply brightness enhancement to make the background more visible
-            # Create a copy for brightness adjustment
-            brightened_background = scaled_background.copy()
-            
-            # Create a bright overlay to enhance visibility
-            brightness_overlay = pygame.Surface((tile_width, tile_height), pygame.SRCALPHA)
-            brightness_overlay.fill((80, 80, 80, 120))  # Light gray overlay with transparency
-            
-            # Blend the brightness overlay with the background
-            brightened_background.blit(brightness_overlay, (0, 0), special_flags=pygame.BLEND_ADD)
-            
-            # Apply alpha if needed
-            if current_alpha < 1.0:
-                brightened_background.set_alpha(int(255 * current_alpha))
-            
-            # Draw the brightened background in a 2x2 grid pattern
-            for row in range(2):
-                for col in range(2):
-                    x = col * tile_width
-                    y = row * tile_height
-                    screen.blit(brightened_background, (x, y))
-        else:
-            # Use blurred background if available, otherwise fallback to solid overlay.
-            # Never use blurred background on the main menu.
-            if self.blurred_background is not None and not is_on_main_menu:
-                # Check if blurred background size matches current screen size
-                bg_size = self.blurred_background.get_size()
-                screen_size = (screen.get_width(), screen.get_height())
-                
-                if bg_size != screen_size:
-                    # Size mismatch - scale the background or clear it
-                    if hasattr(self, 'debug_mode') and self.debug_mode:
-                        print(f"Background size mismatch: {bg_size} vs {screen_size}, clearing background")
-                    self.blurred_background = None
-                    self.background_capture = None
-                    # Try to recapture with correct size if game has rendered
-                    # Only capture if difficulty change count > 0 (don't blur when using main menu background)
-                    should_capture_background = (
-                        self.game_rendered and 
-                        hasattr(self, "game") and self.game and 
-                        self.game.get_difficulty_change_count() > 0
-                    )
-                    if should_capture_background:
-                        self._capture_and_blur_background()
-                
-                # Draw blurred background with alpha if still available
-                if self.blurred_background is not None:
-                    if current_alpha < 1.0:
-                        # Create a copy for alpha blending
-                        background_surface = self.blurred_background.copy()
-                        background_surface.set_alpha(int(255 * current_alpha))
-                        screen.blit(background_surface, (0, 0))
-                    else:
-                        screen.blit(self.blurred_background, (0, 0))
-            
-            # Fallback to modern solid background if no blur available OR when on main menu
-            if self.blurred_background is None or is_on_main_menu:
-                overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
 
-                # On the main menu, fully cover the in-game visuals (no bleed-through).
-                if is_on_main_menu:
-                    base_alpha = 255
-                    final_alpha = int(base_alpha * current_alpha)
-                    overlay.fill((8, 12, 28, max(0, min(255, final_alpha))))
-                else:
-                    # Fallback to modern solid background with subtle gradient effect
-                    base_alpha = 200  # Slightly more opaque for better readability
-                    final_alpha = int(base_alpha * current_alpha)
-                    for y in range(screen.get_height()):
-                        alpha_variation = final_alpha + int(20 * math.sin(y * 0.01))
-                        alpha_variation = max(0, min(255, alpha_variation))
-                        color = (8, 12, 28, alpha_variation)  # Dark blue-grey
-                        pygame.draw.line(overlay, color, (0, y), (screen.get_width(), y))
+        y = name_r.bottom + ui.px(4)
+        width = rect.width - 2 * pad
+        lines = ui.wrap(config["description"], desc_font, width)
+        max_lines = max(1, (rect.bottom - pad + ui.px(6) - y) // desc_font.get_linesize())
+        if len(lines) > max_lines:
+            lines = lines[:max_lines]
+            lines[-1] = ui.ellipsize(lines[-1] + " ...", desc_font, width)
+        for line in lines:
+            ui.draw_text(surface, line, desc_font, ui.MUTED, (x, y))
+            y += desc_font.get_linesize()
 
-                screen.blit(overlay, (0, 0))
-        
-        # Add subtle particle effects with reduced intensity for performance (only when not using main background)
-        if current_alpha > 0.5 and not should_use_main_background:  # Only draw particles when menu is mostly visible and not using main background
-            self._draw_background_effects(screen, current_alpha)
-        
-        # Handle dimension mismatch
-        actual_width, actual_height = screen.get_size()
-        if abs(self.width - actual_width) > 10 or abs(self.height - actual_height) > 10:
-            if hasattr(self, 'debug_mode') and self.debug_mode:
-                print(f"Menu dimension mismatch: stored {self.width}x{self.height}, actual {actual_width}x{actual_height}")
-            self.width = actual_width
-            self.height = actual_height
-            self._create_menus()
-        
-        # Draw the current menu
-        if self.current_menu:
-            # Important: avoid calling set_alpha() on an SRCALPHA surface.
-            # pygame-menu draws the scrollbar thumb using per-pixel alpha, and
-            # combining that with per-surface alpha can make the thumb appear to
-            # disappear on some systems.
-            if current_alpha < 1.0:
-                colorkey = (1, 2, 3)
-                menu_surface = pygame.Surface((screen.get_width(), screen.get_height())).convert()
-                menu_surface.fill(colorkey)
-                menu_surface.set_colorkey(colorkey)
-                self.current_menu.draw(menu_surface)
-                menu_surface.set_alpha(int(255 * current_alpha))
-                screen.blit(menu_surface, (0, 0))
-            else:
-                self.current_menu.draw(screen)
-            
-            # Draw Statistics button in bottom right corner (only on main menu)
-            if (self.current_menu == self.main_menu and 
-                hasattr(self, 'record_icon')):  # Only need to check if we have the icon loaded
-                
-                # Position the Statistics button in bottom right
-                metrics = self._get_stats_button_metrics(screen.get_width(), screen.get_height())
-                button_width = metrics["button_width"]
-                button_height = metrics["button_height"]
-                margin = metrics["margin"]
-                icon_size = metrics["icon_size"]
-                icon_padding = metrics["icon_padding"]
-                
-                button_x = screen.get_width() - button_width - margin
-                button_y = screen.get_height() - button_height - margin
-                
-                # Create button background with hover effects
-                button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
-                
-                if self.personal_best_button_hovered:
-                    # Hover state - brighter background and border
-                    pygame.draw.rect(screen, (80, 80, 80, 200), button_rect, border_radius=10)  # Brighter background
-                    pygame.draw.rect(screen, (150, 150, 150), button_rect, 3, border_radius=10)  # Thicker, brighter border
-                    
-                    # Add subtle glow effect
-                    glow_rect = pygame.Rect(button_x - 2, button_y - 2, button_width + 4, button_height + 4)
-                    pygame.draw.rect(screen, (120, 120, 120, 100), glow_rect, 1, border_radius=10)
-                else:
-                    # Normal state
-                    pygame.draw.rect(screen, (50, 50, 50, 180), button_rect, border_radius=10)  # Dark semi-transparent background
-                    pygame.draw.rect(screen, (100, 100, 100), button_rect, 2, border_radius=10)  # Border
-                
-                # Draw the record icon if available
-                if self.record_icon:
-                    if (hasattr(self, "_record_icon_original") and self._record_icon_original and
-                        (self.record_icon.get_width() != icon_size or self.record_icon.get_height() != icon_size)):
-                        self.record_icon = pygame.transform.smoothscale(self._record_icon_original, (icon_size, icon_size))
-                    icon_x = button_x + icon_padding
-                    icon_y = button_y + (button_height - icon_size) // 2
-                    screen.blit(self.record_icon, (icon_x, icon_y))
-                    text_x = icon_x + icon_size + max(8, icon_padding // 2)
-                else:
-                    text_x = button_x + icon_padding
-                
-                # Draw the text using the menu's font with hover effects
-                try:
-                    # Use the same font as the menu widgets
-                    font_size = metrics["hover_font_size"] if self.personal_best_button_hovered else metrics["font_size"]
-                    menu_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, font_size)
-                    
-                    # Text color changes on hover
-                    text_color = (255, 255, 255) if not self.personal_best_button_hovered else (255, 255, 180)
-                    text_surface = menu_font.render("Statistics", True, text_color)
-                    text_y = button_y + (button_height - text_surface.get_height()) // 2
-                    
-                    # Add shadow effect like the menu
-                    shadow_surface = menu_font.render("Statistics", True, (0, 0, 0))
-                    shadow_offset = 2 if self.personal_best_button_hovered else 1
-                    screen.blit(shadow_surface, (text_x + shadow_offset, text_y + shadow_offset))
-                    screen.blit(text_surface, (text_x, text_y))
-                except:
-                    # Fallback to basic font if menu font fails
-                    font = pygame.font.Font(None, 24)
-                    text_surface = font.render("Statistics", True, (255, 255, 255))
-                    text_y = button_y + (button_height - text_surface.get_height()) // 2
-                    screen.blit(text_surface, (text_x, text_y))
-                
-                # Store button rectangle for click detection
-                self.personal_best_rect = button_rect
-                
-                # Draw Achievements button in top right corner (only on main menu)
-                ach_metrics = self._get_stats_button_metrics(screen.get_width(), screen.get_height())
-                ach_button_width = int(ach_metrics["button_width"] * 1.05)
-                ach_button_height = int(ach_metrics["button_height"] * 1.6)
-                ach_margin = ach_metrics["margin"]
-                ach_icon_size = ach_metrics["icon_size"]
-                ach_icon_padding = ach_metrics["icon_padding"]
-                
-                # Position in top right
-                ach_button_x = screen.get_width() - ach_button_width - ach_margin
-                ach_button_y = ach_margin
-                
-                # Create button background with hover effects
-                ach_button_rect = pygame.Rect(ach_button_x, ach_button_y, ach_button_width, ach_button_height)
-                
-                if self.achievements_button_hovered:
-                    # Hover state - golden glow for achievements
-                    pygame.draw.rect(screen, (90, 75, 40, 200), ach_button_rect, border_radius=10)
-                    pygame.draw.rect(screen, (240, 198, 38), ach_button_rect, 3, border_radius=10)
-                    
-                    # Add golden glow effect
-                    glow_rect = pygame.Rect(ach_button_x - 2, ach_button_y - 2, ach_button_width + 4, ach_button_height + 4)
-                    pygame.draw.rect(screen, (240, 198, 38, 100), glow_rect, 1, border_radius=10)
-                else:
-                    # Normal state
-                    pygame.draw.rect(screen, (50, 50, 50, 180), ach_button_rect, border_radius=10)
-                    pygame.draw.rect(screen, (100, 100, 100), ach_button_rect, 2, border_radius=10)
-                
-                # Draw the achievements icon if available
-                if hasattr(self, 'achievements_icon') and self.achievements_icon:
-                    if (hasattr(self, "_achievements_icon_original") and self._achievements_icon_original and
-                        (self.achievements_icon.get_width() != ach_icon_size or self.achievements_icon.get_height() != ach_icon_size)):
-                        self.achievements_icon = pygame.transform.smoothscale(self._achievements_icon_original, (ach_icon_size, ach_icon_size))
-                    ach_icon_x = ach_button_x + ach_icon_padding
-                    ach_icon_y = ach_button_y + (ach_button_height - ach_icon_size) // 2
-                    screen.blit(self.achievements_icon, (ach_icon_x, ach_icon_y))
-                    ach_text_x = ach_icon_x + ach_icon_size + max(8, ach_icon_padding // 2)
-                else:
-                    ach_text_x = ach_button_x + ach_icon_padding
-                
-                # Draw the text using the menu's font with hover effects
-                try:
-                    ach_font_size = ach_metrics["hover_font_size"] if self.achievements_button_hovered else ach_metrics["font_size"]
-                    ach_menu_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, ach_font_size)
-                    
-                    # Text color - golden on hover
-                    ach_text_color = (240, 198, 38) if self.achievements_button_hovered else (255, 255, 255)
-                    ach_text_surface = ach_menu_font.render("Achievements", True, ach_text_color)
-                    ach_text_y = ach_button_y + (ach_button_height - ach_text_surface.get_height()) // 2
-                    
-                    # Add shadow effect
-                    ach_shadow_surface = ach_menu_font.render("Achievements", True, (0, 0, 0))
-                    ach_shadow_offset = 2 if self.achievements_button_hovered else 1
-                    screen.blit(ach_shadow_surface, (ach_text_x + ach_shadow_offset, ach_text_y + ach_shadow_offset))
-                    screen.blit(ach_text_surface, (ach_text_x, ach_text_y))
-                    
-                    # Draw unlocked count badge
-                    unlocked, total = self.achievements_manager.get_unlocked_count()
-                    badge_text = f"{unlocked}/{total}"
-                    badge_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, max(20, ach_font_size - 4))
-                    badge_surface = badge_font.render(badge_text, True, (255, 255, 255))
-                    badge_x = ach_button_x + ach_button_width - badge_surface.get_width() - 8
-                    badge_y = ach_button_y + ach_button_height - badge_surface.get_height() - 4
-                    
-                    # Draw badge background
-                    badge_rect = pygame.Rect(badge_x - 4, badge_y - 2, badge_surface.get_width() + 8, badge_surface.get_height() + 4)
-                    badge_color = (240, 198, 38) if unlocked > 0 else (80, 80, 80)
-                    pygame.draw.rect(screen, badge_color, badge_rect, border_radius=6)
-                    screen.blit(badge_surface, (badge_x, badge_y))
-                except:
-                    pass
-                
-                # Store button rectangle for click detection
-                self.achievements_rect = ach_button_rect
-            
-            # Draw user edit button in Statistics menu (top right corner)
-            if (self.current_menu == self.personal_best_menu and 
-                self.user_manager.is_setup_completed()):
-                
-                # Position the edit button in top right of content area
-                edit_btn_size = 60
-                edit_margin = 80
-                edit_x = screen.get_width() - edit_btn_size - edit_margin
-                edit_y = 80  # Below the title bar
-                
-                edit_rect = pygame.Rect(edit_x, edit_y, edit_btn_size, edit_btn_size)
-                
-                if self.user_edit_button_hovered:
-                    pygame.draw.rect(screen, (80, 80, 80, 200), edit_rect, border_radius=8)
-                    pygame.draw.rect(screen, (150, 150, 150), edit_rect, 2, border_radius=8)
-                else:
-                    pygame.draw.rect(screen, (50, 50, 50, 180), edit_rect, border_radius=8)
-                    pygame.draw.rect(screen, (100, 100, 100), edit_rect, 1, border_radius=8)
-                
-                # Draw edit icon or fallback pencil symbol
-                if self.edit_icon:
-                    icon_x = edit_x + (edit_btn_size - 36) // 2
-                    icon_y = edit_y + (edit_btn_size - 36) // 2
-                    screen.blit(self.edit_icon, (icon_x, icon_y))
-                else:
-                    # Fallback: draw a simple pencil shape
-                    try:
-                        edit_font = pygame_menu.font.get_font(pygame_menu.font.FONT_FRANCHISE, 24)
-                        edit_text = edit_font.render("✎", True, (255, 255, 255))
-                        text_x = edit_x + (edit_btn_size - edit_text.get_width()) // 2
-                        text_y = edit_y + (edit_btn_size - edit_text.get_height()) // 2
-                        screen.blit(edit_text, (text_x, text_y))
-                    except:
-                        pass
-                
-                self.user_edit_rect = edit_rect
-        
-        # Draw tooltip if active (must be last to appear on top)
-        self._draw_tooltip(screen)
-    
-    def _draw_background_effects(self, screen, alpha=1.0):
-        """Draw simplified background effects for better performance"""
-        try:
-            # Create a subtle glow effect around the menu area (reduced particles)
-            center_x = screen.get_width() // 2
-            center_y = screen.get_height() // 2
-            time_offset = time.time()
-            
-            # Reduced number of particles for better performance
-            for i in range(4):  # Reduced from 8 to 4 particles
-                angle = (time_offset * 20 + i * 90) % 360  # Slower animation
-                radius = 120 + 30 * math.sin(time_offset + i)  # Smaller radius
-                
-                x = center_x + radius * math.cos(math.radians(angle))
-                y = center_y + radius * math.sin(math.radians(angle))
-                
-                # Ensure particles stay on screen
-                if 0 <= x <= screen.get_width() and 0 <= y <= screen.get_height():
-                    size = int(2 + math.sin(time_offset * 2 + i))  # Smaller particles
-                    base_alpha = int(120 + 60 * math.sin(time_offset + i * 0.5))  # Lower alpha
-                    final_alpha = int(base_alpha * alpha)
-                    
-                    # Simple circle instead of complex glow
-                    pygame.draw.circle(screen, (100, 150, 255, min(255, final_alpha)), 
-                                     (int(x), int(y)), max(1, size))
-                    
-        except Exception as e:
-            # Silently ignore errors in visual effects
-            pass
+    def _paint_tab(self, surface, rect, d, hovered, focused, disabled):
+        selected = d.get("selected")
+        rad = ui.radius(10)
+        if selected:
+            ui.fill_rect(surface, ui.SURFACE_3, rect, rad)
+        elif hovered:
+            ui.fill_rect(surface, ui.SURFACE_2, rect, rad)
+        if focused:
+            ui.focus_ring(surface, rect, rad)
+        fnt = ui.body_font(ui.SIZE_SMALL + 1, bold=True)
+        ui.draw_text(surface, d["label"], fnt, ui.TEXT if selected or hovered else ui.MUTED, rect.center, "center")
 
-    def update_dimensions(self, width, height):
-        """Update menu dimensions when resolution changes"""
-        # Check if dimensions have actually changed
-        if abs(self.width - width) < 5 and abs(self.height - height) < 5:
-            if hasattr(self, 'debug_mode') and self.debug_mode:
-                print(f"Menu dimensions already match: {width}x{height}, skipping update")
-            return
-        
-        if hasattr(self, 'debug_mode') and self.debug_mode:
-            print(f"Updating menu dimensions to: {width}x{height}")
-        
-        # Update dimensions
-        self.width = width
-        self.height = height
-        
-        # Reload logo image with new screen dimensions
-        self._load_logo_image()
-
-        # Rescale resolution-dependent icons
-        self._scale_record_icon()
-        self._scale_edit_icon()
-        self._scale_achievements_icon()
-        
-        # Clear cached background images since resolution changed
-        self.background_capture = None
-        self.blurred_background = None
-        
-        # Force recreate menus with new dimensions
-        self._create_menus()
-        
-        # Reset the resolution changed flag
-        self.resolution_changed_flag = False
-    
-    def set_game_instance(self, game):
-        """Set the game instance reference"""
-        self.game = game
-    
-    def notify_game_rendered(self):
-        """Notify the menu that the game has rendered at least one frame"""
-        self.frames_rendered += 1
-        if self.frames_rendered >= 3:  # Wait for a few frames to ensure proper initialization
-            self.game_rendered = True
-    
-    def force_background_recapture(self):
-        """Force recapture of the background (useful after resolution changes)"""
-        # Only capture if difficulty change count > 0 (don't blur when using main menu background)
-        should_capture_background = (
-            self.game_rendered and 
-            hasattr(self, "game") and self.game and 
-            self.game.get_difficulty_change_count() > 0
-        )
-        if should_capture_background:
-            self._capture_and_blur_background()
-
-    def refresh_main_menu_buttons(self):
-        """Refresh the main menu buttons based on current difficulty change count"""
-        if hasattr(self, 'main_menu'):
-            # Clear existing widgets (keeping only the title/logo)
-            widgets = self.main_menu.get_widgets()
-            widgets_to_remove = []
-            
-            # Remove all buttons and vertical margins, but keep the logo/title (first widget)
-            for i, widget in enumerate(widgets):
-                if i > 0:  # Keep only the first widget (logo/title)
-                    # Check if it's a button or vertical margin that we want to remove
-                    widget_type = type(widget).__name__
-                    if 'Button' in widget_type or 'VMargin' in widget_type or 'VerticalMargin' in widget_type:
-                        widgets_to_remove.append(widget)
-            
-            for widget in widgets_to_remove:
-                self.main_menu.remove_widget(widget)
-            
-            # Re-add buttons with correct behavior
-            if hasattr(self, "game") and self.game and self.game.get_difficulty_change_count() >= 1:
-                # Once difficulty has been changed, "Play" just closes menu and "Change Mode" opens difficulty menu
-                play_btn = self.main_menu.add.button("Play", self._play_current_difficulty)
-                change_difficulty_btn = self.main_menu.add.button("Change Mode", self._open_difficulty_select)
-            else:
-                # Initially, "Play" opens difficulty selection menu
-                play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
-            
-            settings_btn = self.main_menu.add.button("Settings", self._open_settings)
-            controls_btn = self.main_menu.add.button("Controls", self._open_controls)
-            quit_btn = self.main_menu.add.button("Quit", self._show_quit_confirmation)
-            
-            # Apply custom styling to main menu
-            self._customize_menu_widgets(self.main_menu)
-            
-            # Personal Best button will be drawn manually in draw() method
-    
+    # ================================================================ page builders
     def _create_menus(self):
-        """Create or recreate menus with current dimensions"""
-        # Refresh resolution-dependent assets
-        self._scale_record_icon()
-        self._scale_edit_icon()
-        self._scale_achievements_icon()
-
-        # Clear existing difficulty button tracking when recreating menus
-        self.difficulty_buttons.clear()
-        self.button_animations.clear()
-        
-        # Store current settings before recreating
-        current_resolution_index = self.current_resolution_index
-        current_volume = self.volume
-        current_show_fps = self.show_fps
-        current_fullscreen = self.fullscreen
-        
-        # Get actual screen dimensions
+        """Create or recreate every page for the current window size"""
         screen = pygame.display.get_surface()
         if screen:
-            actual_width, actual_height = screen.get_size()
-            # Update our stored dimensions to match actual screen
-            if abs(self.width - actual_width) > 5 or abs(self.height - actual_height) > 5:
-                if hasattr(self, 'debug_mode') and self.debug_mode:
-                    print(f"Updating menu dimensions from {self.width}x{self.height} to {actual_width}x{actual_height}")
-                self.width = actual_width
-                self.height = actual_height
-        elif hasattr(self, 'debug_mode') and self.debug_mode:
-            print(f"No screen surface available, using stored dimensions: {self.width}x{self.height}")
-        
-        if hasattr(self, 'debug_mode') and self.debug_mode:
-            print(f"Creating menus with dimensions: {self.width}x{self.height}")
-        
-        # Create custom fancy theme for main menu (centered title)
-        self._create_custom_theme()
-        
-        # Create a separate theme for main menu without title bar
-        self.main_theme = self.theme.copy()
-        self.main_theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_NONE
-        self.main_theme.title_background_color = (0, 0, 0, 0)  # Transparent background for main menu
-        
-        # Create theme for other menus (left-aligned titles with margin)
-        self.sub_theme = self.theme.copy()
-        self.sub_theme.title_alignment = ALIGN_LEFT
-        # Add left margin to titles to prevent them from being at the window border
-        self.sub_theme.title_offset = (10, 0)  # 10 pixels left margin
-        # Ensure sub-theme also has a solid background for title visibility
-        self.sub_theme.title_background_color = (0, 8, 18, 250)  # More opaque dark background for better visibility
-        self.sub_theme.title_bar_style = pygame_menu.widgets.MENUBAR_STYLE_ADAPTIVE
-        
-        # Apply scrollbar settings to sub_theme for visibility in all sub-menus
-        self.sub_theme.scrollbar_color = (15, 22, 35)
-        self.sub_theme.scrollbar_slider_color = (240, 198, 38)
-        self.sub_theme.scrollbar_slider_hover_color = (255, 255, 255)
-        self.sub_theme.scrollbar_slider_pad = 1  # pygame-menu expects int padding
-        self.sub_theme.scrollbar_thick = 14
-        self.sub_theme.scrollbar_shadow = True
-        self.sub_theme.scrollbar_shadow_color = (0, 0, 0)
-        self.sub_theme.scrollbar_shadow_offset = 1
+            self.width, self.height = screen.get_size()
+        self.L = _Layout(self.width, self.height)
+        self._build_theme()
+        self._ach_icon_cache = {}
+        previous = getattr(self, "current_menu", None)
+        previous_key = None
+        for name in ("settings_menu", "controls_menu", "difficulty_menu", "personal_best_menu",
+                     "time_selection_menu", "moves_selection_menu", "user_setup_menu", "user_edit_menu",
+                     "achievements_menu", "quit_confirmation_menu"):
+            if previous is not None and getattr(self, name, None) is previous:
+                previous_key = name
+        self.pages = {}
+        self._sliders = []
+        self.hover_widget = None
+        self.header_back_rect = None
 
-        # Create main menu with ACTUAL dimensions and no title (we'll add custom centered title)
-        self.main_menu = pygame_menu.Menu(
-            "",  # Empty title - we'll add a custom centered one
-            self.width,
-            self.height,
-            theme=self.main_theme,  # Use the main_theme without title bar
-            columns=1,
-            rows=None
-        )
-        
-        # Add custom logo image as title if available, otherwise use text
-        logo_path = resource_path("utils/rubiks_logo.png")
-        if os.path.exists(logo_path):
-            logo_scale_width = self.width * 0.12 / 400  # 12% of width, slightly larger
-            logo_scale_height = logo_scale_width
-            self.main_menu.add.image(
-                logo_path,
-                angle=0,
-                scale=(logo_scale_width, logo_scale_height),
-                align=ALIGN_CENTER,
-                margin=(0, 2)
-            )
-        else:
-            # Fallback to text title if logo fails to load
-            self.main_menu.add.label(
-                "Rubik's Cube Simulator",
-                font_size=65,
-                font_name=pygame_menu.font.FONT_FRANCHISE,
-                font_color=(255, 255, 255),
-                font_shadow=True,
-                font_shadow_color=(0, 0, 0),
-                font_shadow_offset=3,
-                align=ALIGN_CENTER,
-                margin=(0, 2)
-            )
-        
-        
-        # Try to center the title after menu creation
-        try:
-            # Method 1: Set title alignment directly on menu
-            if hasattr(self.main_menu, 'set_title_alignment'):
-                self.main_menu.set_title_alignment(ALIGN_CENTER)
-            elif hasattr(self.main_menu, '_theme'):
-                self.main_menu._theme.title_alignment = ALIGN_CENTER
-            # Method 2: Try setting column alignment
-            if hasattr(self.main_menu, 'set_alignment'):
-                self.main_menu.set_alignment(ALIGN_CENTER)
-        except:
-            pass
-        
-        # Add main menu buttons - behavior changes based on difficulty change count
-        if hasattr(self, "game") and self.game and self.game.get_difficulty_change_count() >= 1:
-            play_btn = self.main_menu.add.button("Play", self._play_current_difficulty)
-            change_difficulty_btn = self.main_menu.add.button("Change Mode", self._open_difficulty_select)
-        else:
-            play_btn = self.main_menu.add.button("Play", self._open_difficulty_select)
-        settings_btn = self.main_menu.add.button("Settings", self._open_settings)
-        controls_btn = self.main_menu.add.button("Controls", self._open_controls)
-        quit_btn = self.main_menu.add.button("Quit", self._show_quit_confirmation)
-        for widget in self.main_menu.get_widgets():
-            if hasattr(widget, 'set_margin'):
-                widget.set_margin(0, 2)
-        self.main_menu.add.vertical_margin(self.height // 10)
-        # Apply custom styling to main menu
-        self._customize_menu_widgets(self.main_menu)
-        
-        # Create quit confirmation menu
-        self.quit_confirmation_menu = pygame_menu.Menu(
-            "Quit Game",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        self.quit_confirmation_menu.add.label("")
-        self.quit_confirmation_menu.add.label("Are you sure you want to quit?")
-        self.quit_confirmation_menu.add.label("")
-        yes_btn = self.quit_confirmation_menu.add.button("Yes", pygame_menu.events.EXIT)
-        no_btn = self.quit_confirmation_menu.add.button("No", self._cancel_quit)
-        for widget in self.quit_confirmation_menu.get_widgets():
-            if hasattr(widget, 'set_margin'):
-                widget.set_margin(0, 2)
-        self._customize_menu_widgets(self.quit_confirmation_menu)
-        
-        # Create difficulty selection menu with ACTUAL dimensions
-        self.difficulty_menu = pygame_menu.Menu(
-            "Select Mode",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Dynamically add difficulty options from game modes configuration
-        game_modes = self.game_modes
-        difficulty_icons = {"easy", "medium", "hard"}
-        
-        # Define background colors for each difficulty
-        difficulty_colors = {
-            "freeplay": (22, 57, 161, 200),  # Blue (original color)
-            "easy": (33, 148, 33, 200),      # Green
-            "medium": (199, 106, 26, 200),   # Orange
-            "hard": (176, 28, 28, 200),      # Red
-            "limited_time": (240, 198, 38, 200),   # Gold
-            "limited_moves": (240, 198, 38, 200),  # Gold
-            "daily_cube": (138, 43, 226, 200),     # Purple/Violet
-        }
-        
-        # First, add Free Play button separately at the top
-        self.difficulty_menu.add.vertical_margin(20)
-        
-        if "freeplay" in game_modes:
-            mode_config = game_modes["freeplay"]
-            button_text = mode_config['name']
-            button_action = lambda difficulty="freeplay": self._start_game(difficulty)
-            bg_color = difficulty_colors.get("freeplay", (40, 60, 90, 200))
-            
-            freeplay_button = self.difficulty_menu.add.button(
-                button_text, 
-                button_action,
-                font_size=40,
-                font_name=pygame_menu.font.FONT_FRANCHISE,
-                background_color=bg_color,
-                padding=(20, 370)  # (wide buttons)
-            )
-            
-            # Store difficulty button for animation tracking and tooltip
-            self.difficulty_buttons[freeplay_button] = {
-                'difficulty': "freeplay",
-                'original_color': bg_color,
-                'base_color': bg_color,
-                'description': mode_config['description']
-            }
-            
-            # Initialize animation state for this button
-            self.button_animations[freeplay_button] = {
-                'is_hovering': False,
-                'animation_start_time': 0,
-                'glow_intensity': 0.0
-            }
-        
-        # Add spacing before the horizontal row
-        self.difficulty_menu.add.vertical_margin(30)
-        
-        # Create horizontal layout for Easy, Medium, Hard using frame
-        horizontal_frame = self.difficulty_menu.add.frame_h(
-            width=1000,  # Further increased width to accommodate buttons
-            height=130,
-            align=ALIGN_CENTER,
-            margin=(0, 0)
-        )
-        
-        # Add Easy, Medium, Hard buttons horizontally
-        horizontal_difficulties = ["easy", "medium", "hard"]
-        for i, mode_key in enumerate(horizontal_difficulties):
-            if mode_key in game_modes:
-                mode_config = game_modes[mode_key]
-                button_text = mode_config['name']
-                button_action = lambda difficulty=mode_key: self._start_game(difficulty)
-                bg_color = difficulty_colors.get(mode_key, (40, 60, 90, 200))
-                
-                difficulty_button = horizontal_frame.pack(
-                    self.difficulty_menu.add.button(
-                        button_text, 
-                        button_action,
-                        font_size=40,
-                        font_name=pygame_menu.font.FONT_FRANCHISE,
-                        background_color=bg_color,
-                        padding=(20, 100),  # Increased padding for wider buttons  
-                        button_id=f'difficulty_{mode_key}',
-                        margin=(0, 0)  # No margin on individual buttons when packed
-                    ),
-                    align=ALIGN_CENTER,
-                    margin=(10, 0)  # Margin between buttons
-                )
-                
-                # Store difficulty button for animation tracking and tooltip
-                self.difficulty_buttons[difficulty_button] = {
-                    'difficulty': mode_key,
-                    'original_color': bg_color,
-                    'base_color': bg_color,
-                    'description': mode_config['description']
-                }
-                
-                # Initialize animation state for this button
-                self.button_animations[difficulty_button] = {
-                    'is_hovering': False,
-                    'animation_start_time': 0,
-                    'glow_intensity': 0.0
-                }
-        
-        # Create second horizontal layout for Limited Time, Limited Moves, and Daily Cube
-        challenge_frame = self.difficulty_menu.add.frame_h(
-            width=1200,  # Increased width to accommodate three buttons
-            height=130,
-            align=ALIGN_CENTER,
-            margin=(0, 0)
-        )
-        
-        # Add Limited Time, Limited Moves, and Daily Cube buttons horizontally
-        challenge_modes = ["limited_time", "limited_moves", "daily_cube"]
-        for mode_key in challenge_modes:
-            if mode_key in game_modes:
-                mode_config = game_modes[mode_key]
-                # Add globe emoji for daily cube
-                button_text = "🌍 " + mode_config['name'] if mode_key == "daily_cube" else mode_config['name']
-                
-                # Special handling for limited_time mode - open time selection instead of starting game directly
-                if mode_key == "limited_time":
-                    button_action = self._open_time_selection
-                # Special handling for limited_moves mode - open moves selection instead of starting game directly
-                elif mode_key == "limited_moves":
-                    button_action = self._open_moves_selection
-                else:
-                    button_action = lambda difficulty=mode_key: self._start_game(difficulty)
-                
-                # Special color for daily cube
-                if mode_key == "daily_cube":
-                    bg_color = (138, 43, 226, 200)  # Purple/Violet
-                else:
-                    bg_color = difficulty_colors.get(mode_key, (40, 60, 90, 200))
-                
-                challenge_button = challenge_frame.pack(
-                    self.difficulty_menu.add.button(
-                        button_text, 
-                        button_action,
-                        font_size=40,
-                        font_name=pygame_menu.font.FONT_FRANCHISE,
-                        background_color=bg_color,
-                        padding=(20, 80),  # Increased padding for wider buttons
-                        button_id=f'difficulty_{mode_key}',
-                        margin=(0, 0)  # No margin on individual buttons when packed
-                    ),
-                    align=ALIGN_CENTER,
-                    margin=(10, 0)  # Reduced margin between challenge buttons
-                )
-                
-                # Store difficulty button for animation tracking and tooltip
-                self.difficulty_buttons[challenge_button] = {
-                    'difficulty': mode_key,
-                    'original_color': bg_color,
-                    'base_color': bg_color,
-                    'description': mode_config['description']
-                }
-                
-                # Initialize animation state for this button
-                self.button_animations[challenge_button] = {
-                    'is_hovering': False,
-                    'animation_start_time': 0,
-                    'glow_intensity': 0.0
-                }
-        
-        # Add final spacing and back button
-        self.difficulty_menu.add.vertical_margin(20)
-        back_btn = self.difficulty_menu.add.button("Back", self._back_to_main)
-        
-        # Apply custom styling to difficulty menu
-        self._customize_menu_widgets(self.difficulty_menu)
+        L = self.L
+        self.difficulty_menu = self._page("Choose a mode", self._back_to_main)
+        self._build_modes_page(self.difficulty_menu)
 
-        # Apply rounded styling to difficulty buttons
-        self._style_difficulty_buttons()
-        
-        # Create settings menu with ACTUAL dimensions
-        self.settings_menu = pygame_menu.Menu(
-            "Settings",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Resolution dropdown
-        resolution_options = [f"{w}x{h}" for w, h in self.available_resolutions]
-        self.settings_menu.add.dropselect(
-            title="Resolution: ",
-            items=[(res, i) for i, res in enumerate(resolution_options)],
-            default=current_resolution_index,
-            onchange=self._on_resolution_change
-        )
-        
-        # Display mode dropdown
-        self.settings_menu.add.dropselect(
-            title="Display Mode: ",
-            items=[("Windowed", False), ("Fullscreen", True)],
-            default=int(current_fullscreen),
-            onchange=self._on_fullscreen_change
-        )
-        
-        # Show FPS toggle
-        self.settings_menu.add.toggle_switch(
-            "Show FPS: ",
-            default=current_show_fps,
-            onchange=self._on_fps_toggle
-        )
-        
-        # Hints toggle
-        self.settings_menu.add.toggle_switch(
-            "Show Hints: ",
-            default=self.hints_enabled,
-            onchange=self._on_hints_toggle
-        )
-        
-        # Audio Settings button
-        audio_settings_btn = self.settings_menu.add.button("Audio Settings", self._open_audio_settings)
-        
-        # Settings menu buttons
-        apply_btn = self.settings_menu.add.button("Apply Changes", self._apply_settings)
-        back_btn = self.settings_menu.add.button("Back", self._back_to_main)
+        self.settings_menu = self._page("Settings", self._back_to_main, width=min(L.content_w, ui.px(1000)))
+        self._build_settings_page(self.settings_menu)
+        self.audio_settings_menu = self.settings_menu
 
-        # Store reference to apply button for dynamic updates
-        self.apply_button = apply_btn
+        self.controls_menu = self._page("Controls", self._back_to_main)
+        self._build_controls_page(self.controls_menu)
 
-        # Apply custom styling to settings menu
-        self._customize_menu_widgets(self.settings_menu)
-        
-        # Apply specific colors to the settings buttons
-        self._style_settings_buttons(apply_btn, back_btn)
-        
-        # Ensure apply button starts in correct state
-        self._update_apply_button_state()
-        
-        # Create audio settings menu with ACTUAL dimensions
-        self.audio_settings_menu = pygame_menu.Menu(
-            "Audio Settings",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Master Volume slider
-        self.master_volume_slider = self.audio_settings_menu.add.range_slider(
-            f"Master Volume: {self.master_volume}%",
-            default=self.master_volume,
-            range_values=(0, 100),
-            increment=5,
-            value_format=lambda x: "",
-            rangeslider_id="master_volume_slider",
-            slider_text_value_enabled=False,
-            onchange=self._on_master_volume_change
-        )
-        
-        # Music Volume slider
-        self.music_volume_slider = self.audio_settings_menu.add.range_slider(
-            f"Music Volume: {self.music_volume}%",
-            default=self.music_volume,
-            range_values=(0, 100),
-            increment=5,
-            value_format=lambda x: "",
-            rangeslider_id="music_volume_slider",
-            slider_text_value_enabled=False,
-            onchange=self._on_music_volume_change
-        )
-        
-        # Effects Volume slider
-        self.effects_volume_slider = self.audio_settings_menu.add.range_slider(
-            f"Effects Volume: {self.effects_volume}%",
-            default=self.effects_volume,
-            range_values=(0, 100),
-            increment=5,
-            value_format=lambda x: "",
-            rangeslider_id="effects_volume_slider",
-            slider_text_value_enabled=False,
-            onchange=self._on_effects_volume_change
-        )
-        
-        # Menu Volume slider
-        self.menu_volume_slider = self.audio_settings_menu.add.range_slider(
-            f"Menu Volume: {self.menu_volume}%",
-            default=self.menu_volume,
-            range_values=(0, 100),
-            increment=5,
-            value_format=lambda x: "",
-            rangeslider_id="menu_volume_slider",
-            slider_text_value_enabled=False,
-            onchange=self._on_menu_volume_change
-        )
-        
-        # Audio settings menu buttons
-        audio_back_btn = self.audio_settings_menu.add.button("Back", self._back_to_settings)
-        
-        # Apply custom styling to audio settings menu
-        self._customize_menu_widgets(self.audio_settings_menu)
-        
-        # Controls menu with ACTUAL dimensions
-        self.controls_menu = pygame_menu.Menu(
-            "Controls",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Add controls text with better formatting to match the interface
-        controls_sections = [
-            ("BASIC CONTROLS", [
-                ("Toggle menu", "[ESC]"),
-                ("Manual rotation", "[Arrow Keys]"),
-                ("Toggle auto-rotation", "[Space]"),
-                ("Scramble cube", "[X]"),
-                ("Undo last move", "[Z]"),
-                ("Reset rotation", "[T]"),
-                ("Toggle fullscreen", "[F11]"),
-                ("Toggle debug mode", "[Ctrl+B]")
-
-            ]),
-            ("MOUSE CONTROLS", [
-                ("Rotate camera view", "[Right Click + Drag]"),
-                ("Perform cube moves", "[Left Click + Drag]"),
-                ("Disable auto-rotation", "[Space / Left Click / Right Click]")
-            ]),
-            ("CUBE MOVES", [
-                ("R Move / R' Move", "[R / Shift+R]"),
-                ("L Move / L' Move", "[L / Shift+L]"),
-                ("U Move / U' Move", "[U / Shift+U]"),
-                ("D Move / D' Move", "[D / Shift+D]"),
-                ("F Move / F' Move", "[F / Shift+F]"),
-                ("B Move / B' Move", "[B / Shift+B]")
-            ]),
-            ("SLICE MOVES", [
-                ("M Move / M' Move", "[M / Shift+M]"),
-                ("E Move / E' Move", "[E / Shift+E]"),
-                ("S Move / S' Move", "[S / Shift+S]")
-            ])
-        ]
-        
-        for section_title, controls in controls_sections:
-            # Add section header
-            self.controls_menu.add.label(section_title, font_size=50, font_color=(235, 38, 38), font_name=pygame_menu.font.FONT_FRANCHISE)
-            self.controls_menu.add.vertical_margin(10)
-            # Add controls with right-aligned key bindings
-            for control_desc, key_binding in controls:
-                # Create a formatted string with proper spacing
-                formatted_control = f"{control_desc:<30} {key_binding:>15}"
-                self.controls_menu.add.label(formatted_control, font_size=30, font_color=(255, 255, 255), font_name=pygame_menu.font.FONT_FRANCHISE)
-            self.controls_menu.add.vertical_margin(20)
-        back_btn = self.controls_menu.add.button("Back", self._back_to_main)
-        # Apply custom styling to controls menu
-        self._customize_menu_widgets(self.controls_menu)
-        # Ensure the Back button gets hover/cursor styling
-        self._apply_hover_effect(back_btn, False)
-        
-        # Create statistics menu (renamed from personal best) with ACTUAL dimensions
-        self.personal_best_menu = pygame_menu.Menu(
-            "Statistics",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Create statistics menu content
+        self.personal_best_menu = self._page("Statistics", self._back_to_main)
         self._create_personal_best_content()
-        
-        # Create achievements menu
-        self.achievements_menu = pygame_menu.Menu(
-            "Achievements",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Create achievements menu content
+
+        self.achievements_menu = self._page("Achievements", self._back_to_main, width=min(L.content_w, ui.px(1100)))
         self._create_achievements_content()
-        
-        # Create user setup menu for first-time setup
-        self.user_setup_menu = pygame_menu.Menu(
-            "Welcome!",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
+
+        challenge_w = min(L.content_w, ui.px(760))
+        self.time_selection_menu = self._page("Limited Time", self._back_to_difficulty, width=challenge_w)
+        self._build_limit_page(self.time_selection_menu, "time")
+        self.moves_selection_menu = self._page("Limited Moves", self._back_to_difficulty, width=challenge_w)
+        self._build_limit_page(self.moves_selection_menu, "moves")
+
+        form_w = min(L.content_w, ui.px(620))
+        self.user_setup_menu = self._page("", self._back_from_user_setup, kind="dialog", width=form_w, motion_select=False)
         self._create_user_setup_content()
-        
-        # Create user edit menu for editing user info
-        self.user_edit_menu = pygame_menu.Menu(
-            "Edit Profile",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Create time selection menu for limited time mode
-        self.time_selection_menu = pygame_menu.Menu(
-            "Select Time Limit",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Add description
-        self.time_selection_menu.add.vertical_margin(20)
-        self.time_selection_menu.add.label(
-            "Choose your time limit for the challenge:",
-            font_size=45,
-            font_color=(255, 255, 255),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        self.time_selection_menu.add.vertical_margin(30)
-        
-        # Create time display label
-        self.time_display_label = self.time_selection_menu.add.label(
-            f"Time Limit: {self._format_time_display(self.selected_time_limit)}",
-            font_size=45,
-            font_color=(240, 198, 38),  # Golden color
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.time_selection_menu.add.vertical_margin(20)
-        
-        # Add time slider with labels
-        time_labels = [self._format_time_display(time) for time in self.time_limit_options]
-        current_index = self.time_limit_options.index(self.selected_time_limit)
-        
-        self.time_slider = self.time_selection_menu.add.range_slider(
-            "",
-            default=current_index,
-            range_values=(0, len(self.time_limit_options) - 1),
-            increment=1,
-            value_format=lambda x: "",
-            rangeslider_id="time_limit_slider",
-            slider_text_value_enabled=False,
-            onchange=self._on_time_limit_change_and_update_display
-        )
-        
-        # Customize slider appearance
-        self.time_slider.set_background_color((60, 60, 60, 200))
-        
-        self.time_selection_menu.add.vertical_margin(30)
-        
-        # Add time option labels below slider in a simple vertical layout
-        time_labels = [self._format_time_display(time) for time in self.time_limit_options]
-        current_index = self.time_limit_options.index(self.selected_time_limit)
-                
-        self.time_selection_menu.add.vertical_margin(40)
-        
-        # Add action buttons without frame to avoid sizing issues
-        start_btn = self.time_selection_menu.add.button(
-            "Start Game",
-            self._start_limited_time_game,
-            font_size=45,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(240, 198, 38, 200),  # Gold
-            padding=(15, 30)
-        )
-        
-        # Store reference to time start button for special hover handling
-        self.time_start_btn = start_btn
-        
-        # Make the Start Game button rounded (like difficulty buttons)
-        def draw_rounded_time(widget, surface, *args, **kwargs):
-            rect = widget.get_rect(to_real_position=True)
-            color = widget._background_color if hasattr(widget, '_background_color') else (138, 43, 226, 200)
-            border_radius = 18
-            pygame.draw.rect(surface, color, rect, border_radius=border_radius)
-            pygame.draw.rect(surface, (120, 120, 120, 180), rect, width=2, border_radius=border_radius)
-            if hasattr(widget, 'get_title') and hasattr(widget, '_font'):
-                text = widget.get_title()
-                font = widget._font
-                font_color = widget._font_color if hasattr(widget, '_font_color') else (255, 255, 255)
-                text_surf = font.render(text, True, font_color)
-                text_rect = text_surf.get_rect(center=rect.center)
-                surface.blit(text_surf, text_rect)
-        start_btn._original_draw = start_btn.draw
-        start_btn.draw = lambda surface, *a, btn=start_btn, **k: draw_rounded_time(btn, surface, *a, **k)
-        
-        self.time_selection_menu.add.vertical_margin(10)
-        
-        back_btn = self.time_selection_menu.add.button(
-            "Back",
-            self._back_to_difficulty,
-            font_size=45,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            padding=(15, 30)
-        )
-        
-        # Apply custom styling to time selection menu
-        self._customize_menu_widgets(self.time_selection_menu)
-        
-        # Apply hover effects to buttons
-        self._apply_hover_effect(start_btn, False)
-        self._apply_hover_effect(back_btn, False)
-        
-        # Create moves selection menu for limited moves mode
-        self.moves_selection_menu = pygame_menu.Menu(
-            "Select Move Limit",
-            self.width,
-            self.height,
-            theme=self.sub_theme
-        )
-        
-        # Add description
-        self.moves_selection_menu.add.vertical_margin(20)
-        self.moves_selection_menu.add.label(
-            "Choose your move limit for the challenge:",
-            font_size=45,
-            font_color=(255, 255, 255),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        self.moves_selection_menu.add.vertical_margin(30)
-        
-        # Create moves display label
-        self.moves_display_label = self.moves_selection_menu.add.label(
-            f"Move Limit: {self.selected_move_limit} moves",
-            font_size=45,
-            font_color=(240, 198, 38),  # Golden color
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.moves_selection_menu.add.vertical_margin(20)
-        
-        # Add moves slider
-        current_move_index = self.move_limit_options.index(self.selected_move_limit)
-        
-        self.moves_slider = self.moves_selection_menu.add.range_slider(
-            "",
-            default=current_move_index,
-            range_values=(0, len(self.move_limit_options) - 1),
-            increment=1,
-            value_format=lambda x: "",
-            rangeslider_id="move_limit_slider",
-            slider_text_value_enabled=False,
-            onchange=self._on_move_limit_change_and_update_display
-        )
-        
-        # Customize slider appearance
-        self.moves_slider.set_background_color((60, 60, 60, 200))
-        
-        self.moves_selection_menu.add.vertical_margin(40)
-                
-        self.moves_selection_menu.add.vertical_margin(40)
-        
-        # Add action buttons
-        moves_start_btn = self.moves_selection_menu.add.button(
-            "Start Game",
-            self._start_limited_moves_game,
-            font_size=45,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(240, 198, 38, 200),  # Gold (matching limited moves theme)
-            padding=(15, 30)
-        )
-        
-        # Store reference to moves start button for special hover handling
-        self.moves_start_btn = moves_start_btn
-        
-        # Make the Start Game button rounded (like difficulty buttons)
-        def draw_rounded_moves(widget, surface, *args, **kwargs):
-            rect = widget.get_rect(to_real_position=True)
-            color = widget._background_color if hasattr(widget, '_background_color') else (255, 20, 147, 200)
-            border_radius = 18
-            pygame.draw.rect(surface, color, rect, border_radius=border_radius)
-            pygame.draw.rect(surface, (120, 120, 120, 180), rect, width=2, border_radius=border_radius)
-            if hasattr(widget, 'get_title') and hasattr(widget, '_font'):
-                text = widget.get_title()
-                font = widget._font
-                font_color = widget._font_color if hasattr(widget, '_font_color') else (255, 255, 255)
-                text_surf = font.render(text, True, font_color)
-                text_rect = text_surf.get_rect(center=rect.center)
-                surface.blit(text_surf, text_rect)
-        moves_start_btn._original_draw = moves_start_btn.draw
-        moves_start_btn.draw = lambda surface, *a, btn=moves_start_btn, **k: draw_rounded_moves(btn, surface, *a, **k)
-        
-        self.moves_selection_menu.add.vertical_margin(10)
-        
-        moves_back_btn = self.moves_selection_menu.add.button(
-            "Back",
-            self._back_to_difficulty,
-            font_size=45,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            padding=(20, 40)
-        )
-        
-        # Apply custom styling to moves selection menu
-        self._customize_menu_widgets(self.moves_selection_menu)
-        
-        # Apply hover effects to buttons
-        self._apply_hover_effect(moves_start_btn, False)
-        self._apply_hover_effect(moves_back_btn, False)
-        
-        # Set current menu (preserve the current menu state)
-        if hasattr(self, 'current_menu'):
-            if self.current_menu == self.settings_menu:
-                self.current_menu = self.settings_menu
-            elif self.current_menu == self.audio_settings_menu:
-                self.current_menu = self.audio_settings_menu
-            elif self.current_menu == self.controls_menu:
-                self.current_menu = self.controls_menu
-            elif self.current_menu == self.difficulty_menu:
-                self.current_menu = self.difficulty_menu
-            elif self.current_menu == self.personal_best_menu:
-                self.current_menu = self.personal_best_menu
-            elif self.current_menu == self.time_selection_menu:
-                self.current_menu = self.time_selection_menu
-            elif self.current_menu == self.moves_selection_menu:
-                self.current_menu = self.moves_selection_menu
-            elif self.current_menu == self.user_setup_menu:
-                self.current_menu = self.user_setup_menu
-            elif self.current_menu == self.user_edit_menu:
-                self.current_menu = self.user_edit_menu
-            elif self.current_menu == self.achievements_menu:
-                self.current_menu = self.achievements_menu
-            else:
-                self.current_menu = self.main_menu
+        self.user_edit_menu = self._page("", self._back_to_statistics, kind="dialog", width=form_w, motion_select=False)
+        self._create_user_edit_content()
+
+        self.quit_confirmation_menu = self._page("", self._cancel_quit, kind="dialog", width=min(L.content_w, ui.px(560)))
+        self._build_quit_dialog(self.quit_confirmation_menu)
+
+        self.main_menu = None
+        self.refresh_main_menu_buttons()
+
+        self.current_menu = getattr(self, previous_key) if previous_key else self.main_menu
+
+    def update_dimensions(self, width, height):
+        if (width, height) == (self.width, self.height) and getattr(self, "main_menu", None):
+            return
+        self.width, self.height = width, height
+        self._create_menus()
+        self.resolution_changed_flag = False
+
+    def refresh_main_menu_buttons(self):
+        """(Re)build the main menu so its buttons match the game state"""
+        if not hasattr(self, "L"):
+            return
+        old = getattr(self, "main_menu", None)
+        if old is not None:
+            self.pages.pop(old, None)
+        menu = self._page("", self._close_from_main, kind="main")
+        L = self.L
+        inner = L.panel_w - 2 * L.panel_pad
+        page = self.pages[menu]
+        page["width"] = inner
+
+        # Logo: cube on the left, name on the right, left aligned in the panel
+        logo = ui.logo("rubiks_logo_horizontal", inner, ui.px(190))
+        if logo is not None:
+            row = pygame.Surface((inner, logo.get_height()), pygame.SRCALPHA)
+            row.blit(logo, (0, 0))
+            self._surface(menu, row)
+        self._spacer(menu, 48)
+
+        in_game = self._in_game()
+        if in_game:
+            mode_name = self.game_modes.get(self.selected_difficulty, {}).get("name", "")
+            self._custom_button(menu, "Resume", self._play_current_difficulty, inner, ui.px(72),
+                                self._paint_main_primary, button_id="main_primary", meta=mode_name)
         else:
-            self.current_menu = self.main_menu
-    
-    def _create_achievements_content(self):
-        """Create or refresh achievements menu content with progress bars"""
-        # Clear existing content except title
-        widgets = self.achievements_menu.get_widgets()
-        widgets_to_remove = []
-        
-        # Remove all widgets except the title (first widget)
-        for i, widget in enumerate(widgets):
-            if i > 0:  # Keep only the first widget (title)
-                widgets_to_remove.append(widget)
-        
-        for widget in widgets_to_remove:
-            self.achievements_menu.remove_widget(widget)
-        
-        # Get achievement data
-        unlocked_count, total_count = self.achievements_manager.get_unlocked_count()
-        achievements_by_category = self.achievements_manager.get_achievements_by_category()
-        
-        # Add header with overall progress
-        self.achievements_menu.add.vertical_margin(15)
-        
-        # Overall progress display
-        progress_pct = (unlocked_count / total_count * 100) if total_count > 0 else 0
-        header_text = f"{unlocked_count} / {total_count} Achievements Unlocked ({progress_pct:.0f}%)"
-        self.achievements_menu.add.label(
-            header_text,
-            font_size=36,
-            font_color=(240, 198, 38),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.achievements_menu.add.vertical_margin(10)
-        
-        # Draw overall progress bar
-        self._add_achievements_progress_bar(progress_pct / 100.0)
-        
-        self.achievements_menu.add.vertical_margin(25)
-        
-        # Category display order and names
-        category_order = ["beginner", "progression", "speed", "challenge", "daily", "efficiency", "secret"]
-        category_names = {
-            "beginner": "Beginner",
-            "progression": "Progression",
-            "speed": "Speed",
-            "challenge": "Challenges",
-            "daily": "Daily",
-            "efficiency": "Efficiency",
-            "secret": "Secret"
-        }
-        
-        # Display achievements by category
-        for category in category_order:
-            if category not in achievements_by_category:
-                continue
-            
-            achievements = achievements_by_category[category]
-            category_name = category_names.get(category, category.title())
-            
-            # Category header
-            self.achievements_menu.add.label(
-                category_name,
-                font_size=55,
-                font_color=(255, 180, 0),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.achievements_menu.add.vertical_margin(8)
-            
-            # Display each achievement in this category
-            for achievement in achievements:
-                self._add_achievement_widget(achievement)
-            
-            self.achievements_menu.add.vertical_margin(15)
-        
-        # Back button
-        self.achievements_menu.add.vertical_margin(20)
-        back_btn = self.achievements_menu.add.button("Back", self._back_to_main)
-        
-        # Apply custom styling
-        self._customize_menu_widgets(self.achievements_menu)
-    
-    def _add_achievements_progress_bar(self, progress):
-        """Add a visual progress bar to the achievements menu"""
-        # Create a frame for the progress bar
-        bar_width = 600
-        bar_height = 25
-        
-        # We'll draw the progress bar as a label with special formatting
-        filled_width = int(bar_width * progress)
-        empty_width = bar_width - filled_width
-        
-        # Create visual representation using block characters
-        filled_blocks = int(progress * 30)  # 30 blocks total
-        empty_blocks = 30 - filled_blocks
-        
-        bar_text = "█" * filled_blocks + "░" * empty_blocks
-        
-        self.achievements_menu.add.label(
-            bar_text,
-            font_size=20,
-            font_color=(240, 198, 38),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-    
-    def _create_achievement_surface(self, achievement, width=750, height=110):
-        """Create a surface with the achievement details in a box"""
-        surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        
-        # Colors
-        bg_color = (20, 30, 45, 180)  # Dark background
-        border_color = (60, 70, 90)
-        
-        is_unlocked = achievement.get("unlocked", False)
-        is_secret = achievement.get("secret", False)
-        progress = achievement.get("progress", 0)
-        target = achievement.get("target", 1)
-        progress_pct = achievement.get("progress_percentage", 0)
-        
-        if is_unlocked:
-            border_color = (240, 198, 38) # Gold border
-            bg_color = (30, 40, 60, 220)
-            
-        # Draw box
-        pygame.draw.rect(surface, bg_color, (0, 0, width, height), border_radius=8)
-        pygame.draw.rect(surface, border_color, (0, 0, width, height), 2, border_radius=8)
-        
-        # Font Helper - Optimized with lazy loading
-        if not hasattr(self, '_achievement_title_font'):
-             try:
-                self._achievement_title_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 42)
-             except:
-                self._achievement_title_font = pygame.font.SysFont("arial", 42)
-        
-        if not hasattr(self, '_achievement_desc_font'):
-             try:
-                self._achievement_desc_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 28)
-             except:
-                self._achievement_desc_font = pygame.font.SysFont("arial", 28)
+            self._custom_button(menu, "Play", self._open_difficulty_select, inner, ui.px(72),
+                                self._paint_main_primary, button_id="main_primary")
+        self._spacer(menu, 18)
 
-        if not hasattr(self, '_achievement_status_font'):
-             try:
-                self._achievement_status_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 22)
-             except:
-                self._achievement_status_font = pygame.font.SysFont("arial", 22)
+        unlocked, total = self.achievements_manager.get_unlocked_count()
+        items = []
+        if in_game:
+            items.append(("Change mode", self._open_difficulty_select, None))
+        items += [
+            ("Statistics", self._open_personal_best, None),
+            ("Achievements", self._open_achievements, f"{unlocked} / {total}"),
+            ("Settings", self._open_settings, None),
+            ("Controls", self._open_controls, None),
+            ("Quit", self._show_quit_confirmation, None),
+        ]
+        for label, action, meta in items:
+            self._custom_button(menu, label, action, inner, ui.px(58), self._paint_nav, meta=meta)
+            self._spacer(menu, 2)
 
-        # Content Logic
-        icon_path = achievement.get("icon", "")
-        name = achievement.get("name", "Unknown")
-        description = achievement.get("description", "")
-        
-        if is_secret and not is_unlocked:
-            name = "???"
-            description = "This is a secret achievement"
-            icon_path = ""
-            
-        name_color = (240, 198, 38) if is_unlocked else (180, 180, 180)
-        desc_color = (200, 200, 200) if is_unlocked else (120, 120, 120)
-        
-        # Draw Icon (Left side, square based on height)
-        padding = 10
-        icon_size = height - (padding * 2)
-        icon_rect = pygame.Rect(padding, padding, icon_size, icon_size)
-        # No icon background: icons should render on the card without a black box behind.
-        
-        if icon_path:
-            full_icon_path = resource_path(icon_path)
-            if os.path.exists(full_icon_path):
-                try:
-                    icon_img = pygame.image.load(full_icon_path).convert_alpha()
-                    icon_img = pygame.transform.smoothscale(icon_img, (icon_size, icon_size))
-                    surface.blit(icon_img, icon_rect)
-                except Exception as e:
-                    print(f"Error loading icon: {e}")
-        
-        # Text Area (Right of icon)
-        text_x = padding + icon_size + 20
-        text_width = width - text_x - padding
-        
-        # Name
-        name_surf = self._achievement_title_font.render(name, True, name_color)
-        surface.blit(name_surf, (text_x, 10))
-        
-        # Description
-        desc_surf = self._achievement_desc_font.render(description, True, desc_color)
-        surface.blit(desc_surf, (text_x, 52))
-        
-        # Progress Bar or Unlocked Text
-        bottom_y = height - 30
-        
-        if not is_unlocked and target > 1:
-            # Draw progress bar
-            bar_w = 250
-            bar_h = 10
-            
-            # Background
-            pygame.draw.rect(surface, (50, 50, 50), (text_x, bottom_y + 6, bar_w, bar_h), border_radius=5)
-            # Fill
-            fill_w = int(bar_w * progress_pct)
-            if fill_w > 0:
-                pygame.draw.rect(surface, (100, 180, 255), (text_x, bottom_y + 6, fill_w, bar_h), border_radius=5)
-            
-            # Text
-            status_text = f"{progress}/{target}"
-            status_surf = self._achievement_status_font.render(status_text, True, (150, 150, 150))
-            surface.blit(status_surf, (text_x + bar_w + 12, bottom_y))
-            
-        elif is_unlocked:
-             status_text = "UNLOCKED"
-             status_surf = self._achievement_status_font.render(status_text, True, (100, 255, 100))
-             surface.blit(status_surf, (text_x, bottom_y))
+        self.main_menu = menu
+        if old is not None and getattr(self, "current_menu", None) is old:
+            self.current_menu = menu
 
-        return surface
+    def _build_modes_page(self, menu):
+        menu.clear()
+        L = self.L
+        cw = self.pages[menu]["width"]
+        gap = L.gap
+        in_game = self._in_game()
+        current = self.selected_difficulty if in_game else None
 
-    def _add_achievement_widget(self, achievement):
-        """Add a single achievement widget with progress bar if applicable"""
-        # Create custom surface for the achievement
-        surf = self._create_achievement_surface(achievement)
+        def card(mode_key, w, h, action, wide=False):
+            return self._custom_button(menu, self.game_modes[mode_key]["name"], action, w, h,
+                                       self._paint_mode_card, button_id=f"mode_{mode_key}",
+                                       mode=mode_key, wide=wide, current=(mode_key == current))
 
-        # Convert surface to BytesIO for pygame-menu
-        image_bytes = BytesIO()
-        pygame.image.save(surf, image_bytes, "PNG")
-        image_bytes.seek(0)  # Reset pointer to start
-        
-        # Add surface to menu
-        self.achievements_menu.add.image(
-            image_bytes,
-            align=ALIGN_CENTER,
-            margin=(0, 5)
-        )
-    
-    def _create_personal_best_content(self):
-        """Create or refresh statistics menu content with tabs"""
-        # Clear existing content except title
-        widgets = self.personal_best_menu.get_widgets()
-        widgets_to_remove = []
-        
-        # Remove all widgets except the title (first widget)
-        for i, widget in enumerate(widgets):
-            if i > 0:  # Keep only the first widget (title)
-                widgets_to_remove.append(widget)
-        
-        for widget in widgets_to_remove:
-            self.personal_best_menu.remove_widget(widget)
-        
-        # Add user info display at the top
-        username = self.user_manager.get_username()
-        region = self.user_manager.get_region()
-        if username:
-            self.personal_best_menu.add.vertical_margin(10)
-            user_info_text = f"Player: {username}"
-            if region:
-                user_info_text += f"  |  Region: {region}"
-            # Tab navigation buttons (side-by-side)
-            self.personal_best_menu.add.vertical_margin(15)
+        self._section(menu, "Practice", top=24)
+        card("freeplay", cw, ui.px(96), lambda: self._start_game("freeplay"), wide=True)
 
-            tab_frame = self.personal_best_menu.add.frame_h(
-                width=1100,
-                height=90,
-                align=ALIGN_CENTER,
-                margin=(0, 0)
-            )
-            # Suppress pack margin warnings (pygame-menu internal warning)
-            tab_frame._pack_margin_warning = False
+        card_w = (cw - 2 * gap) // 3
+        card_h = ui.px(172)
+        rows = [
+            ("Solve", [("easy", lambda: self._start_game("easy")),
+                       ("medium", lambda: self._start_game("medium")),
+                       ("hard", lambda: self._start_game("hard"))]),
+            ("Challenges", [("limited_time", self._open_time_selection),
+                            ("limited_moves", self._open_moves_selection),
+                            ("daily_cube", lambda: self._start_game("daily_cube"))]),
+        ]
+        for title, modes in rows:
+            self._section(menu, title)
+            frame = menu.add.frame_h(cw, card_h, padding=0)
+            frame._pack_margin_warning = False
+            for i, (mode_key, action) in enumerate(modes):
+                if i:
+                    frame.pack(menu.add.horizontal_margin(gap))
+                frame.pack(card(mode_key, card_w, card_h, action))
+        self._spacer(menu, 48)
 
-            pr_color = (240, 198, 38, 200) if self.statistics_tab == "personal_records" else (60, 60, 60, 180)
-            pr_text_color = (255, 255, 255) if self.statistics_tab == "personal_records" else (160, 160, 160)
-            personal_records_btn = tab_frame.pack(
-                self.personal_best_menu.add.button(
-                    "Personal Records",
-                    self._switch_to_personal_records_tab,
-                    font_size=26,
-                    font_name=pygame_menu.font.FONT_FRANCHISE,
-                    background_color=pr_color,
-                    font_color=pr_text_color,
-                    padding=(8, 20),
-                    margin=(0, 0)
-                ),
-                align=ALIGN_CENTER,
-                margin=(10, 0)
-            )
+    def _build_limit_page(self, menu, kind):
+        width = self.pages[menu]["width"]
+        self._spacer(menu, 24)
+        if kind == "time":
+            intro = "Pick how long you get to solve a 15 move scramble."
+            value = self._format_time_display(self.selected_time_limit).replace(" ", "  ")
+            options = self.time_limit_options
+            default = options.index(self.selected_time_limit)
+            onchange = self._on_time_limit_change_and_update_display
+            ends = (self._format_time_display(options[0]), self._format_time_display(options[-1]))
+            start = self._start_limited_time_game
+        else:
+            intro = "Pick your move budget for a 15 move scramble."
+            value = f"{self.selected_move_limit}  moves"
+            options = self.move_limit_options
+            default = options.index(self.selected_move_limit)
+            onchange = self._on_move_limit_change_and_update_display
+            ends = (f"{options[0]} moves", f"{options[-1]} moves")
+            start = self._start_limited_moves_game
 
-            gl_color = (240, 198, 38, 200) if self.statistics_tab == "global_leaderboard" else (60, 60, 60, 180)
-            gl_text_color = (255, 255, 255) if self.statistics_tab == "global_leaderboard" else (160, 160, 160)
-            leaderboard_btn = tab_frame.pack(
-                self.personal_best_menu.add.button(
-                    "Global Leaderboard",
-                    self._switch_to_leaderboard_tab,
-                    font_size=26,
-                    font_name=pygame_menu.font.FONT_FRANCHISE,
-                    background_color=gl_color,
-                    font_color=gl_text_color,
-                    padding=(8, 20),
-                    margin=(0, 0)
-                ),
-                align=ALIGN_CENTER,
-                margin=(10, 0)
-            )
+        self._text(menu, intro, ui.body_font(), ui.MUTED)
+        self._spacer(menu, 40)
 
-            dl_color = (240, 198, 38, 200) if self.statistics_tab == "daily_leaderboard" else (60, 60, 60, 180)
-            dl_text_color = (255, 255, 255) if self.statistics_tab == "daily_leaderboard" else (160, 160, 160)
-            daily_leaderboard_btn = tab_frame.pack(
-                self.personal_best_menu.add.button(
-                    "Daily Leaderboard",
-                    self._switch_to_daily_leaderboard_tab,
-                    font_size=26,
-                    font_name=pygame_menu.font.FONT_FRANCHISE,
-                    background_color=dl_color,
-                    font_color=dl_text_color,
-                    padding=(8, 20),
-                    margin=(0, 0)
-                ),
-                align=ALIGN_CENTER,
-                margin=(10, 0)
-            )
+        value_panel_h = ui.px(150)
+        label = menu.add.label(value, font_name=ui.FONT_DISPLAY, font_size=ui.fs(ui.SIZE_DISPLAY),
+                               font_color=ui.TEXT)
+        self._size_widget(label, width, value_panel_h)
+        if kind == "time":
+            self.time_display_label = label
+        else:
+            self.moves_display_label = label
 
-        self.personal_best_menu.add.vertical_margin(20)
-        
-        # Show content based on selected tab
+        self._spacer(menu, 16)
+        self._slider(menu, default, (0, len(options) - 1), 1, onchange, width)
+        self._spacer(menu, 10)
+        small = ui.body_font(ui.SIZE_SMALL)
+        ends_surf = pygame.Surface((width, small.get_height()), pygame.SRCALPHA)
+        ui.draw_text(ends_surf, ends[0], small, ui.MUTED, (0, 0))
+        ui.draw_text(ends_surf, ends[1], small, ui.MUTED, (width, 0), "topright")
+        self._surface(menu, ends_surf)
+        self._spacer(menu, 48)
+        self._button(menu, "Start challenge", start, w=width, h=ui.px(64), variant="primary")
+        self._spacer(menu, 48)
+
+    def _build_settings_page(self, menu):
+        menu.clear()
+        self.resolution_select = None
+        self.apply_button = None
+        self.volume_labels = {}
+        width = self.pages[menu]["width"]
+        control_w = min(ui.px(440), int(width * 0.5))
+
+        # Display
+        self._section(menu, "Display", top=20)
+        mode_index = display_manager.MODES.index(self.pending_mode)
+        mode_items = [(display_manager.MODE_LABELS[m], i) for i, m in enumerate(display_manager.MODES)]
+        mode_select = self._dropselect(menu, mode_items, mode_index, self._on_display_mode_change, control_w,
+                                       visible=3, widget_id="display_mode")
+        self._row(menu, "Display mode", [mode_select],
+                  desc="Borderless fills the monitor at its native resolution.")
+
+        if display_manager.num_displays() > 1:
+            monitor_items = [(display_manager.display_label(i), i) for i in range(display_manager.num_displays())]
+            monitor_select = self._dropselect(menu, monitor_items, self.pending_index, self._on_monitor_change,
+                                              control_w, visible=4, widget_id="display_monitor")
+            self._row(menu, "Monitor", [monitor_select])
+
+        options = self._pending_options()
+        if self.pending_size not in options:
+            self.pending_size = display_manager.nearest(self.pending_size, options)
+        self.resolution_select = self._dropselect(menu, self._resolution_items(), options.index(self.pending_size),
+                                                  self._on_resolution_change, control_w, visible=7,
+                                                  widget_id="display_resolution")
+        self.resolution_select.readonly = self.pending_mode == "borderless"
+        self._row(menu, "Resolution", [self.resolution_select],
+                  desc="Only sizes your monitor supports are listed.")
+
+        # HDR options exist only on monitors where Windows HDR is on; brightness only while HDR is on
+        hdr_available, peak_nits = hdr_output.display_hdr_info(self.pending_index)
+        self.paper_white_label = None
+        if hdr_available:
+            hdr_toggle = self._toggle(menu, self.pending_hdr, self._on_hdr_toggle, "display_hdr")
+            peak = f" (peak about {int(round(peak_nits))} nits)" if peak_nits else ""
+            self._row(menu, "HDR", [hdr_toggle], desc=f"Use the full HDR range of this monitor{peak}.")
+            if self.pending_hdr:
+                low, high = hdr_output.PAPER_WHITE_RANGE
+                value = max(low, min(high, int(round(self.hdr_paper_white / 5) * 5)))
+                slider = self._slider(menu, value, (low, high), 5, self._on_paper_white_change, control_w - ui.px(118))
+                self.paper_white_label = menu.add.label(f"{value:>3} nits", font_name=ui.FONT_MONO,
+                                                        font_size=ui.fs(ui.SIZE_SMALL), font_color=ui.MUTED)
+                self._row(menu, "HDR brightness", [self.paper_white_label, slider],
+                          desc="Brightness of white menus and the cube, in steps of 5 nits.")
+
+        self.apply_button = self._button(menu, "Apply", self._apply_settings, w=ui.px(200), h=ui.px(54),
+                                         variant="primary", button_id="apply_display")
+        self._row(menu, "Apply display changes", [self.apply_button])
+        self._update_settings_changed()
+
+        self._row(menu, "Show FPS counter", [self._toggle(menu, self.show_fps, self._on_fps_toggle)],
+                  separator=False)
+
+        # Audio
+        self._section(menu, "Audio")
+        mono = ui.FONT_MONO
+        slider_w = control_w - ui.px(86)
+        for key, title in (("master_volume", "Master volume"), ("music_volume", "Music"),
+                           ("effects_volume", "Sound effects"), ("menu_volume", "Menu sounds")):
+            value = getattr(self, key)
+            slider = self._slider(menu, value, (0, 100), 5, lambda v, k=key: self._set_volume(k, v), slider_w)
+            label = menu.add.label(f"{value:>3}%", font_name=mono, font_size=ui.fs(ui.SIZE_SMALL), font_color=ui.MUTED)
+            self.volume_labels[key] = label
+            self._row(menu, title, [label, slider], separator=key != "menu_volume")
+
+        # Gameplay
+        self._section(menu, "Gameplay")
+        self._row(menu, "Show hints", [self._toggle(menu, self.hints_enabled, self._on_hints_toggle)],
+                  desc="Offer a hint after 30 seconds without a move on Easy, Medium and Hard.", separator=False)
+        self._spacer(menu, 48)
+
+    def _build_controls_page(self, menu):
+        width = self.pages[menu]["width"]
+        sections = [
+            ("General", [
+                ("Open or close the menu", [["Esc"]]),
+                ("Toggle fullscreen", [["F11"]]),
+                ("Undo last move", [["Z"]]),
+                ("Scramble (Free Play)", [["X"]]),
+                ("Auto rotate camera", [["Space"]]),
+                ("Reset camera", [["T"]]),
+                ("Debug view", [["Ctrl", "B"]]),
+            ]),
+            ("Mouse", [
+                ("Turn a layer", [["Left drag"]]),
+                ("Orbit the camera", [["Right drag"]]),
+                ("Orbit with keys", [["Arrow keys"]]),
+            ]),
+            ("Face turns", [
+                ("Right", [["R"], ["Shift", "R"]]),
+                ("Left", [["L"], ["Shift", "L"]]),
+                ("Up", [["U"], ["Shift", "U"]]),
+                ("Down", [["D"], ["Shift", "D"]]),
+                ("Front", [["F"], ["Shift", "F"]]),
+                ("Back", [["B"], ["Shift", "B"]]),
+            ]),
+            ("Slice turns", [
+                ("Middle", [["M"], ["Shift", "M"]]),
+                ("Equator", [["E"], ["Shift", "E"]]),
+                ("Standing", [["S"], ["Shift", "S"]]),
+            ]),
+        ]
+        two_cols = width >= ui.px(980)
+        gap = ui.px(56)
+        col_w = (width - gap) // 2 if two_cols else width
+        columns = [[sections[0], sections[1]], [sections[2], sections[3]]] if two_cols else [sections]
+
+        head = ui.display_font(ui.SIZE_H3)
+        body = ui.body_font()
+        small = ui.body_font(ui.SIZE_SMALL)
+        key_font = ui.mono_font(ui.SIZE_SMALL, bold=True)
+        row_h = ui.px(52)
+
+        def column_height(col):
+            return sum(head.get_height() + ui.px(14) + len(rows) * row_h + ui.px(40) for _, rows in col)
+
+        height = max(column_height(c) for c in columns)
+        surf = pygame.Surface((width, height), pygame.SRCALPHA)
+        for ci, col in enumerate(columns):
+            x0 = ci * (col_w + gap)
+            y = 0
+            for title, rows in col:
+                ui.draw_text(surf, title, head, ui.MUTED, (x0, y))
+                y += head.get_height() + ui.px(14)
+                for desc, combos in rows:
+                    pygame.draw.line(surf, ui.LINE, (x0, y), (x0 + col_w, y), max(1, ui.px(1.5)))
+                    # Key combos right aligned: draw into a strip, then place it
+                    chips = []
+                    for ci2, combo in enumerate(combos):
+                        if ci2:
+                            chips.append(("text", "or"))
+                        for ki, key in enumerate(combo):
+                            if ki:
+                                chips.append(("text", "+"))
+                            chips.append(("key", key))
+                    strip = pygame.Surface((col_w, row_h), pygame.SRCALPHA)
+                    cx = 0
+                    for kind, value in chips:
+                        if kind == "key":
+                            kh = key_font.get_height() + ui.px(10)
+                            cx += ui.keycap(strip, cx, (row_h - kh) // 2, value, key_font) + ui.px(6)
+                        else:
+                            r = ui.draw_text(strip, value, small, ui.MUTED, (cx + ui.px(2), row_h // 2), "midleft")
+                            cx = r.right + ui.px(8)
+                    surf.blit(strip, (x0 + col_w - cx + ui.px(6), y), (0, 0, cx, row_h))
+                    ui.draw_text(surf, ui.ellipsize(desc, body, col_w - cx - ui.px(16)), body, ui.TEXT,
+                                 (x0, y + row_h // 2), "midleft")
+                    y += row_h
+                y += ui.px(40)
+        self._spacer(menu, 28)
+        self._surface(menu, surf)
+        self._spacer(menu, 24)
+
+    def _build_quit_dialog(self, menu):
+        width = self.pages[menu]["width"]
+        self._surface(menu, self._text_surface("Quit the game?", ui.display_font(ui.SIZE_H1), ui.TEXT, width))
+        self._spacer(menu, 8)
+        self._text(menu, "Any solve in progress will be lost.", ui.body_font(), ui.MUTED)
+        self._spacer(menu, 36)
+        gap = ui.px(16)
+        bw = (width - gap) // 2
+        frame = menu.add.frame_h(width, ui.px(60), padding=0)
+        frame._pack_margin_warning = False
+        frame.pack(self._button(menu, "Cancel", self._cancel_quit, w=bw, h=ui.px(60), button_id="quit_cancel"))
+        frame.pack(menu.add.horizontal_margin(gap))
+        frame.pack(self._button(menu, "Quit", self._quit_game, w=bw, h=ui.px(60), variant="danger",
+                                button_id="quit_confirm"))
+
+    # ---------------------------------------------------------------- statistics
+    def _create_personal_best_content(self, select_id=None, keep_selection=False):
+        menu = self.personal_best_menu
+        if keep_selection and select_id is None:
+            sel = menu.get_selected_widget()
+            select_id = sel.get_id() if sel is not None else None
+        menu.clear()
+        width = self.pages[menu]["width"]
+
+        # Profile strip
+        self._spacer(menu, 20)
+        username = self.user_manager.get_username() or "Guest"
+        region = self.user_manager.get_region() or ""
+        edit_btn = self._button(menu, "Edit profile", self._open_user_edit, w=ui.px(220), h=ui.px(54),
+                                icon_name="user-edit", button_id="edit_profile")
+        name_font = ui.display_font(ui.SIZE_H2)
+        small = ui.body_font(ui.SIZE_SMALL)
+        strip_w = width - edit_btn.get_width() - ui.px(24)
+        strip = pygame.Surface((strip_w, name_font.get_height() + small.get_height()), pygame.SRCALPHA)
+        ui.draw_text(strip, ui.ellipsize(username, name_font, strip_w), name_font, ui.TEXT, (0, 0))
+        if region:
+            ui.draw_text(strip, f"Region: {region}", small, ui.MUTED, (0, name_font.get_height() - ui.px(6)))
+        frame = menu.add.frame_h(width, max(strip.get_height(), edit_btn.get_height()), padding=0)
+        frame._pack_margin_warning = False
+        frame.pack(menu.add.surface(strip), align=ALIGN_LEFT, vertical_position=POSITION_CENTER)
+        frame.pack(edit_btn, align=ALIGN_RIGHT, vertical_position=POSITION_CENTER)
+        self._spacer(menu, 28)
+
+        # Tabs
+        tabs = [("personal_records", "Personal records"), ("global_leaderboard", "Global leaderboard"),
+                ("daily_leaderboard", "Daily leaderboard")]
+        tab_gap = ui.px(8)
+        tab_w = min(ui.px(270), (width - 2 * tab_gap) // 3)
+        tab_h = ui.px(52)
+        frame = menu.add.frame_h(width, tab_h, padding=0)
+        frame._pack_margin_warning = False
+        for i, (key, label) in enumerate(tabs):
+            if i:
+                frame.pack(menu.add.horizontal_margin(tab_gap))
+            frame.pack(self._custom_button(menu, label, lambda k=key: self._switch_tab(k), tab_w, tab_h,
+                                           self._paint_tab, button_id=f"tab_{key}",
+                                           selected=(self.statistics_tab == key)))
+        self._spacer(menu, 8)
+        self._hairline(menu)
+        self._spacer(menu, 24)
+
         if self.statistics_tab == "personal_records":
             self._create_personal_records_content()
         elif self.statistics_tab == "global_leaderboard":
             self._create_leaderboard_content()
-        else:  # daily_leaderboard
+        else:
             self._create_daily_leaderboard_content()
-        
-        # Add spacing and back button
-        self.personal_best_menu.add.vertical_margin(40)
-        back_btn = self.personal_best_menu.add.button("Back", self._back_to_main)
-        
-        # Apply custom styling to statistics menu
-        self._customize_menu_widgets(self.personal_best_menu)
-        # Ensure the Back button gets hover/cursor styling
-        self._apply_hover_effect(back_btn, False)
-    
+        self._spacer(menu, 48)
+
+        if select_id:
+            try:
+                menu.select_widget(select_id)
+            except Exception:
+                pass
+
+    def _stat_tiles(self, menu, tiles):
+        width = self.pages[menu]["width"]
+        gap = ui.px(16)
+        n = len(tiles)
+        tile_w = (width - gap * (n - 1)) // n
+        label_f = ui.body_font(ui.SIZE_SMALL)
+        value_f = ui.mono_font(ui.SIZE_H2, bold=True)
+        tile_h = ui.px(22) * 2 + label_f.get_height() + ui.px(6) + value_f.get_height()
+        surf = pygame.Surface((width, tile_h), pygame.SRCALPHA)
+        for i, (label, value) in enumerate(tiles):
+            r = pygame.Rect(i * (tile_w + gap), 0, tile_w, tile_h)
+            ui.panel(surf, r, fill=ui.SURFACE, border=ui.LINE)
+            ui.draw_text(surf, label, label_f, ui.MUTED, (r.x + ui.px(22), r.y + ui.px(22)))
+            ui.draw_text(surf, value, value_f, ui.TEXT, (r.x + ui.px(22), r.y + ui.px(28) + label_f.get_height()))
+        self._surface(menu, surf)
+
+    def _table(self, menu, columns, rows):
+        """Draw a table as one surface.
+
+        columns: list of (title, weight, align) where align is "left" or "right"
+        rows:    list of dicts with "cells" (strings or ("mode", key)), optional "highlight", "rank"
+        """
+        width = self.pages[menu]["width"]
+        head_f = ui.body_font(ui.SIZE_SMALL)
+        cell_f = ui.body_font()
+        mono_f = ui.mono_font(ui.SIZE_SMALL + 1)
+        head_h = ui.px(44)
+        row_h = ui.px(58)
+        pad = ui.px(18)
+        total_w = sum(c[1] for c in columns)
+        inner = width - 2 * pad
+        xs = []
+        x = pad
+        for _, weight, _ in columns:
+            w = int(inner * weight / total_w)
+            xs.append((x, w))
+            x += w
+
+        surf = pygame.Surface((width, head_h + row_h * len(rows)), pygame.SRCALPHA)
+        for (title, _, align), (cx, cw) in zip(columns, xs):
+            if align == "right":
+                ui.draw_text(surf, title, head_f, ui.MUTED, (cx + cw, head_h // 2), "midright")
+            else:
+                ui.draw_text(surf, title, head_f, ui.MUTED, (cx, head_h // 2), "midleft")
+        pygame.draw.line(surf, ui.LINE, (0, head_h - 1), (width, head_h - 1), max(1, ui.px(1.5)))
+
+        for ri, row in enumerate(rows):
+            y = head_h + ri * row_h
+            if row.get("highlight"):
+                ui.fill_rect(surf, ui.SURFACE_2, (0, y + ui.px(3), width, row_h - ui.px(6)), ui.radius(8))
+                ui.fill_rect(surf, ui.ACCENT, (0, y + ui.px(14), max(3, ui.px(4)), row_h - ui.px(28)), ui.px(2))
+            elif ri:
+                pygame.draw.line(surf, (32, 37, 45), (pad, y), (width - pad, y), 1)
+            cy = y + row_h // 2
+            for ci, (cell, (title, _, align), (cx, cw)) in enumerate(zip(row["cells"], columns, xs)):
+                color = ui.TEXT
+                fnt = cell_f
+                if isinstance(cell, tuple) and cell[0] == "mode":
+                    key = cell[1]
+                    sq = ui.px(22)
+                    mark = ui.mode_icon(key, sq)
+                    if mark:
+                        surf.blit(mark, (cx, cy - sq // 2))
+                    name = ui.MODE_NAMES.get(key, str(key).replace("_", " ").title())
+                    ui.draw_text(surf, ui.ellipsize(name, fnt, cw - sq - ui.px(14)), fnt, color,
+                                 (cx + sq + ui.px(12), cy), "midleft")
+                    continue
+                text = str(cell)
+                if ci == 0 and row.get("rank") is not None:
+                    fnt = mono_f
+                    color = ui.ACCENT if row["rank"] == 1 else ui.MUTED
+                elif align == "right":
+                    fnt = mono_f
+                if text in ("-", ""):
+                    color = ui.DIM
+                text = ui.ellipsize(text, fnt, cw - ui.px(12))
+                if align == "right":
+                    ui.draw_text(surf, text, fnt, color, (cx + cw, cy), "midright")
+                else:
+                    ui.draw_text(surf, text, fnt, color, (cx, cy), "midleft")
+        self._surface(menu, surf)
+
+    def _message(self, menu, title, body=None, title_color=ui.TEXT):
+        self._spacer(menu, 24)
+        self._text(menu, title, ui.display_font(ui.SIZE_H2), title_color)
+        if body:
+            self._spacer(menu, 4)
+            self._text(menu, body, ui.body_font(), ui.MUTED)
+
     def _create_personal_records_content(self):
-        """Create personal records tab content"""
-        # Check if there are any records
-        has_any_records = self.personal_best_manager.has_records()
-        
-        if not has_any_records:
-            # No records message
-            self.personal_best_menu.add.vertical_margin(30)
-            self.personal_best_menu.add.label(
-                "No records yet!",
-                font_size=45,
-                font_color=(255, 215, 0),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.personal_best_menu.add.vertical_margin(20)
-            self.personal_best_menu.add.label(
-                "Complete a cube solve in any difficulty",
-                font_size=32,
-                font_color=(200, 200, 200),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.personal_best_menu.add.label(
-                "to start tracking your personal bests!",
-                font_size=32,
-                font_color=(200, 200, 200),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
+        menu = self.personal_best_menu
+        pb = self.personal_best_manager
+        unlocked, total = self.achievements_manager.get_unlocked_count()
+        wins = pb.get_wins("limited_time") + pb.get_wins("limited_moves")
+        self._stat_tiles(menu, [("Total solves", str(pb.get_total_solves())),
+                                ("Challenges won", str(wins)),
+                                ("Achievements", f"{unlocked} / {total}")])
+
+        if not pb.has_records():
+            self._message(menu, "No solves yet",
+                          "Finish a cube on Easy, Medium or Hard and your best times show up here.")
+            self._spacer(menu, 24)
+            cta = self._button(menu, "Choose a mode", self._open_difficulty_select, w=ui.px(260), h=ui.px(56),
+                               variant="primary")
+            row = menu.add.frame_h(self.pages[menu]["width"], cta.get_height(), padding=0)
+            row._pack_margin_warning = False
+            row.pack(cta, align=ALIGN_LEFT)
         else:
-            # Display records in table format
-            self.personal_best_menu.add.vertical_margin(10)
-                        
-            # Table column headers with separators
-            header_row = "DIFFICULTY           │           BEST TIME           │          LEAST MOVES          │     SOLVES"
-            self.personal_best_menu.add.label(
-                header_row,
-                font_size=45,
-                font_color=(255, 255, 255),  # Brighter white for headers
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            
-            # Separator line
-            separator = "=" * 95  # Adjusted for even wider spacing
-            self.personal_best_menu.add.label(
-                separator,
-                font_size=30,  # Increased font size for better visibility
-                font_color=(200, 200, 200),  # Brighter color for better visibility
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.personal_best_menu.add.vertical_margin(5)
-            
-            # Table data rows
-            difficulties = ["easy", "medium", "hard"]
-            difficulty_names = {"easy": "Easy", "medium": "Medium", "hard": "Hard"}
-            difficulty_colors = {
-                "easy": (33, 148, 33),      # Green
-                "medium": (199, 106, 26),   # Orange  
-                "hard": (176, 28, 28)       # Red
-            }
-            
-            for difficulty in difficulties:
-                records = self.personal_best_manager.get_records(difficulty)
-                
-                # Format the data for each column
-                diff_name = difficulty_names[difficulty]
-                
-                if records["best_time"] is not None:
-                    best_time = f"{records['best_time']:.3f}s"
-                else:
-                    best_time = "---"
-                
-                if records["best_moves"] is not None:
-                    best_moves = f"{records['best_moves']}"
-                else:
-                    best_moves = "---"
-                
-                total_solves = records["total_solves"]
-                
-                # Create aligned row with even wider spacing to match headers
-                data_row = f"{diff_name:<21}│{best_time:^36}│{best_moves:^40}│{total_solves:^35}"
-                
-                # Add row with difficulty color
-                self.personal_best_menu.add.label(
-                    data_row,
-                    font_size=45,
-                    font_color=difficulty_colors[difficulty] if records["total_solves"] > 0 else (100, 100, 100),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-            
-            # Challenge Modes Win/Loss Table
-            self.personal_best_menu.add.vertical_margin(30)
-            
-            # Check if there are any challenge mode records
-            has_challenge_records = (
-                self.personal_best_manager.get_wins("limited_time") > 0 or 
-                self.personal_best_manager.get_losses("limited_time") > 0 or
-                self.personal_best_manager.get_wins("limited_moves") > 0 or 
-                self.personal_best_manager.get_losses("limited_moves") > 0
-            )
-            
-            if has_challenge_records:
-                # Challenge modes title
-                self.personal_best_menu.add.label(
-                    "CHALLENGE MODES STATISTICS",
-                    font_size=50,
-                    font_color=(255, 215, 0),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                
-                self.personal_best_menu.add.vertical_margin(20)
-                
-                # Challenge table headers
-                challenge_header = "MODE                    │        WINS       │       LOSSES      │      WIN RATE"
-                self.personal_best_menu.add.label(
-                    challenge_header,
-                    font_size=40,
-                    font_color=(255, 255, 255),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                
-                # Challenge separator line
-                challenge_separator = "=" * 85
-                self.personal_best_menu.add.label(
-                    challenge_separator,
-                    font_size=25,
-                    font_color=(200, 200, 200),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                
-                self.personal_best_menu.add.vertical_margin(5)
-                
-                # Challenge modes data
-                challenge_modes = ["limited_time", "limited_moves"]
-                challenge_names = {"limited_time": "Limited Time", "limited_moves": "Limited Moves"}
-                challenge_colors = {
-                    "limited_time": (255, 255, 255),   # White
-                    "limited_moves": (255, 255, 255)   # White
-                }
-                
-                for mode in challenge_modes:
-                    wins = self.personal_best_manager.get_wins(mode)
-                    losses = self.personal_best_manager.get_losses(mode)
-                    win_rate = self.personal_best_manager.get_win_rate(mode)
-                    
-                    # Only show modes that have been played
-                    if wins > 0 or losses > 0:
-                        mode_name = challenge_names[mode]
-                        win_rate_str = f"{win_rate:.1f}%" if win_rate > 0 else "0.0%"
-                        
-                        # Create aligned row
-                        challenge_row = f"{mode_name:<24}│{wins:^19}│{losses:^19}│{win_rate_str:^19}"
-                        
-                        # Add row with mode color
-                        self.personal_best_menu.add.label(
-                            challenge_row,
-                            font_size=40,
-                            font_color=challenge_colors[mode],
-                            font_name=pygame_menu.font.FONT_FRANCHISE
-                        )
-        
-            # Overall statistics
-            self.personal_best_menu.add.vertical_margin(20)
-            total_solves = self.personal_best_manager.get_total_solves()
-            if total_solves > 0:
-                self.personal_best_menu.add.label(
-                    f"Total Solves: {total_solves}",
-                    font_size=40,
-                    font_color=(255, 215, 0),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-    
+            self._section(menu, "Best solves")
+            rows = []
+            for difficulty in ("easy", "medium", "hard"):
+                r = pb.get_records(difficulty)
+                rows.append({"cells": [
+                    ("mode", difficulty),
+                    ui.format_clock(r["best_time"], decimals=True) if r.get("best_time") is not None else "-",
+                    str(r["best_moves"]) if r.get("best_moves") is not None else "-",
+                    f"{r['best_tps']:.2f}" if r.get("best_tps") else "-",
+                    str(r.get("total_solves", 0)),
+                ]})
+            self._table(menu, [("Mode", 3, "left"), ("Best time", 2, "right"), ("Fewest moves", 2, "right"),
+                               ("Best TPS", 2, "right"), ("Solves", 1.5, "right")], rows)
+
+        challenge_rows = []
+        for mode in ("limited_time", "limited_moves"):
+            w, l = pb.get_wins(mode), pb.get_losses(mode)
+            if w or l:
+                challenge_rows.append({"cells": [("mode", mode), str(w), str(l), f"{pb.get_win_rate(mode):.0f}%"]})
+        if challenge_rows:
+            self._section(menu, "Challenges")
+            self._table(menu, [("Mode", 3, "left"), ("Wins", 2, "right"), ("Losses", 2, "right"),
+                               ("Win rate", 2, "right")], challenge_rows)
+
+    def _leaderboard_state(self, loading, error, offline, data, empty_title, empty_body):
+        """Shows loading, error, offline and empty states. Returns True if a message was shown."""
+        menu = self.personal_best_menu
+        if error == "not_configured":
+            self._message(menu, "Leaderboard unavailable", "Online records are not set up in this build.")
+        elif loading:
+            self._message(menu, "Loading", "Fetching the latest times.")
+        elif error:
+            self._message(menu, "Could not load the leaderboard", "Try refreshing in a moment.", ui.DANGER)
+        elif not data and offline:
+            self._message(menu, "You are offline", "Leaderboards need an internet connection. "
+                                                   "Check your connection and refresh.")
+        elif not data:
+            self._message(menu, empty_title, empty_body)
+        else:
+            return False
+        return True
+
+    def _filters_row(self, menu, filters, refresh_action):
+        """Dropdown filters and a refresh button in one row"""
+        width = self.pages[menu]["width"]
+        refresh = self._button(menu, "Refresh", refresh_action, w=ui.px(160), h=ui.px(54), button_id="lb_refresh")
+        label_f = ui.body_font(ui.SIZE_SMALL, bold=True)
+        frame = menu.add.frame_h(width, ui.px(64), padding=0)
+        frame._pack_margin_warning = False
+        for i, (title, items, default, onchange, wid) in enumerate(filters):
+            label = menu.add.surface(ui.render(title, label_f, ui.MUTED))
+            frame.pack(label, align=ALIGN_LEFT, vertical_position=POSITION_CENTER, margin=(ui.px(32) if i else 0, 0))
+            drop = self._dropselect(menu, items, default, onchange, ui.px(240), visible=6, widget_id=wid)
+            frame.pack(drop, align=ALIGN_LEFT, vertical_position=POSITION_CENTER, margin=(ui.px(12), 0))
+        frame.pack(refresh, align=ALIGN_RIGHT, vertical_position=POSITION_CENTER)
+        self._spacer(menu, 20)
+
+    def _format_lb_time(self, value):
+        return ui.format_clock(value, decimals=True) if value is not None else "-"
+
     def _create_leaderboard_content(self):
-        """Create global leaderboard tab content with filters and data display."""
-        
-        # Check if Supabase is configured
-        if not self.supabase_manager or not self.supabase_manager.is_configured():
-            self.personal_best_menu.add.vertical_margin(50)
-            self.personal_best_menu.add.label(
-                "Global Leaderboard",
-                font_size=50,
-                font_color=(255, 215, 0),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.personal_best_menu.add.vertical_margin(30)
-            self.personal_best_menu.add.label(
-                "Leaderboard Not Configured",
-                font_size=40,
-                font_color=(200, 200, 200),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.personal_best_menu.add.vertical_margin(20)
-            self.personal_best_menu.add.label(
-                "Please configure Supabase credentials in supabase_manager.py",
-                font_size=24,
-                font_color=(150, 150, 150),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
+        menu = self.personal_best_menu
+        if not (self.supabase_manager and self.supabase_manager.is_configured()):
+            self._leaderboard_state(False, "not_configured", False, [], "", "")
             return
-        
-        # Filter section - using simple vertical layout with labels
-        self.personal_best_menu.add.vertical_margin(5)
-        
-        # Filter label
-        self.personal_best_menu.add.label(
-            "FILTERS",
-            font_size=28,
-            font_color=(200, 200, 200),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.personal_best_menu.add.vertical_margin(5)
-        
-        # Game mode filter dropdown
-        mode_items = [(GAME_MODE_DISPLAY.get(mode, mode), i) for i, mode in enumerate(GAME_MODE_OPTIONS)]
-        current_mode_index = GAME_MODE_OPTIONS.index(self.leaderboard_filter_mode) if self.leaderboard_filter_mode in GAME_MODE_OPTIONS else 0
-        
-        self.personal_best_menu.add.dropselect(
-            "Game Mode:  ",
-            mode_items,
-            default=current_mode_index,
-            font_size=26,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            onchange=self._on_leaderboard_mode_filter_change,
-            selection_box_height=6,
-            selection_box_width=200,
-            margin=(0, 5)
-        )
-        
-        # Region filter dropdown
-        region_items = [(region, i) for i, region in enumerate(REGION_OPTIONS)]
-        current_region_index = REGION_OPTIONS.index(self.leaderboard_filter_region) if self.leaderboard_filter_region in REGION_OPTIONS else 0
-        
-        self.personal_best_menu.add.dropselect(
-            "Region:  ",
-            region_items,
-            default=current_region_index,
-            font_size=26,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            onchange=self._on_leaderboard_region_filter_change,
-            selection_box_height=6,
-            selection_box_width=180,
-            margin=(0, 5)
-        )
-        
-        # Refresh button
-        self.personal_best_menu.add.vertical_margin(5)
-        refresh_btn = self.personal_best_menu.add.button(
-            "⟳ Refresh Leaderboard",
-            self._refresh_leaderboard,
-            font_size=26,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(60, 80, 100, 180),
-            padding=(8, 20),
-            margin=(0, 5)
-        )
-        self._apply_hover_effect(refresh_btn, False)
-        
-        self.personal_best_menu.add.vertical_margin(10)
-        
-        # Separator
-        self.personal_best_menu.add.label(
-            "─" * 60,
-            font_size=20,
-            font_color=(100, 100, 100),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.personal_best_menu.add.vertical_margin(5)
-        
-        # Loading state
-        if self.leaderboard_loading:
-            self.personal_best_menu.add.vertical_margin(30)
-            self.personal_best_menu.add.label(
-                "Loading leaderboard...",
-                font_size=35,
-                font_color=(200, 200, 200),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
+        mode_items = [(GAME_MODE_DISPLAY.get(m, m), i) for i, m in enumerate(GAME_MODE_OPTIONS)]
+        region_items = [(REGION_DISPLAY.get(r, r), i) for i, r in enumerate(REGION_OPTIONS)]
+        mode_index = GAME_MODE_OPTIONS.index(self.leaderboard_filter_mode) if self.leaderboard_filter_mode in GAME_MODE_OPTIONS else 0
+        region_index = REGION_OPTIONS.index(self.leaderboard_filter_region) if self.leaderboard_filter_region in REGION_OPTIONS else 0
+        self._filters_row(menu, [("Mode", mode_items, mode_index, self._on_leaderboard_mode_filter_change, "lb_mode"),
+                                 ("Region", region_items, region_index, self._on_leaderboard_region_filter_change, "lb_region")],
+                          self._refresh_leaderboard)
+
+        if self._leaderboard_state(self.leaderboard_loading, self.leaderboard_error, self.leaderboard_is_offline,
+                                   self.leaderboard_data, "No records yet", "Be the first to post a time."):
             return
-        
-        # Error state
-        if self.leaderboard_error:
-            self.personal_best_menu.add.vertical_margin(30)
-            self.personal_best_menu.add.label(
-                self.leaderboard_error,
-                font_size=35,
-                font_color=(255, 100, 100),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            return
-        
-        # Empty state - distinguish between offline and no records
-        if not self.leaderboard_data:
-            self.personal_best_menu.add.vertical_margin(30)
-            
-            if self.leaderboard_is_offline:
-                # Offline state - no internet connection
-                self.personal_best_menu.add.label(
-                    "⚠ No Internet Connection",
-                    font_size=40,
-                    font_color=(255, 165, 0),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                self.personal_best_menu.add.vertical_margin(15)
-                self.personal_best_menu.add.label(
-                    "Online features are unavailable",
-                    font_size=28,
-                    font_color=(200, 150, 100),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                self.personal_best_menu.add.vertical_margin(10)
-                self.personal_best_menu.add.label(
-                    "Please check your internet connection and try again",
-                    font_size=24,
-                    font_color=(150, 150, 150),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-            else:
-                # Actually no records found
-                self.personal_best_menu.add.label(
-                    "No records found",
-                    font_size=40,
-                    font_color=(200, 200, 200),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                self.personal_best_menu.add.vertical_margin(15)
-                self.personal_best_menu.add.label(
-                    "Be the first to set a record!",
-                    font_size=28,
-                    font_color=(150, 150, 150),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            return
-        
-        # Table header
-        if self.leaderboard_filter_mode == "All Modes":
-            header_row = "RANK │      PLAYER      │   REGION   │    MODE    │   BEST TIME   │  MOVES"
+
+        me = self.user_manager.get_username() if self.user_manager else ""
+        all_modes = self.leaderboard_filter_mode == "All Modes"
+        rows = []
+        for rank, entry in enumerate(self.leaderboard_data[:20], 1):
+            name = entry.get("username", "Unknown")
+            cells = [str(rank), name, entry.get("region", "-")]
+            if all_modes:
+                cells.append(("mode", entry.get("game_mode", "")))
+            cells += [self._format_lb_time(entry.get("best_time")),
+                      str(entry.get("best_moves")) if entry.get("best_moves") is not None else "-"]
+            if not all_modes:
+                cells.append(str(entry.get("total_solves", 0)))
+            rows.append({"cells": cells, "rank": rank, "highlight": bool(me) and name == me})
+        if all_modes:
+            columns = [("#", 0.8, "left"), ("Player", 3.4, "left"), ("Region", 2, "left"), ("Mode", 2.4, "left"),
+                       ("Best time", 1.9, "right"), ("Moves", 1.3, "right")]
         else:
-            header_row = "RANK │        PLAYER        │     REGION     │   BEST TIME   │  MOVES  │  SOLVES"
-        
-        self.personal_best_menu.add.label(
-            header_row,
-            font_size=28,
-            font_color=(255, 255, 255),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        # Separator line
-        separator = "=" * 85
-        self.personal_best_menu.add.label(
-            separator,
-            font_size=20,
-            font_color=(200, 200, 200),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        # Display leaderboard entries
-        current_username = self.user_manager.get_username() if self.user_manager else ""
-        
-        for rank, entry in enumerate(self.leaderboard_data[:20], 1):  # Limit to 20 entries
-            username = entry.get("username", "Unknown")[:12]  # Truncate long names
-            region = entry.get("region", "N/A")[:10]
-            game_mode = entry.get("game_mode", "N/A")
-            best_time = entry.get("best_time")
-            best_moves = entry.get("best_moves")
-            total_solves = entry.get("total_solves", 0)
-            
-            # Format time
-            if best_time is not None:
-                if best_time < 60:
-                    time_str = f"{best_time:.2f}s"
-                else:
-                    mins = int(best_time // 60)
-                    secs = best_time % 60
-                    time_str = f"{mins}:{secs:05.2f}"
-            else:
-                time_str = "---"
-            
-            # Format moves
-            moves_str = str(best_moves) if best_moves is not None else "---"
-            
-            # Get display mode name
-            mode_display = GAME_MODE_DISPLAY.get(game_mode, game_mode)[:10]
-            
-            # Create row based on filter
-            if self.leaderboard_filter_mode == "All Modes":
-                row = f"{rank:^5}│{username:^18}│{region:^12}│{mode_display:^12}│{time_str:^15}│{moves_str:^8}"
-            else:
-                row = f"{rank:^5}│{username:^22}│{region:^16}│{time_str:^15}│{moves_str:^9}│{total_solves:^9}"
-            
-            # Determine row color
-            if username == current_username:
-                # Highlight current user's entries
-                row_color = (240, 198, 38)  # Gold
-            elif rank == 1:
-                row_color = (255, 215, 0)  # Gold for #1
-            elif rank == 2:
-                row_color = (192, 192, 192)  # Silver for #2
-            elif rank == 3:
-                row_color = (205, 127, 50)  # Bronze for #3
-            else:
-                row_color = (200, 200, 200)  # Default gray
-            
-            self.personal_best_menu.add.label(
-                row,
-                font_size=26,
-                font_color=row_color,
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-        
-        # Show total entries count if there are more
+            columns = [("#", 0.8, "left"), ("Player", 3.6, "left"), ("Region", 2.2, "left"),
+                       ("Best time", 2, "right"), ("Moves", 1.4, "right"), ("Solves", 1.4, "right")]
+        self._table(menu, columns, rows)
         if len(self.leaderboard_data) > 20:
-            self.personal_best_menu.add.vertical_margin(10)
-            self.personal_best_menu.add.label(
-                f"Showing top 20 of {len(self.leaderboard_data)} entries",
-                font_size=22,
-                font_color=(150, 150, 150),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-    
+            self._spacer(menu, 12)
+            self._text(menu, f"Top 20 of {len(self.leaderboard_data)} players", ui.body_font(ui.SIZE_SMALL), ui.MUTED)
+
     def _create_daily_leaderboard_content(self):
-        """Create daily leaderboard tab content with today's date and rankings."""
-        from datetime import datetime, timezone
-        
-        # Check if Supabase is configured
-        if not self.supabase_manager or not self.supabase_manager.is_configured():
-            self.personal_best_menu.add.vertical_margin(50)
-            self.personal_best_menu.add.label(
-                "Daily Leaderboard",
-                font_size=50,
-                font_color=(255, 215, 0),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            self.personal_best_menu.add.vertical_margin(30)
-            self.personal_best_menu.add.label(
-                "Leaderboard Not Configured",
-                font_size=40,
-                font_color=(200, 200, 200),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
+        menu = self.personal_best_menu
+        if not (self.supabase_manager and self.supabase_manager.is_configured()):
+            self._leaderboard_state(False, "not_configured", False, [], "", "")
             return
-        
-        # Display today's date
-        utc_now = datetime.now(timezone.utc)
-        date_str = utc_now.strftime("%B %d, %Y")  # e.g., "January 19, 2026"
-        
-        self.personal_best_menu.add.vertical_margin(5)
-        self.personal_best_menu.add.label(
-            f"📅 Today's Daily Cube - {date_str} (UTC)",
-            font_size=32,
-            font_color=(255, 215, 0),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.personal_best_menu.add.vertical_margin(10)
-        
-        # Filter section - region only for daily leaderboard
-        self.personal_best_menu.add.label(
-            "FILTER",
-            font_size=24,
-            font_color=(200, 200, 200),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.personal_best_menu.add.vertical_margin(5)
-        
-        # Region filter dropdown
-        region_items = [(region, i) for i, region in enumerate(REGION_OPTIONS)]
-        current_region_index = REGION_OPTIONS.index(self.daily_leaderboard_filter_region) if self.daily_leaderboard_filter_region in REGION_OPTIONS else 0
-        
-        self.personal_best_menu.add.dropselect(
-            "Region:  ",
-            region_items,
-            default=current_region_index,
-            font_size=24,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            onchange=self._on_daily_leaderboard_region_filter_change,
-            selection_box_height=6,
-            selection_box_width=180,
-            margin=(0, 5)
-        )
-        
-        # Refresh button
-        self.personal_best_menu.add.vertical_margin(5)
-        refresh_btn = self.personal_best_menu.add.button(
-            "⟳ Refresh",
-            self._refresh_daily_leaderboard,
-            font_size=24,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(60, 80, 100, 180),
-            padding=(6, 15),
-            margin=(0, 5)
-        )
-        self._apply_hover_effect(refresh_btn, False)
-        
-        self.personal_best_menu.add.vertical_margin(10)
-        
-        # Separator
-        self.personal_best_menu.add.label(
-            "─" * 60,
-            font_size=18,
-            font_color=(100, 100, 100),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.personal_best_menu.add.vertical_margin(5)
-        
-        # Loading state
-        if self.daily_leaderboard_loading:
-            self.personal_best_menu.add.vertical_margin(30)
-            self.personal_best_menu.add.label(
-                "Loading daily leaderboard...",
-                font_size=32,
-                font_color=(200, 200, 200),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
+        date_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
+        self._text(menu, f"Today's Daily Cube, {date_str} (UTC). Everyone gets the same scramble.",
+                   ui.body_font(), ui.MUTED)
+        self._spacer(menu, 16)
+        region_items = [(REGION_DISPLAY.get(r, r), i) for i, r in enumerate(REGION_OPTIONS)]
+        region_index = REGION_OPTIONS.index(self.daily_leaderboard_filter_region) if self.daily_leaderboard_filter_region in REGION_OPTIONS else 0
+        self._filters_row(menu, [("Region", region_items, region_index,
+                                  self._on_daily_leaderboard_region_filter_change, "daily_region")],
+                          self._refresh_daily_leaderboard)
+
+        if self._leaderboard_state(self.daily_leaderboard_loading, self.daily_leaderboard_error,
+                                   self.daily_leaderboard_is_offline, self.daily_leaderboard_data,
+                                   "Nobody has solved today's cube yet",
+                                   "Play Daily Cube from the mode screen to claim the top spot."):
             return
-        
-        # Error state
-        if self.daily_leaderboard_error:
-            self.personal_best_menu.add.vertical_margin(30)
-            self.personal_best_menu.add.label(
-                self.daily_leaderboard_error,
-                font_size=32,
-                font_color=(255, 100, 100),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            return
-        
-        # Empty state - distinguish between offline and no records
-        if not self.daily_leaderboard_data:
-            self.personal_best_menu.add.vertical_margin(30)
-            
-            if self.daily_leaderboard_is_offline:
-                # Offline state - no internet connection
-                self.personal_best_menu.add.label(
-                    "⚠ No Internet Connection",
-                    font_size=40,
-                    font_color=(255, 165, 0),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                self.personal_best_menu.add.vertical_margin(15)
-                self.personal_best_menu.add.label(
-                    "Online features are unavailable",
-                    font_size=28,
-                    font_color=(200, 150, 100),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                self.personal_best_menu.add.vertical_margin(10)
-                self.personal_best_menu.add.label(
-                    "Please check your internet connection and try again",
-                    font_size=24,
-                    font_color=(150, 150, 150),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-            else:
-                # Actually no records found
-                self.personal_best_menu.add.label(
-                    "No one has completed today's Daily Cube yet!",
-                    font_size=36,
-                    font_color=(200, 200, 200),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                self.personal_best_menu.add.vertical_margin(15)
-                self.personal_best_menu.add.label(
-                    "Be the first to set a record!",
-                    font_size=26,
-                    font_color=(150, 150, 150),
-                    font_name=pygame_menu.font.FONT_FRANCHISE
-                )
-                self.personal_best_menu.add.vertical_margin(10)
-                self.personal_best_menu.add.label(
-                    "Play 'Daily Cube' mode to compete!",
-                    font_size=24,
-                    font_color=(240, 198, 38),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-            return
-        
-        # Table header
-        header_row = "RANK │        PLAYER        │     REGION     │   SOLVE TIME   │  MOVES  │   TPS"
-        
-        self.personal_best_menu.add.label(
-            header_row,
-            font_size=26,
-            font_color=(255, 255, 255),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        # Separator line
-        separator = "=" * 85
-        self.personal_best_menu.add.label(
-            separator,
-            font_size=18,
-            font_color=(200, 200, 200),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        # Display daily leaderboard entries
-        current_username = self.user_manager.get_username() if self.user_manager else ""
-        
-        for rank, entry in enumerate(self.daily_leaderboard_data[:20], 1):  # Limit to 20 entries
-            username = entry.get("username", "Unknown")[:12]  # Truncate long names
-            region = entry.get("region", "N/A")[:10]
-            solve_time = entry.get("solve_time")
-            moves = entry.get("moves")
+
+        me = self.user_manager.get_username() if self.user_manager else ""
+        rows = []
+        for rank, entry in enumerate(self.daily_leaderboard_data[:20], 1):
+            name = entry.get("username", "Unknown")
             tps = entry.get("tps")
-            
-            # Format time
-            if solve_time is not None:
-                if solve_time < 60:
-                    time_str = f"{solve_time:.2f}s"
-                else:
-                    mins = int(solve_time // 60)
-                    secs = solve_time % 60
-                    time_str = f"{mins}:{secs:05.2f}"
-            else:
-                time_str = "---"
-            
-            # Format moves
-            moves_str = str(moves) if moves is not None else "---"
-            
-            # Format TPS
-            tps_str = f"{tps:.2f}" if tps is not None else "---"
-            
-            # Create row
-            row = f"{rank:^5}│{username:^22}│{region:^16}│{time_str:^16}│{moves_str:^9}│{tps_str:^8}"
-            
-            # Determine row color
-            if username == current_username:
-                # Highlight current user's entries
-                row_color = (240, 198, 38)  # Gold
-            elif rank == 1:
-                row_color = (255, 215, 0)  # Gold for #1
-            elif rank == 2:
-                row_color = (192, 192, 192)  # Silver for #2
-            elif rank == 3:
-                row_color = (205, 127, 50)  # Bronze for #3
-            else:
-                row_color = (200, 200, 200)  # Default gray
-            
-            self.personal_best_menu.add.label(
-                row,
-                font_size=24,
-                font_color=row_color,
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-        
-        # Show total entries count if there are more
+            rows.append({"cells": [str(rank), name, entry.get("region", "-"),
+                                   self._format_lb_time(entry.get("solve_time")),
+                                   str(entry.get("moves")) if entry.get("moves") is not None else "-",
+                                   f"{tps:.2f}" if tps is not None else "-"],
+                         "rank": rank, "highlight": bool(me) and name == me})
+        self._table(menu, [("#", 0.8, "left"), ("Player", 3.6, "left"), ("Region", 2.2, "left"),
+                           ("Time", 2, "right"), ("Moves", 1.4, "right"), ("TPS", 1.4, "right")], rows)
         if len(self.daily_leaderboard_data) > 20:
-            self.personal_best_menu.add.vertical_margin(10)
-            self.personal_best_menu.add.label(
-                f"Showing top 20 of {len(self.daily_leaderboard_data)} entries",
-                font_size=20,
-                font_color=(150, 150, 150),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-    
+            self._spacer(menu, 12)
+            self._text(menu, f"Top 20 of {len(self.daily_leaderboard_data)} players", ui.body_font(ui.SIZE_SMALL), ui.MUTED)
+
+    # ---------------------------------------------------------------- achievements
+    def _achievement_icon(self, path, size, unlocked):
+        key = (path, size, unlocked)
+        if key in self._ach_icon_cache:
+            return self._ach_icon_cache[key]
+        surf = None
+        full = resource_path(path) if path else ""
+        if full and os.path.exists(full):
+            try:
+                img = pygame.image.load(full).convert_alpha()
+                surf = pygame.transform.smoothscale(img, (size, size))
+                if not unlocked:
+                    surf = pygame.transform.grayscale(surf)
+                    surf.set_alpha(110)
+            except Exception:
+                surf = None
+        self._ach_icon_cache[key] = surf
+        return surf
+
+    def _achievement_card(self, surf, rect, a):
+        unlocked = a.get("unlocked", False)
+        secret = a.get("secret", False) and not unlocked
+        ui.panel(surf, rect, fill=ui.SURFACE, border=(ui.ACCENT if unlocked else ui.LINE))
+        pad = ui.px(18)
+        icon_size = min(rect.height - 2 * pad, ui.px(84))
+        icon_rect = pygame.Rect(rect.x + pad, rect.centery - icon_size // 2, icon_size, icon_size)
+        img = None if secret else self._achievement_icon(a.get("icon", ""), icon_size, unlocked)
+        if img:
+            surf.blit(img, icon_rect)
+        else:
+            ui.fill_rect(surf, ui.SURFACE_2, icon_rect, ui.radius(10))
+            ui.draw_text(surf, "?", ui.display_font(ui.SIZE_H1), ui.DIM, icon_rect.center, "center")
+
+        tx = icon_rect.right + ui.px(20)
+        tw = rect.right - pad - tx
+        name_f = ui.body_font(ui.SIZE_BODY, bold=True)
+        desc_f = ui.body_font(ui.SIZE_SMALL - 1)
+        name = "Secret achievement" if secret else a.get("name", "")
+        desc = "Keep playing to discover it." if secret else a.get("description", "")
+        y = rect.y + pad - ui.px(2)
+        ui.draw_text(surf, ui.ellipsize(name, name_f, tw), name_f, ui.TEXT if unlocked else (205, 209, 216), (tx, y))
+        y += name_f.get_linesize()
+        lines = ui.wrap(desc, desc_f, tw)[:2]
+        for line in lines:
+            ui.draw_text(surf, line, desc_f, ui.MUTED, (tx, y))
+            y += desc_f.get_linesize()
+
+        bottom = rect.bottom - pad
+        small = ui.body_font(ui.SIZE_CAPTION, bold=True)
+        if unlocked:
+            when = ""
+            date = a.get("unlock_date")
+            if date:
+                try:
+                    when = "  " + datetime.fromisoformat(str(date)).strftime("%d %b %Y")
+                except Exception:
+                    when = ""
+            ui.draw_text(surf, f"Unlocked{when}", small, ui.ACCENT, (tx, bottom), "bottomleft")
+        elif a.get("target", 1) > 1 and not secret:
+            label = f"{a.get('progress', 0)} / {a.get('target', 1)}"
+            lw = small.size(label)[0]
+            bar = pygame.Rect(tx, bottom - ui.px(10), max(ui.px(40), tw - lw - ui.px(16)), max(3, ui.px(6)))
+            bar.centery = bottom - small.get_height() // 2
+            ui.progress_bar(surf, bar, a.get("progress_percentage", 0), color=ui.MUTED)
+            ui.draw_text(surf, label, small, ui.MUTED, (tx + tw, bottom), "bottomright")
+        else:
+            ui.draw_text(surf, "Locked", small, ui.DIM, (tx, bottom), "bottomleft")
+
+    def _create_achievements_content(self):
+        menu = self.achievements_menu
+        menu.clear()
+        width = self.pages[menu]["width"]
+        unlocked, total = self.achievements_manager.get_unlocked_count()
+        by_category = self.achievements_manager.get_achievements_by_category()
+
+        # Summary
+        self._spacer(menu, 20)
+        big = ui.display_font(ui.SIZE_H2)
+        summary = pygame.Surface((width, big.get_height() + ui.px(22)), pygame.SRCALPHA)
+        ui.draw_text(summary, f"{unlocked} of {total} unlocked", big, ui.TEXT, (0, 0))
+        pct = int(round(unlocked / total * 100)) if total else 0
+        ui.draw_text(summary, f"{pct}%", ui.mono_font(ui.SIZE_SMALL, bold=True), ui.MUTED,
+                     (width, big.get_height() // 2), "midright")
+        ui.progress_bar(summary, (0, big.get_height() + ui.px(8), width, max(4, ui.px(8))),
+                        unlocked / total if total else 0)
+        self._surface(menu, summary)
+
+        names = {"beginner": "Beginner", "progression": "Progression", "speed": "Speed",
+                 "challenge": "Challenges", "daily": "Daily", "efficiency": "Efficiency", "secret": "Secret"}
+        order = ["beginner", "progression", "speed", "challenge", "daily", "efficiency", "secret"]
+        order += [c for c in by_category if c not in order]
+        cols = 2 if width >= ui.px(900) else 1
+        gap = ui.px(16)
+        card_w = (width - gap * (cols - 1)) // cols
+        # Height from the real line heights (fonts have a minimum size on small screens)
+        card_h = (ui.px(18) * 2 + ui.body_font(ui.SIZE_BODY, bold=True).get_linesize()
+                  + 2 * ui.body_font(ui.SIZE_SMALL - 1).get_linesize()
+                  + ui.body_font(ui.SIZE_CAPTION, bold=True).get_height() + ui.px(4))
+        for category in order:
+            items = by_category.get(category)
+            if not items:
+                continue
+            self._section(menu, names.get(category, category.title()))
+            n_rows = (len(items) + cols - 1) // cols
+            surf = pygame.Surface((width, n_rows * card_h + (n_rows - 1) * gap), pygame.SRCALPHA)
+            for i, a in enumerate(items):
+                r, c = divmod(i, cols)
+                self._achievement_card(surf, pygame.Rect(c * (card_w + gap), r * (card_h + gap), card_w, card_h), a)
+            self._surface(menu, surf)
+        self._spacer(menu, 48)
+
+    # ---------------------------------------------------------------- profile forms
+    def _profile_form(self, menu, title, intro, input_id, onchange, primary, secondary):
+        menu.clear()
+        width = self.pages[menu]["width"]
+        self._surface(menu, self._text_surface(title, ui.display_font(ui.SIZE_H1), ui.TEXT, width))
+        self._spacer(menu, 6)
+        self._text(menu, intro, ui.body_font(), ui.MUTED)
+        self._spacer(menu, 32)
+
+        label_f = ui.body_font(ui.SIZE_SMALL, bold=True)
+        self._text(menu, "Username", label_f, ui.TEXT)
+        self._spacer(menu, 8)
+        field_h = ui.px(60)
+        # Text inputs only fit in vertical frames; center it with a top margin
+        field = menu.add.frame_v(width, field_h, padding=0, background_color=ui.SURFACE_2,
+                                 border_width=max(1, ui.px(1.5)), border_color=ui.LINE)
+        field._pack_margin_warning = False
+        text_input = menu.add.text_input(
+            "", default=self.user_setup_username, maxchar=20, textinput_id=input_id, onchange=onchange,
+            font_name=ui.FONT_BODY, font_size=ui.fs(ui.SIZE_BODY), font_color=ui.TEXT,
+            input_underline="", copy_paste_enable=True, password=False)
+        text_input._ui_ring_frame = field
+        field.pack(menu.add.vertical_margin(max(0, (field_h - text_input.get_height()) // 2)))
+        field.pack(text_input, align=ALIGN_LEFT, margin=(ui.px(16), 0))
+        self._spacer(menu, 8)
+        if self.username_error:
+            self._text(menu, self.username_error, ui.body_font(ui.SIZE_SMALL), ui.DANGER)
+        else:
+            self._text(menu, "Up to 20 characters. Shown on leaderboards.", ui.body_font(ui.SIZE_SMALL), ui.MUTED)
+        self._spacer(menu, 24)
+
+        self._text(menu, "Region", label_f, ui.TEXT)
+        self._spacer(menu, 8)
+        region_items = [(region, i) for i, region in enumerate(REGIONS)]
+        self._dropselect(menu, region_items, self.user_setup_region_index, self._on_region_change, width,
+                         visible=5, widget_id=f"{input_id}_region")
+        self._spacer(menu, 40)
+
+        gap = ui.px(16)
+        bw = (width - gap) // 2
+        frame = menu.add.frame_h(width, ui.px(60), padding=0)
+        frame._pack_margin_warning = False
+        frame.pack(self._button(menu, secondary[0], secondary[1], w=bw, h=ui.px(60)))
+        frame.pack(menu.add.horizontal_margin(gap))
+        frame.pack(self._button(menu, primary[0], primary[1], w=bw, h=ui.px(60), variant="primary"))
+        return text_input
+
     def _create_user_setup_content(self):
-        """Create user setup dialog content for first-time users"""
-        # Clear existing content except title
-        widgets = self.user_setup_menu.get_widgets()
-        widgets_to_remove = []
-        for i, widget in enumerate(widgets):
-            if i > 0:
-                widgets_to_remove.append(widget)
-        for widget in widgets_to_remove:
-            self.user_setup_menu.remove_widget(widget)
-        
-        self.user_setup_menu.add.vertical_margin(30)
-        self.user_setup_menu.add.label(
-            "Please set up your profile",
-            font_size=45,
-            font_color=(255, 255, 255),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.user_setup_menu.add.vertical_margin(30)
-        
-        # Username input - clickable text field for keyboard input
-        self.username_input = self.user_setup_menu.add.text_input(
-            "Enter Username: ",
-            default=self.user_setup_username,
-            maxchar=20,
-            font_size=32,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            input_underline="_",
-            input_underline_len=17,
-            onchange=self._on_username_change,
-            textinput_id="username_input",
-            password=False,
-            copy_paste_enable=True
-        )
-        # Make text input more visible
-        self.username_input.set_background_color((40, 40, 60, 200))
-        
-        # Show username error if any
-        if self.username_error:
-            self.user_setup_menu.add.vertical_margin(10)
-            self.user_setup_menu.add.label(
-                self.username_error,
-                font_size=28,
-                font_color=(255, 100, 100),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-        
-        self.user_setup_menu.add.vertical_margin(30)
-        
-        # Region selection
-        self.user_setup_menu.add.label(
-            "Region:",
-            font_size=35,
-            font_color=(200, 200, 200),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        region_items = [(region, i) for i, region in enumerate(REGIONS)]
-        self.region_selector = self.user_setup_menu.add.dropselect(
-            "",
-            region_items,
-            default=self.user_setup_region_index,
-            font_size=35,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            onchange=self._on_region_change,
-            selection_box_height=5
-        )
-        
-        self.user_setup_menu.add.vertical_margin(50)
-        
-        # Confirm button
-        confirm_btn = self.user_setup_menu.add.button(
-            "Confirm",
-            self._confirm_user_setup,
-            font_size=45,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(46, 125, 50, 200),
-            padding=(15, 40)
-        )
-        
-        self.user_setup_menu.add.vertical_margin(20)
-        
-        # Back button
-        back_btn = self.user_setup_menu.add.button(
-            "Back",
-            self._back_from_user_setup,
-            font_size=45,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(211, 47, 47, 200),
-            padding=(15, 40)
-        )
-        
-        # Apply custom styling
-        self._customize_menu_widgets(self.user_setup_menu)
-        self._apply_hover_effect(confirm_btn, False)
-        self._apply_hover_effect(back_btn, False)
-        
-        # Set the text input as selected and focused to enable keyboard input
-        try:
-            self.user_setup_menu.enable()
-            self.user_setup_menu.select_widget(self.username_input)
-            # Force focus the text input
-            if hasattr(self.username_input, 'set_selected'):
-                self.username_input.set_selected(True)
-        except Exception as e:
-            print(f"Error focusing text input: {e}")
-    
+        self.username_input = self._profile_form(
+            self.user_setup_menu, "Create your profile",
+            "Pick a name and region for the global leaderboards. You can change them later.",
+            "username_input", self._on_username_change,
+            ("Continue", self._confirm_user_setup), ("Back", self._back_from_user_setup))
+
     def _create_user_edit_content(self):
-        """Create user edit dialog content"""
-        # Clear existing content except title
-        widgets = self.user_edit_menu.get_widgets()
-        widgets_to_remove = []
-        for i, widget in enumerate(widgets):
-            if i > 0:
-                widgets_to_remove.append(widget)
-        for widget in widgets_to_remove:
-            self.user_edit_menu.remove_widget(widget)
-        
-        self.user_edit_menu.add.vertical_margin(30)
-        self.user_edit_menu.add.label(
-            "Edit your profile",
-            font_size=45,
-            font_color=(255, 255, 255),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        self.user_edit_menu.add.vertical_margin(30)
-        
-        # Username input - clickable text field for keyboard input
-        self.edit_username_input = self.user_edit_menu.add.text_input(
-            "Enter Username: ",
-            default=self.user_setup_username,
-            maxchar=20,
-            font_size=32,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            input_underline="_",
-            input_underline_len=17,
-            onchange=self._on_edit_username_change,
-            textinput_id="edit_username_input",
-            password=False,
-            copy_paste_enable=True
-        )
-        # Make text input more visible
-        self.edit_username_input.set_background_color((40, 40, 60, 200))
-        
-        # Show username error if any
-        if self.username_error:
-            self.user_edit_menu.add.vertical_margin(10)
-            self.user_edit_menu.add.label(
-                self.username_error,
-                font_size=28,
-                font_color=(255, 100, 100),
-                font_name=pygame_menu.font.FONT_FRANCHISE
-            )
-        
-        self.user_edit_menu.add.vertical_margin(30)
-        
-        # Region selection
-        self.user_edit_menu.add.label(
-            "Region:",
-            font_size=35,
-            font_color=(200, 200, 200),
-            font_name=pygame_menu.font.FONT_FRANCHISE
-        )
-        
-        region_items = [(region, i) for i, region in enumerate(REGIONS)]
-        self.edit_region_selector = self.user_edit_menu.add.dropselect(
-            "",
-            region_items,
-            default=self.user_setup_region_index,
-            font_size=35,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            onchange=self._on_edit_region_change,
-            selection_box_height=5
-        )
-        
-        self.user_edit_menu.add.vertical_margin(50)
-        
-        # Save button
-        save_btn = self.user_edit_menu.add.button(
-            "Save Changes",
-            self._save_user_edit,
-            font_size=45,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            background_color=(46, 125, 50, 200),
-            padding=(15, 40)
-        )
-        
-        self.user_edit_menu.add.vertical_margin(15)
-        
-        # Back button
-        back_btn = self.user_edit_menu.add.button(
-            "Cancel",
-            self._back_to_statistics,
-            font_size=40,
-            font_name=pygame_menu.font.FONT_FRANCHISE,
-            padding=(10, 30)
-        )
-        
-        # Apply custom styling
-        self._customize_menu_widgets(self.user_edit_menu)
-        self._apply_hover_effect(save_btn, False)
-        self._apply_hover_effect(back_btn, False)
-        
-        # Set the text input as selected and focused to enable keyboard input
-        try:
-            self.user_edit_menu.enable()
-            self.user_edit_menu.select_widget(self.edit_username_input)
-            # Force focus the text input
-            if hasattr(self.edit_username_input, 'set_selected'):
-                self.edit_username_input.set_selected(True)
-        except Exception as e:
-            print(f"Error focusing edit text input: {e}")
-    
-    def _on_username_change(self, value):
-        """Handle username input change"""
-        self.user_setup_username = value
-    
-    def _on_region_change(self, selected_tuple, index):
-        """Handle region selection change"""
-        self.sound_manager.play("menu_select")
-        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
-            self.user_setup_region_index = selected_tuple[1]
-        else:
-            self.user_setup_region_index = index
-    
-    def _on_edit_username_change(self, value):
-        """Handle username input change in edit mode"""
-        self.user_setup_username = value
-    
-    def _on_edit_region_change(self, selected_tuple, index):
-        """Handle region selection change in edit mode"""
-        self.sound_manager.play("menu_select")
-        if isinstance(selected_tuple, tuple) and len(selected_tuple) > 1:
-            self.user_setup_region_index = selected_tuple[1]
-        else:
-            self.user_setup_region_index = index
-    
-    def _confirm_user_setup(self):
-        """Confirm user setup and save data"""
-        username = self.user_setup_username.strip()
-        if not username:
-            # Show error - username required
-            self.username_error = "Username is required"
-            self._create_user_setup_content()
+        self.edit_username_input = self._profile_form(
+            self.user_edit_menu, "Edit profile", "Your new name also updates the records you already posted.",
+            "edit_username_input", self._on_edit_username_change,
+            ("Save", self._save_user_edit), ("Cancel", self._back_to_statistics))
+
+    # ================================================================ drawing
+    def draw(self, screen):
+        alpha = self.get_current_alpha()
+        if alpha <= 0.0:
             return
-        
-        # Check if username is already taken
-        if self.supabase_manager and self.supabase_manager.is_configured():
-            if self.supabase_manager.is_username_taken(username):
-                self.username_error = "Username is already in use. Please choose a different one."
-                self.sound_manager.play("menu_select")  # Play feedback sound
-                self._create_user_setup_content()
-                return
-        
-        self.username_error = None
-        region = REGIONS[self.user_setup_region_index]
-        self.user_manager.complete_setup(username, region)
-        self.sound_manager.play("menu_apply")
-        self.user_setup_active = False
-        
-        # Initialize Supabase user hash for cloud sync (uses stable user_id)
-        if self.supabase_manager and self.supabase_manager.is_configured():
-            self.supabase_manager.set_user_hash(
-                self.user_manager.get_user_id(),
-                self.user_manager.user_data.get("created_at", "")
-            )
-            # Sync any existing records to cloud
-            if self.personal_best_manager:
-                self.personal_best_manager.sync_all_to_cloud()
-        
-        # After setup, go directly to difficulty selection
-        self.current_menu = self.difficulty_menu
-    
-    def _save_user_edit(self):
-        """Save user edit changes"""
-        username = self.user_setup_username.strip()
-        if not username:
-            self.username_error = "Username is required"
-            self._create_user_edit_content()
+        size = screen.get_size()
+        if size != (self.width, self.height):
+            self.update_dimensions(*size)
+
+        menu = self.current_menu
+        page = self.pages.get(menu, {"kind": "page", "title": ""})
+        kind = page["kind"]
+        L = self.L
+
+        if kind == "main":
+            # Solid side panel; the live cube stays visible on the right
+            screen.fill((*ui.BG, 250), pygame.Rect(0, 0, L.panel_w, self.height))
+            screen.fill((*ui.LINE, 255), pygame.Rect(L.panel_w - max(1, ui.px(1.5)), 0, max(1, ui.px(1.5)), self.height))
+        else:
+            screen.fill((*ui.BG, 240))
+
+        if kind == "page":
+            self._draw_header(screen, page)
+        else:
+            self.header_back_rect = None
+
+        if kind == "dialog":
+            self._draw_dialog_panel(screen, menu)
+
+        menu.draw(screen)
+        self._redraw_open_dropselect(screen, menu)
+
+        if kind == "main":
+            self._draw_main_footer(screen)
+        self._draw_keyboard_focus(screen, menu)
+
+    def _draw_header(self, screen, page):
+        L = self.L
+        width = page.get("width", L.content_w)
+        x = (self.width - width) // 2
+        cy = L.header_h // 2 + ui.px(8)
+        size = ui.px(52)
+        back = pygame.Rect(x, cy - size // 2, size, size)
+        self.header_back_rect = back
+        hovered = back.collidepoint(pygame.mouse.get_pos())
+        ui.fill_rect(screen, ui.SURFACE_3 if hovered else ui.SURFACE_2, back, ui.radius(12))
+        ui.fill_rect(screen, ui.LINE, back, ui.radius(12), width=max(1, ui.px(1.5)))
+        ic = ui.icon("back", int(size * 0.5), ui.TEXT)
+        if ic:
+            screen.blit(ic, ic.get_rect(center=back.center))
+        ui.draw_text(screen, page.get("title", ""), ui.display_font(ui.SIZE_H1), ui.TEXT,
+                     (back.right + ui.px(22), cy + ui.px(3)), "midleft")
+        hint = ui.body_font(ui.SIZE_CAPTION)
+        ui.draw_text(screen, "Esc to go back", hint, ui.DIM, (x + width, cy), "midright")
+        pygame.draw.line(screen, ui.LINE, (x, L.header_h - 1), (x + width, L.header_h - 1), max(1, ui.px(1.5)))
+
+    def _content_bounds(self, menu):
+        rect = None
+        for widget in menu.get_widgets():
+            try:
+                if not widget.is_visible():
+                    continue
+                r = widget.get_rect(to_real_position=True)
+            except Exception:
+                continue
+            if r.width <= 0 or r.height <= 0:
+                continue
+            rect = r.copy() if rect is None else rect.union(r)
+        return rect
+
+    def _draw_dialog_panel(self, screen, menu):
+        bounds = self._content_bounds(menu)
+        if bounds is None:
             return
-        
-        # Check if username is already taken by another user
-        if self.supabase_manager and self.supabase_manager.is_configured():
-            # Exclude current user's hash when checking
-            current_user_hash = self.supabase_manager.get_user_hash()
-            if self.supabase_manager.is_username_taken(username, exclude_user_hash=current_user_hash):
-                self.username_error = "Username is already in use. Please choose a different one."
-                self.sound_manager.play("menu_select")  # Play feedback sound
-                self._create_user_edit_content()
-                return
-        
-        self.username_error = None
-        region = REGIONS[self.user_setup_region_index]
-        
-        # Update existing records in Supabase BEFORE changing local data
-        # This ensures the records keep the same user_hash but get the new username/region
-        if self.supabase_manager and self.supabase_manager.is_configured():
-            # Update all existing records with new username and region
-            self.supabase_manager.update_user_profile(username, region)
-        
-        # Now update local user data
-        self.user_manager.update_user(username, region)
-        self.sound_manager.play("menu_apply")
-        
-        # Note: We do NOT change the user_hash when editing profile
-        # The user_hash remains the same so existing records stay linked to this user
-        # We also don't need to re-sync since we already updated the records above
-        
-        self._open_personal_best()  # Go back to statistics
-    
-    def _back_to_statistics(self):
-        """Go back to statistics menu"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()
-        self._create_personal_best_content()
-        self._change_menu(self.personal_best_menu)
-    
-    def needs_user_setup(self) -> bool:
-        """Check if user setup is needed"""
-        return not self.user_manager.is_setup_completed()
-    
-    def show_user_setup(self):
-        """Show the user setup dialog"""
-        self.user_setup_active = True
-        self.user_setup_username = ""
-        self.user_setup_region_index = 0
-        self.username_error = None  # Clear any previous error
-        self._create_user_setup_content()
-        self._change_menu(self.user_setup_menu)
-        
-        # Ensure the text input is selected and focused for keyboard input
+        pad = ui.px(44)
+        ui.panel(screen, bounds.inflate(pad * 2, pad * 2), fill=ui.SURFACE, border=ui.LINE, rad=ui.radius(18))
+
+    def _draw_main_footer(self, screen):
+        L = self.L
+        if not self.user_manager.is_setup_completed():
+            return
+        small = ui.body_font(ui.SIZE_SMALL)
+        name = self.user_manager.get_username() or ""
+        region = self.user_manager.get_region() or ""
+        text = f"{name}  ·  {region}" if region else name
+        y = self.height - L.panel_pad
+        ic = ui.icon("user-edit", small.get_height(), ui.MUTED)
+        x = L.panel_pad + ui.px(24)
+        if ic:
+            screen.blit(ic, ic.get_rect(midleft=(x, y - small.get_height() // 2)))
+            x += ic.get_width() + ui.px(10)
+        ui.draw_text(screen, ui.ellipsize(text, small, L.panel_w - x - L.panel_pad), small, ui.MUTED, (x, y), "bottomleft")
+
+    def _redraw_open_dropselect(self, screen, menu):
+        """pygame-menu draws a dropdown list inside its frame, so later rows paint
+        over it. Draw the open list again on top of everything."""
+        widget = menu.get_selected_widget()
+        if (widget is None or widget.__class__.__name__ != "DropSelect" or not widget.active
+                or widget.get_frame() is None):
+            return
+        drop = getattr(widget, "_drop_frame", None)
+        world = getattr(menu, "_widgets_surface", None)
+        if drop is None or world is None:
+            return
+        owners = [widget, drop] + list(drop.get_widgets())
+        saved = [(o, getattr(o, "last_surface", None)) for o in owners]
         try:
-            # Force the menu to become active first
-            self.user_setup_menu.enable()
-            # Then select the text input widget
-            self.user_setup_menu.select_widget(self.username_input)
-            # Also clear any existing text and set cursor position
-            if hasattr(self.username_input, 'clear'):
-                self.username_input.clear()
+            layer = pygame.Surface(world.get_size(), pygame.SRCALPHA)
+            drop.draw(layer)
+            real = widget.get_rect(to_real_position=True)
+            local = widget.get_rect()
+            clip = screen.get_clip()
+            screen.set_clip(self._view_rect(menu))
+            screen.blit(layer, (real.x - local.x, real.y - local.y))
+            screen.set_clip(clip)
         except Exception as e:
-            print(f"Error selecting text input: {e}")    
-    def _back_from_user_setup(self):
-        """Go back from user setup screen to main menu"""
-        self.sound_manager.play("menu_select")
-        self._clear_all_hover_effects()
-        self.user_setup_active = False
-        self._change_menu(self.main_menu)
+            if self.debug_mode:
+                print(f"Dropdown redraw error: {e}")
+        finally:
+            for owner, surf in saved:
+                owner.last_surface = surf
+
+    def _draw_keyboard_focus(self, screen, menu):
+        """Focus ring for built-in widgets (dropdowns, toggles, sliders, inputs)."""
+        if not self.keyboard_mode:
+            return
+        widget = menu.get_selected_widget()
+        if widget is None or hasattr(widget, "_ui"):
+            return
+        target = getattr(widget, "_ui_ring_frame", None) or widget
+        try:
+            rect = target.get_rect(to_real_position=True)
+        except Exception:
+            return
+        view = self._view_rect(menu)
+        if view.contains(rect):
+            ui.focus_ring(screen, rect, ui.radius(10))

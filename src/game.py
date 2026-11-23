@@ -4,6 +4,7 @@ import time
 import random
 import os
 import threading
+import numpy as np
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -14,6 +15,9 @@ from src.sound_manager import SoundManager
 from src.results_window import ResultsWindow
 from src.mouse_interaction import MouseInteraction
 from src.game_menu_button import GameMenuButton
+from src import display_manager
+from src import hdr as hdr_output
+from src import ui_style as ui
 from src.personal_best_manager import PersonalBestManager
 from src.achievements_manager import AchievementsManager, ACHIEVEMENTS
 from src.supabase_manager import get_supabase_manager
@@ -32,31 +36,22 @@ class Game:
     def __init__(self, existing_screen=None):
         # Load settings
         self.settings = SettingsManager()
-        self.width = self.settings.settings["resolution"]["width"]
-        self.height = self.settings.settings["resolution"]["height"]
-        self.is_fullscreen = self.settings.settings["fullscreen"]
-        self.show_fps = self.settings.settings["show_fps"]
-        
-        # Use existing OpenGL screen or create new one
+        self.show_fps = self.settings.settings.get("show_fps", False)
+
+        # Resolve display mode, monitor and size against the connected monitors
+        self.display_mode, self.display_index, size = display_manager.resolve(self.settings.settings)
+        self.is_fullscreen = self.display_mode != "windowed"
+
+        # Reuse the window created by the loading screen (same OpenGL context)
         if existing_screen:
-            current_size = existing_screen.get_size()
-            
-            # Check if we need to change size or fullscreen mode
-            if current_size == (self.width, self.height) and not self.is_fullscreen:
-                # Perfect match - reuse the existing OpenGL context
-                self.screen = existing_screen
-            else:
-                # Need to recreate for different size/fullscreen
-                display_flags = DOUBLEBUF | OPENGL
-                if self.is_fullscreen:
-                    display_flags |= FULLSCREEN
-                self.screen = pygame.display.set_mode((self.width, self.height), display_flags)
+            self.screen = existing_screen
         else:
-            # Create new OpenGL window
-            display_flags = DOUBLEBUF | OPENGL
-            if self.is_fullscreen:
-                display_flags |= FULLSCREEN
-            self.screen = pygame.display.set_mode((self.width, self.height), display_flags)
+            self.screen = display_manager.open_window(self.display_mode, self.display_index, size,
+                                                      hdr=self._hdr_wanted(self.display_index))
+        self.width, self.height = self.screen.get_size()
+        ui.set_screen(self.width, self.height)
+        self.hdr_presenter = None
+        self._setup_hdr()
         pygame.display.set_caption("Rubik's Cube Simulator")
         self.clock = pygame.time.Clock()
         
@@ -551,81 +546,37 @@ class Game:
             return None
 
     def _render_achievement_notification_opengl(self):
-        """Render the achievement notification (right-side banner) using OpenGL."""
+        """Achievement toast at the top center"""
         if (not self._achievement_notification_active) or self._achievement_notification_alpha <= 0:
             return
-
         achievement_id = self._achievement_notification_id
         achievement = ACHIEVEMENTS.get(achievement_id, {}) if achievement_id else {}
-
         try:
-            # Import pygame_menu to access the font (consistent with existing banner rendering)
-            import pygame_menu
-
-            if not hasattr(self, '_achievement_banner_title_font'):
-                try:
-                    self._achievement_banner_title_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 30)
-                    self._achievement_banner_text_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 26)
-                except Exception:
-                    self._achievement_banner_title_font = pygame.font.SysFont('arial', 30, bold=True)
-                    self._achievement_banner_text_font = pygame.font.SysFont('arial', 26)
-
-            banner_width = 460
-            banner_height = 96
-            margin = 18
-
             a = float(self._achievement_notification_alpha)
-            slide_px = int((1.0 - a) * 60)
-            # Center horizontally at top of screen
-            x = (self.width - banner_width) // 2
-            y = margin
+            pad = ui.px(18)
+            icon_size = ui.px(64)
+            caption_f = ui.body_font(ui.SIZE_CAPTION, bold=True)
+            name_f = ui.body_font(ui.SIZE_BODY, bold=True)
+            name = achievement.get('name', 'Unknown achievement')
+            text_w = max(caption_f.size("Achievement unlocked")[0], name_f.size(name)[0])
+            width = min(self.width - ui.px(48), pad * 2 + icon_size + ui.px(18) + text_w + ui.px(8))
+            height = icon_size + pad * 2
 
-            banner_surface = pygame.Surface((banner_width, banner_height), pygame.SRCALPHA)
-
-            bg_alpha = int(215 * a)
-            border_alpha = int(255 * a)
-            pygame.draw.rect(
-                banner_surface,
-                (20, 20, 28, bg_alpha),
-                (0, 0, banner_width, banner_height),
-                border_radius=14
-            )
-            pygame.draw.rect(
-                banner_surface,
-                (240, 198, 38, border_alpha),
-                (0, 0, banner_width, banner_height),
-                width=2,
-                border_radius=14
-            )
-
-            # Icon
-            icon_size = 72
+            surf = pygame.Surface((width, height), pygame.SRCALPHA)
+            ui.fill_rect(surf, (*ui.SURFACE, 248), surf.get_rect(), ui.radius(14))
+            ui.fill_rect(surf, ui.ACCENT, surf.get_rect(), ui.radius(14), width=max(1, ui.px(2)))
             icon = self._get_achievement_icon(achievement_id, icon_size)
-            has_icon = icon is not None
-            if has_icon:
-                icon_alpha = icon.copy()
-                icon_alpha.set_alpha(int(255 * a))
-                banner_surface.blit(icon_alpha, (12, (banner_height - icon_size) // 2))
-
-            # Text
-            title = 'Achievement Unlocked'
-            name = achievement.get('name', 'Unknown Achievement')
-            title_surf = self._achievement_banner_title_font.render(title, True, (240, 198, 38))
-            name_surf = self._achievement_banner_text_font.render(name, True, (255, 255, 255))
-
-            title_surf.set_alpha(int(255 * a))
-            name_surf.set_alpha(int(255 * a))
-
-            text_x = 12 + (icon_size + 14 if has_icon else 0)
-            banner_surface.blit(title_surf, (text_x, 18))
-            banner_surface.blit(name_surf, (text_x, 52))
-
-            texture_data = pygame.image.tostring(banner_surface, 'RGBA', True)
-            # Position at top center: glRasterPos2f positions the lower-left corner,
-            # so add banner_height to place the top edge at y=margin
-            glRasterPos2f(x, y + banner_height)
-            glPixelZoom(1, 1)
-            glDrawPixels(banner_width, banner_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+            if icon is not None:
+                surf.blit(icon, (pad, pad))
+            else:
+                ui.cube_mark(surf, (pad + icon_size // 2, pad + icon_size // 2), icon_size // 2, body=ui.SURFACE)
+            tx = pad + icon_size + ui.px(18)
+            ui.draw_text(surf, "Achievement unlocked", caption_f, ui.ACCENT, (tx, height // 2 - ui.px(2)), "bottomleft")
+            ui.draw_text(surf, ui.ellipsize(name, name_f, width - tx - pad), name_f, ui.TEXT,
+                         (tx, height // 2 + ui.px(2)), "topleft")
+            surf.set_alpha(int(255 * a))
+            y = self._hud_margin() + int((1.0 - a) * -ui.px(16))
+            self._blit_gl(surf, (self.width - width) // 2, max(0, y))
         except Exception as e:
             if self.debug_mode:
                 print(f"Achievement banner render error: {e}")
@@ -747,7 +698,7 @@ class Game:
                 self.hint_banner_alpha = 1.0
         
         # Update expanded hint if solution becomes available
-        if self.hint_expanded and self.hint_current_suggestion and "Analyzing cube" in self.hint_current_suggestion:
+        if self.hint_expanded and self.hint_current_suggestion and "Analyzing the cube" in self.hint_current_suggestion:
             with self._solution_lock:
                 if self._cached_solution_moves and not self._solution_computing:
                     # Solution is now available, update the hint
@@ -845,7 +796,7 @@ class Game:
             # Still computing in background
             self.hint_moves_sequence = []
             self.hint_moves_completed = 0
-            self.hint_current_suggestion = "Analyzing cube...\nPlease wait..."
+            self.hint_current_suggestion = "Analyzing the cube\nOne moment while the solver works."
         else:
             # No solution available
             self.hint_moves_sequence = []
@@ -930,7 +881,7 @@ class Game:
                 direction = "clockwise" if "'" not in first_move else "counterclockwise"
                 face_name = self._get_face_name(first_move[0])
                 
-                return f"{phrase} these moves:\n{moves_str}\n\n⚠️ Watch the {face_name} face!\nThe yellow arrow shows {direction} rotation"
+                return f"{phrase} these moves:\n{moves_str}\n\nWatch the {face_name} face. The yellow arrow shows a {direction} turn."
             except Exception as e:
                 self.debug_print(f"Error formatting hint: {e}")
         
@@ -1034,69 +985,51 @@ class Game:
         
         return False
 
+    def _hdr_wanted(self, display_index, enabled=None):
+        """HDR output is used when it is switched on and the monitor runs Windows HDR."""
+        if enabled is None:
+            enabled = bool(self.settings.settings.get("hdr_enabled", False))
+        return enabled and hdr_output.display_hdr_info(display_index)[0]
+
+    def _setup_hdr(self):
+        """Create the HDR presenter for the current window (None for SDR windows)."""
+        self.hdr_presenter = None
+        if self.settings.settings.get("hdr_enabled", False):
+            paper_white = self.settings.settings.get("hdr_paper_white", hdr_output.PAPER_WHITE_DEFAULT)
+            self.hdr_presenter = hdr_output.create_presenter(self.width, self.height, paper_white)
+
     def toggle_fullscreen(self):
-        """Toggle between fullscreen and windowed mode with proper resolution handling"""
-        if self.is_fullscreen:
-            # Switch to windowed mode
-            self.screen = pygame.display.set_mode((self.width, self.height), DOUBLEBUF | OPENGL)
-            self.renderer.setup_opengl()
-            self.renderer.create_display_list()
+        """F11: switch between a window and borderless fullscreen on the current monitor"""
+        if self.display_mode == "windowed":
+            mode = "borderless"
+            size = display_manager.desktop_size(self.display_index)
         else:
-            # Switch to fullscreen mode
-            display_info = pygame.display.Info()
-            fullscreen_width = display_info.current_w
-            fullscreen_height = display_info.current_h
-            
-            self.screen = pygame.display.set_mode((fullscreen_width, fullscreen_height), DOUBLEBUF | OPENGL | FULLSCREEN)
-            self.renderer.setup_opengl()
-            self.renderer.create_display_list()
-            
-            # Update dimensions for fullscreen
-            self.width = fullscreen_width
-            self.height = fullscreen_height
-            
-            # Update all components with new dimensions
-            if hasattr(self, 'menu'):
-                self.menu.width = self.width
-                self.menu.height = self.height
-                if hasattr(self, 'debug_mode'):
-                    self.menu.debug_mode = self.debug_mode
-                self.menu._create_menus()
-            
-            if hasattr(self, 'results_window'):
-                self.results_window.update_dimensions(self.width, self.height)
-                
-            if hasattr(self, 'menu_button'):
-                self.menu_button.update_dimensions(self.width, self.height)
-            
-            # Update mouse interaction system for fullscreen dimensions
-            if hasattr(self, 'mouse_interaction'):
-                self.mouse_interaction.update_renderer(self.renderer)
-            
-            self.debug_print(f"Switched to fullscreen: {fullscreen_width}x{fullscreen_height}")
-        
-        self.is_fullscreen = not self.is_fullscreen
-    
+            mode = "windowed"
+            saved = self.settings.settings.get("resolution") or {}
+            wanted = (int(saved.get("width", 0) or 0), int(saved.get("height", 0) or 0))
+            options = display_manager.windowed_resolutions(self.display_index)
+            size = display_manager.nearest(wanted, options) if wanted[0] > 0 else display_manager.default_window_size(self.display_index)
+        self.apply_display(mode, self.display_index, size)
+
     def change_resolution(self, width, height):
-        """Change screen resolution"""
-        self.debug_print(f"Changing resolution to {width}x{height}")
-        
+        """Change the window size while keeping the current display mode"""
+        return self.apply_display(self.display_mode, self.display_index, (width, height))
+
+    def apply_display(self, mode, display_index, size, hdr=None):
+        """Switch display mode, monitor, resolution and HDR, keeping the game state"""
+        if hdr is None:
+            hdr = bool(self.settings.settings.get("hdr_enabled", False))
+        self.debug_print(f"Applying display: {mode} on monitor {display_index + 1} at {size[0]}x{size[1]}")
         try:
-            # Store current fullscreen state
-            fullscreen = self.menu.fullscreen if hasattr(self, 'menu') else self.is_fullscreen
-            
-            # Save the current cube state before recreating renderer
+            # Save cube, camera, animation and game state; the OpenGL context is recreated
             cube_state = None
             camera_rotation = (0, 0)
             animation_state = None
             game_state = None
             if hasattr(self, 'renderer') and self.renderer:
                 try:
-                    # Save the cube state
                     cube_state = self.renderer.rubiks_cube.get_state()
-                    # Save camera rotation
                     camera_rotation = (self.renderer.rotation_x, self.renderer.rotation_y)
-                    # Save animation state
                     animation_state = {
                         'is_animating': self.renderer.is_animating,
                         'animation_start_time': self.renderer.animation_start_time,
@@ -1106,7 +1039,6 @@ class Game:
                         'animation_clockwise': self.renderer.animation_clockwise,
                         'pending_move': self.renderer.pending_move
                     }
-                    # Save game state to prevent unwanted scrambling
                     game_state = {
                         'game_started': self.game_started,
                         'new_game_requested': self.new_game_requested,
@@ -1115,65 +1047,48 @@ class Game:
                         'cube_solved': self.cube_solved,
                         '_ever_started': getattr(self, '_ever_started', False)
                     }
-                    self.debug_print("Saved cube, animation, and game state during resolution change")
                 except Exception as e:
                     self.debug_print(f"Could not save cube state: {e}")
-            
-            # First completely recreate the pygame display without OpenGL
+
+            # Recreate the window from scratch (needed to move between monitors).
+            # GL objects die with the old context, so just drop the references.
+            self.hdr_presenter = None
+            self.settings.settings["hdr_enabled"] = bool(hdr)
             pygame.display.quit()
             pygame.display.init()
-            
-            # Set display flags
-            display_flags = DOUBLEBUF | OPENGL
-            if fullscreen:
-                display_flags |= FULLSCREEN
-                self.is_fullscreen = True
-            else:
-                self.is_fullscreen = False
-            
-            # Update internal dimensions
-            self.width = width
-            self.height = height
-            
-            # Set the new display mode with a fresh pygame instance
-            self.screen = pygame.display.set_mode((width, height), display_flags)
+            try:
+                pygame.display.set_icon(pygame.image.load(resource_path("utils/rubiksCube_Icon.ico")))
+            except Exception:
+                pass
+            self.screen = display_manager.open_window(mode, display_index, size,
+                                                      hdr=self._hdr_wanted(display_index, hdr))
             pygame.display.set_caption("Rubik's Cube Simulator")
-            
-            # Verify the actual dimensions
-            actual_width, actual_height = pygame.display.get_surface().get_size()
-            self.debug_print(f"Actual screen size: {actual_width}x{actual_height}")
-            
-            # If actual size differs significantly from requested size, update dimensions
-            if abs(actual_width - width) > 5 or abs(actual_height - height) > 5:
-                self.width = actual_width
-                self.height = actual_height
-    
-            # Now recreate the OpenGL context with correct dimensions
+
+            self.display_mode = mode
+            self.display_index = display_index
+            self.is_fullscreen = mode != "windowed"
+            self.width, self.height = self.screen.get_size()
+            ui.set_screen(self.width, self.height)
+            ui.clear_caches()
+            self.debug_print(f"Actual screen size: {self.width}x{self.height}")
+
+            # New OpenGL context: rebuild the renderer and restore the cube
+            self._overlay_tex = None
+            self._setup_hdr()
             self.renderer = Renderer(self.width, self.height)
-            
-            # Update mouse interaction system with new renderer
+            skybox_mode = self.menu.get_selected_difficulty() if hasattr(self, 'menu') else None
+            if skybox_mode and self.difficulty_change_count > 0:
+                self.renderer.reload_skybox_texture(skybox_mode)
             if hasattr(self, 'mouse_interaction'):
                 self.mouse_interaction.update_renderer(self.renderer)
-            
-            # Restore the saved cube state
             if cube_state is not None:
                 try:
                     self.renderer.rubiks_cube.set_state(cube_state)
-                    # Update the renderer's visual representation to match the restored state
                     self.renderer.update_cube_colors()
-                    # Restore camera rotation
                     self.renderer.rotation_x, self.renderer.rotation_y = camera_rotation
-                    # Restore animation state
                     if animation_state is not None:
-                        self.renderer.is_animating = animation_state['is_animating']
-                        self.renderer.animation_start_time = animation_state['animation_start_time']
-                        self.renderer.animating_face = animation_state['animating_face']
-                        self.renderer.animation_axis = animation_state['animation_axis']
-                        self.renderer.animation_angle_total = animation_state['animation_angle_total']
-                        self.renderer.animation_clockwise = animation_state['animation_clockwise']
-                        self.renderer.pending_move = animation_state['pending_move']
-                        # Note: animation_cubes will be recreated when needed
-                    # Restore game state
+                        for key, value in animation_state.items():
+                            setattr(self.renderer, key, value)
                     if game_state is not None:
                         self.game_started = game_state['game_started']
                         self.new_game_requested = game_state['new_game_requested']
@@ -1181,46 +1096,38 @@ class Game:
                         self.start_time = game_state['start_time']
                         self.cube_solved = game_state['cube_solved']
                         self._ever_started = game_state['_ever_started']
-                    self.debug_print("Restored cube, animation, and game state after resolution change")
                 except Exception as e:
                     self.debug_print(f"Could not restore cube state: {e}")
-    
-            # Update menu with the actual dimensions
+
+            # Save before rebuilding the menu, so it reads the new state
+            self.settings.settings["display_mode"] = mode
+            self.settings.settings["display_index"] = display_index
+            self.settings.settings["fullscreen"] = self.is_fullscreen
+            if mode != "borderless":
+                # Borderless always uses the native size; keep the window size for later
+                self.settings.settings["resolution"] = {"width": self.width, "height": self.height}
+            self.settings.save_settings()
+
+            # Rebuild every 2D layer for the new size
+            self._achievement_icon_cache = {}
             if hasattr(self, 'menu'):
-                self.menu.width = self.width
-                self.menu.height = self.height
-                if hasattr(self, 'debug_mode'):
-                    self.menu.debug_mode = self.debug_mode
+                self.menu.debug_mode = self.debug_mode
+                self.menu._load_display_state()
+                self.menu.width, self.menu.height = self.width, self.height
                 self.menu._create_menus()
-            
-            # Update results window with new dimensions
             if hasattr(self, 'results_window'):
                 self.results_window.update_dimensions(self.width, self.height)
-                
             if hasattr(self, 'menu_button'):
                 self.menu_button.update_dimensions(self.width, self.height)
-    
-            # Try to restore icon
-            try:
-                icon = pygame.image.load("utils/rubiksCube_Icon.ico")
-                pygame.display.set_icon(icon)
-            except Exception:
-                pass
-    
-            # Save settings
-            self.settings.settings["resolution"]["width"] = self.width
-            self.settings.settings["resolution"]["height"] = self.height
-            self.settings.settings["fullscreen"] = self.is_fullscreen
-            self.settings.save_settings()
-    
-            self.debug_print(f"Resolution change complete: {self.width}x{self.height}")
+
+            self.debug_print(f"Display change complete: {self.width}x{self.height}")
             return True
-    
+
         except Exception as e:
-            print(f"Resolution change error: {e}")
+            print(f"Display change error: {e}")
             self._fallback_resolution()
             return False
-    
+
     def handle_events(self):
         events = []
         for event in pygame.event.get():
@@ -1248,6 +1155,10 @@ class Game:
                 # Cancel the timer to prevent repeated calls
                 pygame.time.set_timer(self.MUSIC_RESTORE_EVENT, 0)
             
+            # F11 works everywhere: menu, results and in game
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
+                self.toggle_fullscreen()
+
             # IMPORTANT: Pass events to menu FIRST when menu is active
             # This allows text inputs in menus to receive keyboard events
             elif self.menu.is_active():
@@ -1285,9 +1196,7 @@ class Game:
                     self.renderer.rotation_x = 0
                     self.renderer.rotation_y = 0
                     self.debug_print("Rotation reset")
-                elif event.key == pygame.K_F11:
-                    self.toggle_fullscreen()
-                
+
                 # Cube movement controls using standard notation
                 elif not self.menu.is_active() and not self.results_window.active and not (hasattr(self, 'is_scrambling') and self.is_scrambling):
                     # R moves
@@ -1352,7 +1261,7 @@ class Game:
                         if current_difficulty == "freeplay":
                             self.scramble_cube()
                         else:
-                            self.show_banner(f"Scramble is only available in freeplay mode")
+                            self.show_banner("Scrambling is only available in Free Play")
                     elif event.key == pygame.K_g:
                         # Suggest next move (solver) - with cooldown and concurrent run prevention
                         if not self.solver_is_running:
@@ -1367,7 +1276,7 @@ class Game:
                 # Left click: first check hint system, then menu button, else cube moves
                 if self.handle_hint_click(event.pos):
                     continue
-                if self.menu_button.handle_click(event.pos):
+                if not self.results_window.active and self.menu_button.handle_click(event.pos):
                     continue
                 # If not handled by menu button, and not in menu/results, do cube moves
                 if not self.menu.is_active() and not self.results_window.active:
@@ -1521,7 +1430,7 @@ class Game:
                 if not self.game_over:
                     self.game_over = True
                     self.game_over_reason = "time_up"
-                    self.show_banner("Time's up! Game Over!")
+                    self.show_banner("Time's up")
                     # Show game over screen
                     self.results_window.show_game_over(
                         self.move_counter, 
@@ -1543,7 +1452,7 @@ class Game:
             if not self.renderer.rubiks_cube.is_solved():
                 self.game_over = True
                 self.game_over_reason = "moves_exceeded"
-                self.show_banner("Game Over! Move limit exceeded!")
+                self.show_banner("Out of moves")
                 # Show game over screen
                 solve_time = time.time() - self.start_time
                 self.results_window.show_game_over(
@@ -1565,6 +1474,10 @@ class Game:
                 
                 # Only scramble if this is a new game request or the very first start
                 if self.new_game_requested or not hasattr(self, '_ever_started'):
+                    if not hasattr(self, '_ever_started'):
+                        # The menu turntable moved the camera; start from the default view
+                        self.renderer.rotation_y = -45
+                        self.renderer.rotation_x = 35
                     self.scramble_cube_by_difficulty(difficulty)
                     self._ever_started = True
                 
@@ -1572,15 +1485,13 @@ class Game:
                 
         if hasattr(self, 'menu') and self.menu.resolution_changed():
             try:
-                new_width, new_height = self.menu.get_current_resolution()
-                fullscreen = self.menu.get_setting('fullscreen')
-                
-                if (new_width, new_height) != (self.width, self.height) or fullscreen != self.is_fullscreen:
-                    self.change_resolution(new_width, new_height)
-                
-                show_fps = self.menu.get_setting('show_fps')
-                if show_fps is not None:
-                    self.show_fps = show_fps
+                # Reset first: the menu is rebuilt while the display changes
+                self.menu.reset_resolution_changed()
+                mode, display_index, size, hdr = self.menu.get_display_request()
+                same_size = mode == "borderless" or tuple(size) == (self.width, self.height)
+                same_hdr = bool(hdr) == bool(self.settings.settings.get("hdr_enabled", False))
+                if (mode, display_index) != (self.display_mode, self.display_index) or not same_size or not same_hdr:
+                    self.apply_display(mode, display_index, size, hdr)
                 
                 # Use both music_volume and master_volume for correct volume after resolution change
                 music_volume = self.settings.get_audio_volume("music_volume") / 100
@@ -1597,6 +1508,10 @@ class Game:
 
         if not self.menu.is_active() and self.auto_rotate:
             self.renderer.rotate_camera(azimuth=self.auto_rotation_speed, elevation=0)
+        elif self.menu.is_active() and self.difficulty_change_count == 0:
+            # Slow turntable behind the main menu before the first game
+            dt = self.clock.get_time() / 1000.0
+            self.renderer.rotate_camera(azimuth=12.0 * min(dt, 0.1), elevation=0)
         
         # Frame-rate independent keyboard controls for camera rotation
         if not self.menu.is_active() and not self.results_window.active:
@@ -1660,6 +1575,10 @@ class Game:
             self.renderer._last_animation_state = self.renderer.is_animating
     
     def render(self):
+        # With HDR output the frame is drawn offscreen and converted when presenting
+        if self.hdr_presenter:
+            self.hdr_presenter.begin()
+
         # Create debug callback that includes both mouse interaction debug and visual hints
         def combined_callback():
             if self.debug_mode:
@@ -1673,8 +1592,30 @@ class Game:
                     self.visual_hint_pulse_time
                 )
         
+        # Behind the main menu, shift the view so the cube sits in the free area right of the panel
+        target_shift = 0.0
+        if self.menu.is_active() and self.menu.current_menu is self.menu.main_menu:
+            target_shift = (self.menu.L.panel_w / self.width) * self.menu.get_current_alpha()
+        dt = min(0.1, self.clock.get_time() / 1000.0)
+        shift = getattr(self, '_lens_shift', 0.0)
+        shift += (target_shift - shift) * min(1.0, dt * 12.0)
+        self._lens_shift = 0.0 if abs(shift) < 0.0005 else shift
+
+        if self._lens_shift:
+            glMatrixMode(GL_PROJECTION)
+            glPushMatrix()
+            glLoadIdentity()
+            glTranslatef(self._lens_shift, 0.0, 0.0)
+            gluPerspective(getattr(self.renderer, 'fov', 45), self.width / self.height, 0.1, 50.0)
+            glMatrixMode(GL_MODELVIEW)
+
         # Render 3D cube with combined callback
         self.renderer.render_frame(debug_callback=combined_callback)
+
+        if self._lens_shift:
+            glMatrixMode(GL_PROJECTION)
+            glPopMatrix()
+            glMatrixMode(GL_MODELVIEW)
         
         # Notify menu that game has rendered (for blur background capture)
         if hasattr(self, 'menu') and not self.menu.game_rendered:
@@ -1699,105 +1640,44 @@ class Game:
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         
-        # Render FPS counter if enabled
-        if self.show_fps:
-            self._render_fps_counter()
-        
-        # Render game stats (timer and moves) if game is in progress
-        # Show stats even when menu is active, but with reduced opacity
-        if not self.results_window.active:
-            menu_alpha = self.menu.get_current_alpha()
-            stats_alpha = 1.0 - (menu_alpha * 0.7)  # Reduce opacity when menu is visible
-            self._render_game_stats(stats_alpha)
-        
+        # HUD fades out while the menu is open
+        menu_alpha = self.menu.get_current_alpha()
+        hud_alpha = 1.0 - menu_alpha
+        if hud_alpha > 0.01 and not self.results_window.active:
+            if self.show_fps:
+                self._render_fps_counter(hud_alpha)
+            self._render_game_stats(hud_alpha)
+
         # Render notification banner if active
         if self.banner_active:
             self._render_banner_opengl()
 
-        
-        # Render hint banner or expanded hint popup
-        if self.hint_banner_active or self.hint_expanded:
+        # Render hint pill or expanded hint panel
+        if (self.hint_banner_active or self.hint_expanded) and not self.menu.is_active():
             self._render_hint_system()
-        
-        # Render menu overlay if active (including during animation)
-        menu_alpha = self.menu.get_current_alpha()
-        if menu_alpha > 0.0:
-            # Create menu surface and render to it
-            menu_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            self.menu.draw(menu_surface)
-            
-            # Apply alpha to entire menu surface if needed
-            if menu_alpha < 1.0:
-                # Create alpha overlay surface
-                alpha_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                alpha_surface.fill((255, 255, 255, int(255 * menu_alpha)))
-                menu_surface.blit(alpha_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-            
-            # Convert pygame surface to OpenGL texture
-            texture_data = pygame.image.tostring(menu_surface, 'RGBA', True)
-            
-            glRasterPos2f(0, self.height)
-            glPixelZoom(1, 1)  # Flip vertically
-            glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
 
-            # Achievement notifications must appear above the menu overlay
-            if self._achievement_notification_active:
-                self._render_achievement_notification_opengl()
-        
+        # Render menu overlay if active (including during animation)
+        if menu_alpha > 0.0:
+            overlay = self._get_overlay_surface()
+            self.menu.draw(overlay)
+            self._draw_overlay(overlay, menu_alpha)
+
         # Render results window overlay if active
         elif self.results_window.active:
-            # Create results surface and render the modern effects to it
-            results_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            
-            # Let the results window render its modern effects to the surface
-            self.results_window.render_to_surface(results_surface)
-            
-            # Convert pygame surface to OpenGL texture
-            texture_data = pygame.image.tostring(results_surface, 'RGBA', True)
-            
-            glRasterPos2f(0, self.height)
-            glPixelZoom(1, 1)  # Flip vertically
-            glDrawPixels(self.width, self.height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+            overlay = self._get_overlay_surface()
+            self.results_window.render_to_surface(overlay)
+            self._draw_overlay(overlay, 1.0)
 
-            # Achievement notifications must appear above the results overlay
-            if self._achievement_notification_active:
-                self._render_achievement_notification_opengl()
+        # Achievement notifications always appear on top
+        if self._achievement_notification_active:
+            self._render_achievement_notification_opengl()
 
-        # If neither menu nor results are drawn this frame, still render notifications on top.
-        else:
-            if self._achievement_notification_active:
-                self._render_achievement_notification_opengl()
-    
-        # Render menu button when not in menu or results
-        if (hasattr(self, 'menu_button') and 
-              not self.menu.is_active() and 
-              not self.results_window.active):
-            
-            # Calculate area needed for the button
-            button_margin = 10
-            total_width = self.menu_button.button_size + (button_margin * 2)
-            button_area_height = self.menu_button.button_size + (button_margin * 2)
-            button_surface = pygame.Surface((total_width, button_area_height), pygame.SRCALPHA)
-            
-            # Draw menu button
-            menu_x = button_margin
-            menu_y = button_margin
-            if self.menu_button.is_hovering_menu:
-                button_surface.blit(self.menu_button.menu_button_surface_hover, (menu_x, menu_y))
-            else:
-                button_surface.blit(self.menu_button.menu_button_surface, (menu_x, menu_y))
-            
-            # Convert surface to OpenGL
-            texture_data = pygame.image.tostring(button_surface, 'RGBA', True)
-            
-            # Position correctly
-            buttons_x = self.menu_button.menu_button_rect.x - button_margin
-            buttons_y = self.menu_button.menu_button_rect.y - button_margin
-            
-            glRasterPos2f(buttons_x, buttons_y + button_area_height)
-            glPixelZoom(1, 1)
-            glDrawPixels(total_width, button_area_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-    
+        # Menu button when not in menu or results
+        if not self.menu.is_active() and not self.results_window.active:
+            button = self.menu_button
+            surf = button.menu_button_surface_hover if button.is_hovering_menu else button.menu_button_surface
+            self._blit_gl(surf, button.menu_button_rect.x, button.menu_button_rect.y)
+
         # Restore 3D state
         glDisable(GL_BLEND)
         glEnable(GL_DEPTH_TEST)
@@ -1810,478 +1690,315 @@ class Game:
         
         # Update window caption
         pygame.display.set_caption("Rubik's Cube Simulator")
-        
+
+        if self.hdr_presenter:
+            self.hdr_presenter.end()
         pygame.display.flip()
 
-    def _render_fps_counter(self):
-        """Render FPS counter in the top-left corner"""
+    def _blit_gl(self, surface, x, y):
+        """Draw a pygame surface on the 2D overlay with its top left at (x, y)."""
+        w, h = surface.get_size()
+        if w <= 0 or h <= 0:
+            return
+        x = max(0, min(int(x), self.width - 1))
+        y = max(0, int(y))
+        texture_data = pygame.image.tostring(surface, 'RGBA', True)
+        glRasterPos2f(x, min(self.height, y + h))
+        glPixelZoom(1, 1)
+        glDrawPixels(w, h, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
+
+    def _get_overlay_surface(self):
+        """Full screen transparent surface reused every frame for menus and results."""
+        surf = getattr(self, '_overlay_surface', None)
+        if surf is None or surf.get_size() != (self.width, self.height):
+            surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            self._overlay_surface = surf
+        surf.fill((0, 0, 0, 0))
+        return surf
+
+    def _draw_overlay(self, surface, alpha):
+        """Upload a full screen surface to a texture and draw it as one quad.
+
+        Much faster than tostring + glDrawPixels at high resolutions: the
+        surface's BGRA pixels are uploaded without an extra copy."""
+        w, h = surface.get_size()
+        if getattr(self, '_overlay_tex', None) is None or getattr(self, '_overlay_tex_size', None) != (w, h):
+            self._overlay_tex = glGenTextures(1)
+            self._overlay_tex_size = (w, h)
+            glBindTexture(GL_TEXTURE_2D, self._overlay_tex)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, None)
+        glBindTexture(GL_TEXTURE_2D, self._overlay_tex)
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, surface.get_pitch() // 4)
+        view = surface.get_view('1')
+        pixels = np.frombuffer(view, dtype=np.uint8)
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, pixels)
+        del pixels, view  # unlock the surface
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0)
+
+        glEnable(GL_TEXTURE_2D)
+        glColor4f(1.0, 1.0, 1.0, max(0.0, min(1.0, alpha)))
+        glBegin(GL_QUADS)
+        glTexCoord2f(0, 0); glVertex2f(0, 0)
+        glTexCoord2f(1, 0); glVertex2f(w, 0)
+        glTexCoord2f(1, 1); glVertex2f(w, h)
+        glTexCoord2f(0, 1); glVertex2f(0, h)
+        glEnd()
+        glColor4f(1.0, 1.0, 1.0, 1.0)
+        glBindTexture(GL_TEXTURE_2D, 0)
+        glDisable(GL_TEXTURE_2D)
+
+    def _hud_margin(self):
+        return ui.px(24)
+
+    def _render_fps_counter(self, alpha=1.0):
+        """FPS pill in the top left corner"""
         try:
-            # Import pygame_menu to access the font
-            import pygame_menu
-            
-            # Get current FPS
             fps = self.clock.get_fps()
-            
-            # Create font if not exists - use same font as menu
-            if not hasattr(self, '_fps_font'):
-                self._fps_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 30)
-            
-            # Create FPS text surface
-            fps_text = f"FPS: {fps:.0f}"
-            text_surface = self._fps_font.render(fps_text, True, (255, 255, 255))
-            
-            # Add a semi-transparent rounded background for better readability
-            text_width, text_height = text_surface.get_size()
-            bg_surface = pygame.Surface((text_width + 20, text_height + 10), pygame.SRCALPHA)
-            bg_surface.fill((0, 0, 0, 0))  # Fully transparent first
-            # Draw rounded rectangle background
-            pygame.draw.rect(bg_surface, (0, 0, 0, 128), (0, 0, text_width + 20, text_height + 10), border_radius=10)
-            # Optional: accent border
-            pygame.draw.rect(bg_surface, (100, 150, 255, 100), (0, 0, text_width + 20, text_height + 10), width=2, border_radius=10)
-            # Blit text onto background
-            bg_surface.blit(text_surface, (10, 5))
-            # Convert to OpenGL texture and render
-            texture_data = pygame.image.tostring(bg_surface, 'RGBA', True)
-            # Position in top-left corner (10 pixels from edges)
-            glRasterPos2f(10, text_height + 15)
-            glPixelZoom(1, 1)
-            glDrawPixels(text_width + 20, text_height + 10, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-            
+            fnt = ui.mono_font(ui.SIZE_SMALL, bold=True)
+            label = f"{fps:.0f} FPS" if fps > 0 else "-- FPS"
+            text = fnt.render(label, True, ui.MUTED)
+            pad_x, pad_y = ui.px(14), ui.px(8)
+            surf = pygame.Surface((text.get_width() + pad_x * 2, text.get_height() + pad_y * 2), pygame.SRCALPHA)
+            ui.fill_rect(surf, (*ui.SURFACE, 225), surf.get_rect(), ui.radius(10))
+            ui.fill_rect(surf, ui.LINE, surf.get_rect(), ui.radius(10), width=max(1, ui.px(1.5)))
+            surf.blit(text, (pad_x, pad_y))
+            if alpha < 1.0:
+                surf.set_alpha(int(255 * alpha))
+            m = self._hud_margin()
+            self._blit_gl(surf, m, m)
         except Exception as e:
-            # Fallback: if there's an error, just print to console
             if self.debug_mode:
                 print(f"FPS counter rendering error: {e}")
 
     def _render_game_stats(self, alpha=1.0):
-        """Render timer and moves counter in the bottom-left corner"""
+        """Bottom center bar: mode, timer and moves"""
         try:
-            # Import pygame_menu to access the font
-            import pygame_menu
-            
-            # Create font if not exists - use same font as menu
-            if not hasattr(self, '_stats_font'):
-                self._stats_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 35)
-            
-            # Prepare text lines
-            text_lines = []
-            urgent_color = False  # Flag for urgent coloring (red text)
-            
-            # Get current game mode configuration
             current_difficulty = self.menu.get_selected_difficulty()
             game_mode_config = self.menu.get_game_mode_config(current_difficulty)
-            
-            # Add moves counter with limit info if applicable
+            timer_enabled = game_mode_config.get("timer_enabled", True)
+
+            segments = []  # (label, value, color, width sample)
+            if timer_enabled:
+                elapsed = time.time() - self.start_time if self.start_time is not None else 0.0
+                if self.time_limit is not None:
+                    remaining = max(0.0, self.time_limit - elapsed)
+                    color = ui.DANGER if remaining <= 30 else ui.TEXT
+                    segments.append(("Time left", ui.format_clock(remaining), color, "00:00"))
+                else:
+                    segments.append(("Time", ui.format_clock(elapsed), ui.TEXT, "00:00"))
             if self.move_limit is not None:
                 remaining_moves = max(0, self.move_limit - self.move_counter)
-                if remaining_moves == 0:
-                    text_lines.append(f"Moves: {self.move_counter}/{self.move_limit} (LIMIT REACHED)")
-                    urgent_color = True
-                else:
-                    text_lines.append(f"Moves: {self.move_counter}/{self.move_limit} ({remaining_moves} left)")
-                    if remaining_moves <= 3:  # Show red when only 3 moves left
-                        urgent_color = True
+                color = ui.DANGER if remaining_moves <= 3 else ui.TEXT
+                segments.append(("Moves", f"{self.move_counter} / {self.move_limit}", color, f"00 / {self.move_limit}"))
             else:
-                text_lines.append(f"Moves: {self.move_counter}")
-            
-            # Check if timer is enabled for current game mode
-            timer_enabled = game_mode_config.get("timer_enabled", True)  # Default to True for compatibility
-            
-            # Add timer with countdown if applicable
-            if timer_enabled:
-                if self.start_time is not None:
-                    elapsed = time.time() - self.start_time
-                    
-                    if self.time_limit is not None:
-                        # Countdown mode for limited time
-                        remaining_time = max(0, self.time_limit - elapsed)
-                        if remaining_time <= 0:
-                            # Time's up! Show the display but don't set game_over here
-                            # The main update() method will handle setting game_over and showing the fail screen
-                            text_lines.append("Time: 00:00 (TIME UP!)")
-                            urgent_color = True
-                        else:
-                            minutes = int(remaining_time // 60)
-                            seconds = int(remaining_time % 60)
-                            text_lines.append(f"Time: {minutes:02d}:{seconds:02d} remaining")
-                            if remaining_time <= 30:  # Show red when 30 seconds or less
-                                urgent_color = True
-                    else:
-                        # Regular timer mode
-                        minutes = int(elapsed // 60)
-                        seconds = int(elapsed % 60)
-                        text_lines.append(f"Time: {minutes:02d}:{seconds:02d}")
-                else:
-                    if self.time_limit is not None:
-                        # Show initial time limit
-                        minutes = int(self.time_limit // 60)
-                        seconds = int(self.time_limit % 60)
-                        text_lines.append(f"Time: {minutes:02d}:{seconds:02d} remaining")
-                    else:
-                        text_lines.append("Time: 00:00")
-            
-            # Calculate dimensions for background
-            text_surfaces = []
-            max_width = 0
-            total_height = 0
-            line_height = 0
-            
-            # Choose text color based on urgency
-            text_color = (255, 80, 80) if urgent_color else (255, 255, 255)  # Red if urgent, white otherwise
-            
-            for line in text_lines:
-                text_surface = self._stats_font.render(line, True, text_color)
-                text_surfaces.append(text_surface)
-                width, height = text_surface.get_size()
-                max_width = max(max_width, width)
-                total_height += height
-                line_height = height
-            
-            # Add padding and spacing
-            padding = 10
-            line_spacing = 5
-            bg_width = max_width + (padding * 2)
-            bg_height = total_height + (padding * 2) + (line_spacing * (len(text_lines) - 1))
-            
-            # Create background surface with alpha and rounded corners
-            bg_surface = pygame.Surface((bg_width, bg_height), pygame.SRCALPHA)
-            bg_surface.fill((0, 0, 0, 0))
-            bg_alpha = int(128 * alpha)  # Apply alpha to background
-            # Draw rounded rectangle background
-            pygame.draw.rect(bg_surface, (0, 0, 0, bg_alpha), (0, 0, bg_width, bg_height), border_radius=10)
-            # Optional: accent border
-            pygame.draw.rect(bg_surface, (100, 150, 255, int(80 * alpha)), (0, 0, bg_width, bg_height), width=2, border_radius=10)
-            # Blit text lines onto background with alpha
-            y_offset = padding
-            for text_surface in text_surfaces:
-                if alpha < 1.0:
-                    # Apply alpha to text surface
-                    text_surface = text_surface.copy()
-                    text_surface.set_alpha(int(255 * alpha))
-                bg_surface.blit(text_surface, (padding, y_offset))
-                y_offset += line_height + line_spacing
-            # Convert to OpenGL texture and render
-            texture_data = pygame.image.tostring(bg_surface, 'RGBA', True)
-            # Position in bottom-left corner (10 pixels from edges)
-            y_position = self.height - bg_height - 10
-            glRasterPos2f(10, y_position + bg_height)
-            glPixelZoom(1, 1)
-            glDrawPixels(bg_width, bg_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-            
+                segments.append(("Moves", str(self.move_counter), ui.TEXT, "000"))
+
+            label_f = ui.body_font(ui.SIZE_CAPTION)
+            value_f = ui.mono_font(ui.SIZE_H3 - 2, bold=True)
+            mode_f = ui.display_font(ui.SIZE_H3)
+            pad_x = ui.px(26)
+            gap = ui.px(26)
+            bar_h = label_f.get_height() + value_f.get_height() + ui.px(22)
+
+            mode_name = ui.MODE_NAMES.get(current_difficulty, current_difficulty.replace("_", " ").title())
+            mode_surf = ui.render(mode_name, mode_f, ui.TEXT)
+            square = ui.px(28)
+            mode_w = square + ui.px(12) + mode_surf.get_width()
+
+            # Reserve width for a wide value so the bar does not jitter while the numbers change
+            widths = [max(label_f.size(label)[0], value_f.size(sample)[0], value_f.size(value)[0])
+                      for label, value, _, sample in segments]
+            total_w = pad_x * 2 + mode_w + sum(gap * 2 + w for w in widths)
+            surf = pygame.Surface((total_w, bar_h), pygame.SRCALPHA)
+            ui.fill_rect(surf, (*ui.SURFACE, 232), surf.get_rect(), ui.radius(14))
+            ui.fill_rect(surf, ui.LINE, surf.get_rect(), ui.radius(14), width=max(1, ui.px(1.5)))
+
+            x = pad_x
+            mark = ui.mode_icon(current_difficulty, square)
+            if mark:
+                surf.blit(mark, (x, bar_h // 2 - square // 2))
+            surf.blit(mode_surf, (x + square + ui.px(12), bar_h // 2 - mode_surf.get_height() // 2 + ui.px(2)))
+            x += mode_w
+            for (label, value, color, _), width in zip(segments, widths):
+                x += gap
+                pygame.draw.line(surf, ui.LINE, (x, ui.px(14)), (x, bar_h - ui.px(14)), max(1, ui.px(1.5)))
+                x += gap
+                ui.draw_text(surf, label, label_f, ui.MUTED, (x, ui.px(10)))
+                ui.draw_text(surf, value, value_f, color, (x, ui.px(10) + label_f.get_height()))
+                x += width
+
+            if alpha < 1.0:
+                surf.set_alpha(int(255 * alpha))
+            m = self._hud_margin()
+            self._blit_gl(surf, (self.width - total_w) // 2, self.height - bar_h - m)
         except Exception as e:
             if self.debug_mode:
                 print(f"Game stats rendering error: {e}")
 
+    def _toast_surface(self, text, alpha):
+        fnt = ui.body_font(ui.SIZE_BODY, bold=True)
+        t = fnt.render(text, True, ui.TEXT)
+        pad_x, pad_y = ui.px(26), ui.px(16)
+        surf = pygame.Surface((t.get_width() + pad_x * 2, t.get_height() + pad_y * 2), pygame.SRCALPHA)
+        ui.fill_rect(surf, (*ui.SURFACE, 240), surf.get_rect(), ui.radius(12))
+        ui.fill_rect(surf, ui.LINE, surf.get_rect(), ui.radius(12), width=max(1, ui.px(1.5)))
+        surf.blit(t, (pad_x, pad_y))
+        surf.set_alpha(int(255 * alpha))
+        return surf
+
     def _render_banner_opengl(self):
-        """Render notification banner using OpenGL-compatible method"""
+        """Short notification toast at the top center"""
         if not self.banner_active or self.banner_alpha <= 0:
             return
-
         try:
-            # Import pygame_menu to access the font
-            import pygame_menu
-            
-            # Create font if not exists - use same font as menu
-            if not hasattr(self, '_banner_font'):
-                self._banner_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 35)
-
-            # Create text surface
-            text_surface = self._banner_font.render(self.banner_text, True, (255, 255, 255))
-            
-            # Calculate banner dimensions and position
-            text_width, text_height = text_surface.get_size()
-            banner_width = text_width + 40  # 20px padding on each side
-            banner_height = text_height + 20  # 10px padding top/bottom
-            banner_x = (self.width - banner_width) // 2
-            banner_y = 50  # Distance from top of screen
-
-            # Create banner surface with alpha and rounded corners
-            banner_surface = pygame.Surface((banner_width, banner_height), pygame.SRCALPHA)
-            banner_surface.fill((0, 0, 0, 0))
-            # Banner background (semi-transparent black, rounded)
-            background_alpha = int(180 * self.banner_alpha)
-            pygame.draw.rect(banner_surface, (0, 0, 0, background_alpha), (0, 0, banner_width, banner_height), border_radius=10)
-            # Banner border (subtle white border, rounded)
-            border_alpha = int(100 * self.banner_alpha)
-            pygame.draw.rect(banner_surface, (255, 255, 255, border_alpha), (0, 0, banner_width, banner_height), width=2, border_radius=10)
-            # Apply alpha to text
-            text_alpha = int(255 * self.banner_alpha)
-            text_surface_alpha = text_surface.copy()
-            text_surface_alpha.set_alpha(text_alpha)
-            # Blit text to banner
-            text_x = (banner_width - text_width) // 2
-            text_y = (banner_height - text_height) // 2
-            banner_surface.blit(text_surface_alpha, (text_x, text_y))
-            # Convert to OpenGL texture and render
-            texture_data = pygame.image.tostring(banner_surface, 'RGBA', True)
-            glRasterPos2f(banner_x, banner_y + banner_height)
-            glPixelZoom(1, 1)
-            glDrawPixels(banner_width, banner_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-            
+            surf = self._toast_surface(self.banner_text, self.banner_alpha)
+            y = self._hud_margin() + int((1.0 - self.banner_alpha) * -ui.px(12))
+            if self.hint_banner_active or self.hint_expanded:
+                # Stack below the hint so the two never overlap
+                y = max(y, getattr(self, '_hint_bottom', 0) + ui.px(12))
+            self._blit_gl(surf, (self.width - surf.get_width()) // 2, max(0, y))
         except Exception as e:
             if self.debug_mode:
                 print(f"Banner rendering error: {e}")
-            
-        except Exception as e:
-            # Fallback: if there's an error, just print to console
-            if self.debug_mode:
-                print(f"Game stats rendering error: {e}")
 
     def _render_hint_system(self):
-        """Render hint banner or expanded hint popup"""
+        """Render hint pill or expanded hint panel"""
         try:
-            import pygame_menu
-            
-            # Create fonts if not exist
-            if not hasattr(self, '_hint_font'):
-                self._hint_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 28)
-            if not hasattr(self, '_hint_title_font'):
-                self._hint_title_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 32)
-            
             if self.hint_expanded:
-                # Render expanded hint popup
                 self._render_expanded_hint()
             elif self.hint_banner_active:
-                # Render small hint banner
                 self._render_small_hint_banner()
-                
         except Exception as e:
             if self.debug_mode:
                 print(f"Hint system rendering error: {e}")
 
+    def _close_button(self, surf, rect):
+        ui.fill_rect(surf, ui.SURFACE_2, rect, ui.radius(8))
+        ic = ui.icon("close", int(rect.width * 0.55), ui.MUTED)
+        if ic:
+            surf.blit(ic, ic.get_rect(center=rect.center))
+
     def _render_small_hint_banner(self):
-        """Render the small 'Need a hint? Click me' banner"""
-        try:
-            import pygame_menu
-            
-            if not hasattr(self, '_hint_font'):
-                self._hint_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 28)
-            
-            # Banner text
-            banner_text = "Need a hint? Click me!"
-            text_surface = self._hint_font.render(banner_text, True, (255, 255, 255))
-            text_width, text_height = text_surface.get_size()
-            
-            # Calculate banner dimensions (include space for icon and close button)
-            icon_size = 32
-            icon_spacing = 10
-            close_btn_size = 24
-            close_btn_spacing = 10
-            padding_h = 20
-            padding_v = 12
-            
-            total_content_width = icon_size + icon_spacing + text_width if self.hint_icon else text_width
-            # Add space for close button
-            total_content_width += close_btn_spacing + close_btn_size
-            banner_width = total_content_width + (padding_h * 2)
-            banner_height = max(text_height, icon_size, close_btn_size) + (padding_v * 2)
-            
-            # Position at top center of screen
-            banner_x = (self.width - banner_width) // 2
-            banner_y = 15
-            
-            # Store rect for click detection (for expanding, but not including close button)
-            # We'll calculate the clickable area excluding the close button
-            close_btn_x_local = banner_width - padding_h - close_btn_size
-            clickable_width = close_btn_x_local - padding_h
-            self.hint_banner_rect = pygame.Rect(banner_x + padding_h, banner_y, clickable_width, banner_height)
-            
-            # Store close button rect for click detection (in screen coordinates)
-            close_btn_y_local = (banner_height - close_btn_size) // 2
-            self.hint_banner_close_rect = pygame.Rect(
-                banner_x + close_btn_x_local,
-                banner_y + close_btn_y_local,
-                close_btn_size,
-                close_btn_size
-            )
-            
-            # Create banner surface
-            banner_surface = pygame.Surface((banner_width, banner_height), pygame.SRCALPHA)
-            
-            # Background with gradient effect (golden/amber color for hint)
-            background_alpha = int(220 * self.hint_banner_alpha)
-            pygame.draw.rect(banner_surface, (50, 40, 20, background_alpha), 
-                           (0, 0, banner_width, banner_height), border_radius=12)
-            
-            # Accent border (golden)
-            border_alpha = int(180 * self.hint_banner_alpha)
-            pygame.draw.rect(banner_surface, (255, 200, 80, border_alpha), 
-                           (0, 0, banner_width, banner_height), width=2, border_radius=12)
-            
-            # Calculate content positions
-            content_start_x = padding_h
-            content_y = (banner_height - max(text_height, icon_size)) // 2
-            
-            # Draw hint icon if available
-            if self.hint_icon:
-                icon_y = (banner_height - icon_size) // 2
-                icon_alpha_surface = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
-                icon_alpha_surface.blit(self.hint_icon, (0, 0))
-                icon_alpha_surface.set_alpha(int(255 * self.hint_banner_alpha))
-                banner_surface.blit(icon_alpha_surface, (content_start_x, icon_y))
-                text_x = content_start_x + icon_size + icon_spacing
-            else:
-                text_x = content_start_x
-            
-            # Draw text
-            text_y = (banner_height - text_height) // 2
-            text_surface.set_alpha(int(255 * self.hint_banner_alpha))
-            banner_surface.blit(text_surface, (text_x, text_y))
-            
-            # Draw close button
-            close_btn_bg_alpha = int(150 * self.hint_banner_alpha)
-            pygame.draw.rect(banner_surface, (60, 50, 30, close_btn_bg_alpha),
-                           (close_btn_x_local, close_btn_y_local, close_btn_size, close_btn_size),
-                           border_radius=4)
-            pygame.draw.rect(banner_surface, (255, 100, 100, int(150 * self.hint_banner_alpha)),
-                           (close_btn_x_local, close_btn_y_local, close_btn_size, close_btn_size),
-                           width=1, border_radius=4)
-            
-            # Draw close icon
-            if self.close_icon:
-                close_icon_size = 16
-                close_icon_scaled = pygame.transform.smoothscale(self.close_icon, (close_icon_size, close_icon_size))
-                icon_x = close_btn_x_local + (close_btn_size - close_icon_size) // 2
-                icon_y = close_btn_y_local + (close_btn_size - close_icon_size) // 2
-                close_icon_alpha = pygame.Surface((close_icon_size, close_icon_size), pygame.SRCALPHA)
-                close_icon_alpha.blit(close_icon_scaled, (0, 0))
-                close_icon_alpha.set_alpha(int(255 * self.hint_banner_alpha))
-                banner_surface.blit(close_icon_alpha, (icon_x, icon_y))
-            else:
-                # Draw X manually
-                x_text = "✕"
-                x_surface = self._hint_font.render(x_text, True, (255, 100, 100))
-                x_surface.set_alpha(int(255 * self.hint_banner_alpha))
-                x_x = close_btn_x_local + (close_btn_size - x_surface.get_width()) // 2
-                x_y = close_btn_y_local + (close_btn_size - x_surface.get_height()) // 2
-                banner_surface.blit(x_surface, (x_x, x_y))
-            
-            # Render to OpenGL
-            texture_data = pygame.image.tostring(banner_surface, 'RGBA', True)
-            glRasterPos2f(banner_x, banner_y + banner_height)
-            glPixelZoom(1, 1)
-            glDrawPixels(banner_width, banner_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-            
-        except Exception as e:
-            if self.debug_mode:
-                print(f"Small hint banner rendering error: {e}")
+        """Pill asking whether the player wants a hint"""
+        a = max(0.0, min(1.0, self.hint_banner_alpha))
+        fnt = ui.body_font(ui.SIZE_BODY, bold=True)
+        text = fnt.render("Need a hint?", True, ui.TEXT)
+        action = ui.body_font(ui.SIZE_SMALL, bold=True).render("Show me", True, ui.ON_ACCENT)
+        icon_size = ui.px(28)
+        close = ui.px(36)
+        pad = ui.px(14)
+        pill_h = max(text.get_height(), close) + pad * 2
+        action_w = action.get_width() + ui.px(28)
+        width = pad + icon_size + ui.px(12) + text.get_width() + ui.px(20) + action_w + ui.px(10) + close + pad
+        surf = pygame.Surface((width, pill_h), pygame.SRCALPHA)
+        ui.fill_rect(surf, (*ui.SURFACE, 245), surf.get_rect(), ui.radius(14))
+        ui.fill_rect(surf, ui.LINE, surf.get_rect(), ui.radius(14), width=max(1, ui.px(1.5)))
+
+        x = pad
+        ic = ui.icon("hint", icon_size, ui.ACCENT)
+        if ic:
+            surf.blit(ic, (x, (pill_h - icon_size) // 2))
+        x += icon_size + ui.px(12)
+        surf.blit(text, (x, (pill_h - text.get_height()) // 2))
+        x += text.get_width() + ui.px(20)
+        btn = pygame.Rect(x, (pill_h - close) // 2, action_w, close)
+        ui.fill_rect(surf, ui.ACCENT, btn, ui.radius(8))
+        surf.blit(action, action.get_rect(center=btn.center))
+        close_local = pygame.Rect(btn.right + ui.px(10), (pill_h - close) // 2, close, close)
+        self._close_button(surf, close_local)
+
+        bx = (self.width - width) // 2
+        by = self._hud_margin()
+        self.hint_banner_rect = pygame.Rect(bx, by, close_local.x - ui.px(4), pill_h)
+        self.hint_banner_close_rect = close_local.move(bx, by)
+        self._hint_bottom = by + pill_h
+        surf.set_alpha(int(255 * a))
+        self._blit_gl(surf, bx, by)
 
     def _render_expanded_hint(self):
-        """Render the expanded hint popup with algorithm suggestion"""
-        try:
-            import pygame_menu
-            
-            if not hasattr(self, '_hint_font'):
-                self._hint_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 28)
-            if not hasattr(self, '_hint_title_font'):
-                self._hint_title_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 36)
-            if not hasattr(self, '_hint_moves_font'):
-                self._hint_moves_font = pygame.font.Font(pygame_menu.font.FONT_FRANCHISE, 32)
-            
-            # Get hint text
-            hint_text = self.hint_current_suggestion or "Try analyzing the cube pattern..."
-            
-            # Split hint into lines (handle \n in the text)
-            hint_lines = hint_text.split('\n')
-            
-            # Popup dimensions - keep reduced height
-            popup_width = min(500, int(self.width * 0.5))
-            popup_height = 150  # height
-            popup_x = (self.width - popup_width) // 2
-            popup_y = 30
-            
-            # Create popup surface
-            popup_surface = pygame.Surface((popup_width, popup_height), pygame.SRCALPHA)
-            
-            # Background (darker, more prominent)
-            pygame.draw.rect(popup_surface, (30, 25, 15, 240), 
-                           (0, 0, popup_width, popup_height), border_radius=15)
-            
-            # Border (golden)
-            pygame.draw.rect(popup_surface, (255, 200, 80, 200), 
-                           (0, 0, popup_width, popup_height), width=3, border_radius=15)
-            
-            # Title section
-            title_text = "💡 Hint"
-            title_surface = self._hint_title_font.render(title_text, True, (255, 220, 100))
-            title_x = 20
-            title_y = 15
-            
-            # Draw hint icon next to title if available
-            if self.hint_icon:
-                icon_y = title_y + (title_surface.get_height() - 32) // 2
-                popup_surface.blit(self.hint_icon, (title_x, icon_y))
-                title_x += 40
-            
-            popup_surface.blit(title_surface, (title_x, title_y))
-            
-            # Separator line
-            separator_y = title_y + title_surface.get_height() + 10
-            pygame.draw.line(popup_surface, (255, 200, 80, 100), 
-                           (15, separator_y), (popup_width - 15, separator_y), 2)
-            
-            # Render hint text lines
-            text_y = separator_y + 15
-            line_height = 35
-            for i, line in enumerate(hint_lines):
-                # Use different font for moves line (the second line with actual moves)
-                if i == 1 and any(move in line for move in ["R", "L", "U", "D", "F", "B", "M", "E", "S", "'"]):
-                    # This is the moves line - use larger, bolder font
-                    line_surface = self._hint_moves_font.render(line, True, (255, 220, 100))
-                else:
-                    line_surface = self._hint_font.render(line, True, (255, 255, 255))
-                
-                # Center the line if it's the moves line
-                if i == 1 and any(move in line for move in ["R", "L", "U", "D", "F", "B", "M", "E", "S", "'"]):
-                    line_x = (popup_width - line_surface.get_width()) // 2
-                else:
-                    line_x = 20
-                
-                popup_surface.blit(line_surface, (line_x, text_y))
-                text_y += line_height
-            
-            # Close button (top right)
-            close_btn_size = 30
-            close_btn_x = popup_width - close_btn_size - 10
-            close_btn_y = 10
-            
-            # Store close button rect for click detection (in screen coordinates)
-            self.hint_close_rect = pygame.Rect(
-                popup_x + close_btn_x, 
-                popup_y + close_btn_y, 
-                close_btn_size, 
-                close_btn_size
-            )
-            
-            # Draw close button background
-            pygame.draw.rect(popup_surface, (80, 60, 40, 200), 
-                           (close_btn_x, close_btn_y, close_btn_size, close_btn_size), 
-                           border_radius=6)
-            pygame.draw.rect(popup_surface, (255, 100, 100, 180), 
-                           (close_btn_x, close_btn_y, close_btn_size, close_btn_size), 
-                           width=2, border_radius=6)
-            
-            # Draw close icon or X
-            if self.close_icon:
-                icon_x = close_btn_x + (close_btn_size - 24) // 2
-                icon_y = close_btn_y + (close_btn_size - 24) // 2
-                popup_surface.blit(self.close_icon, (icon_x, icon_y))
+        """Panel with the suggested moves"""
+        import re
+        hint_text = self.hint_current_suggestion or "Try analyzing the cube pattern"
+        lines = hint_text.split('\n')
+        width = min(ui.px(600), self.width - ui.px(48))
+        pad = ui.px(24)
+        inner = width - pad * 2
+        title_f = ui.display_font(ui.SIZE_H3)
+        body_f = ui.body_font(ui.SIZE_BODY)
+        muted_f = ui.body_font(ui.SIZE_SMALL)
+        moves_f = ui.mono_font(ui.SIZE_H2, bold=True)
+        move_re = re.compile(r"^[RLUDFBMES]['2]?$")
+
+        # Lay out content first to size the panel
+        blocks = []
+        for i, line in enumerate(lines):
+            tokens = line.split()
+            if i == 1 and tokens and all(move_re.match(t) for t in tokens):
+                blocks.append(("moves", line))
+            elif not line.strip():
+                blocks.append(("gap", ""))
             else:
-                # Draw X manually
-                x_font = self._hint_font
-                x_surface = x_font.render("✕", True, (255, 100, 100))
-                x_x = close_btn_x + (close_btn_size - x_surface.get_width()) // 2
-                x_y = close_btn_y + (close_btn_size - x_surface.get_height()) // 2
-                popup_surface.blit(x_surface, (x_x, x_y))
-            
-            # Render to OpenGL
-            texture_data = pygame.image.tostring(popup_surface, 'RGBA', True)
-            glRasterPos2f(popup_x, popup_y + popup_height)
-            glPixelZoom(1, 1)
-            glDrawPixels(popup_width, popup_height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data)
-            
-        except Exception as e:
-            if self.debug_mode:
-                print(f"Expanded hint rendering error: {e}")
+                f = body_f if i == 0 else muted_f
+                for wrapped in ui.wrap(line, f, inner):
+                    blocks.append(("body" if i == 0 else "muted", wrapped))
+
+        close = ui.px(36)
+        header_h = max(title_f.get_height(), close)
+        height = pad + header_h + ui.px(14)
+        for kind, _ in blocks:
+            height += {"moves": moves_f.get_height() + ui.px(16), "gap": ui.px(8),
+                       "body": body_f.get_linesize(), "muted": muted_f.get_linesize()}[kind]
+        if self.hint_moves_sequence:
+            height += muted_f.get_linesize() + ui.px(6)
+        height += pad
+
+        surf = pygame.Surface((width, height), pygame.SRCALPHA)
+        ui.fill_rect(surf, (*ui.SURFACE, 248), surf.get_rect(), ui.radius(16))
+        ui.fill_rect(surf, ui.LINE, surf.get_rect(), ui.radius(16), width=max(1, ui.px(1.5)))
+        ui.fill_rect(surf, ui.ACCENT, (pad, 0, ui.px(64), ui.px(4)), ui.px(2))
+
+        icon_size = ui.px(28)
+        ic = ui.icon("hint", icon_size, ui.ACCENT)
+        x = pad
+        if ic:
+            surf.blit(ic, (x, pad + (header_h - icon_size) // 2))
+            x += icon_size + ui.px(12)
+        ui.draw_text(surf, "Hint", title_f, ui.TEXT, (x, pad + header_h // 2 + ui.px(2)), "midleft")
+        close_local = pygame.Rect(width - pad - close, pad + (header_h - close) // 2, close, close)
+        self._close_button(surf, close_local)
+
+        y = pad + header_h + ui.px(14)
+        for kind, text in blocks:
+            if kind == "moves":
+                # Highlight the move the player should do next
+                done = self.hint_moves_completed
+                cx = pad
+                for ti, tok in enumerate(text.split()):
+                    color = ui.ACCENT if ti == done else (ui.DIM if ti < done else ui.TEXT)
+                    r = ui.draw_text(surf, tok, moves_f, color, (cx, y + ui.px(4)))
+                    cx = r.right + ui.px(18)
+                y += moves_f.get_height() + ui.px(16)
+            elif kind == "gap":
+                y += ui.px(8)
+            elif kind == "body":
+                ui.draw_text(surf, text, body_f, ui.TEXT, (pad, y))
+                y += body_f.get_linesize()
+            else:
+                ui.draw_text(surf, text, muted_f, ui.MUTED, (pad, y))
+                y += muted_f.get_linesize()
+        if self.hint_moves_sequence:
+            step = min(self.hint_moves_completed + 1, len(self.hint_moves_sequence))
+            ui.draw_text(surf, f"Step {step} of {len(self.hint_moves_sequence)}", muted_f, ui.DIM, (pad, y + ui.px(6)))
+
+        px_, py_ = (self.width - width) // 2, self._hud_margin()
+        self.hint_close_rect = close_local.move(px_, py_)
+        self._hint_bottom = py_ + height
+        self._blit_gl(surf, px_, py_)
 
     def can_make_move(self):
         """Check if the player is allowed to make a move (considering move limits)"""
@@ -2349,7 +2066,7 @@ class Game:
                     self.move_counter >= self.move_limit and 
                     not self.cube_solved):
                     # Show warning when reaching move limit
-                    self.show_banner(f"Move limit reached! ({self.move_counter}/{self.move_limit})")
+                    self.show_banner(f"Move limit reached ({self.move_counter} of {self.move_limit})")
             else:
                 self.debug_print(f"Scramble move: {move_notation} (animating)")
     
@@ -2382,7 +2099,7 @@ class Game:
                 # Close results window if it's open
                 if self.results_window.active:
                     self.results_window.close_results()
-                self.show_banner(f"Moves available again! ({self.move_counter}/{self.move_limit})")
+                self.show_banner(f"Undo gave you a move back ({self.move_counter} of {self.move_limit})")
         else:
             self.debug_print("No moves to undo")
     
@@ -2566,16 +2283,9 @@ class Game:
             current_difficulty = self.menu.get_selected_difficulty()
             self.scramble_cube_by_difficulty(current_difficulty)
         elif action == 'main_menu':
-            # Clear the old blurred background to force a fresh capture of current cube state
-            self.menu.background_capture = None
-            self.menu.blurred_background = None
-            
-            # Show the main menu (ensure we're at main menu, not difficulty selection)
-            self.menu.current_menu = self.menu.main_menu
-            self.menu.active = True
-            
-            # Force a new background capture with the current cube state
-            self.menu.force_background_recapture()
+            # Open the main menu (not the mode screen)
+            if not self.menu.is_active():
+                self.menu.toggle()
         # 'continue_playing' is handled by just closing the results window
     
     def handle_overlay_callback(self, action):
@@ -2587,16 +2297,7 @@ class Game:
                 # Reset hint timer when closing menu
                 self.last_move_time = time.time()
             else:
-                # Clear the old blurred background to force a fresh capture of current cube state
-                self.menu.background_capture = None
-                self.menu.blurred_background = None
-                
-                # Show the main menu (ensure we're at main menu, not difficulty selection)
-                self.menu.current_menu = self.menu.main_menu
-                self.menu.toggle()  # Open menu
-                
-                # Force a new background capture with the current cube state
-                self.menu.force_background_recapture()
+                self.menu.toggle()  # Opens on the main menu
     
     def _render_game_info(self):
         """Render game information (FPS, moves, time)"""
@@ -2661,9 +2362,11 @@ class Game:
             self.render()
             self.clock.tick()
             
-        # Before exiting, save settings
-        self.settings.settings["resolution"]["width"] = self.width
-        self.settings.settings["resolution"]["height"] = self.height
+        # Before exiting, save settings (borderless keeps the last window size)
+        if self.display_mode != "borderless":
+            self.settings.settings["resolution"] = {"width": self.width, "height": self.height}
+        self.settings.settings["display_mode"] = self.display_mode
+        self.settings.settings["display_index"] = self.display_index
         self.settings.settings["fullscreen"] = self.is_fullscreen
         self.settings.settings["show_fps"] = self.show_fps
         self.settings.settings["volume"] = int(pygame.mixer.music.get_volume() * 100)
@@ -2674,43 +2377,31 @@ class Game:
         sys.exit()
 
     def _fallback_resolution(self):
-        """Fallback to a safe resolution if change fails"""
+        """Fall back to a safe window on the primary monitor if a display change fails"""
         try:
             print("Attempting fallback to safe resolution")
-            
-            # First completely recreate the pygame display
             pygame.display.quit()
             pygame.display.init()
-            
-            # Try a standard resolution that should work
-            fallback_width, fallback_height = 1280, 720
-            self.width = fallback_width
-            self.height = fallback_height
-            
-            # Reset to windowed mode for safety
-            self.is_fullscreen = False
-            
-            # Set the display mode with safe settings
-            self.screen = pygame.display.set_mode((fallback_width, fallback_height), DOUBLEBUF | OPENGL)
-            
-            # Recreate the renderer from scratch
-            self.renderer = Renderer(fallback_width, fallback_height)
-            
-            # Update menu dimensions if it exists
+            size = display_manager.default_window_size(0)
+            self.hdr_presenter = None
+            self.screen = display_manager.open_window("windowed", 0, size, hdr=False)
+            self.display_mode, self.display_index, self.is_fullscreen = "windowed", 0, False
+            self.width, self.height = self.screen.get_size()
+            ui.set_screen(self.width, self.height)
+            ui.clear_caches()
+            self._overlay_tex = None
+            self.renderer = Renderer(self.width, self.height)
+            if hasattr(self, 'mouse_interaction'):
+                self.mouse_interaction.update_renderer(self.renderer)
             if hasattr(self, 'menu'):
-                self.menu.width = fallback_width
-                self.menu.height = fallback_height
+                self.menu._load_display_state()
+                self.menu.width, self.menu.height = self.width, self.height
                 self.menu._create_menus()
-            
-            # Update results window dimensions if it exists
             if hasattr(self, 'results_window'):
-                self.results_window.update_dimensions(fallback_width, fallback_height)
-                
+                self.results_window.update_dimensions(self.width, self.height)
             if hasattr(self, 'menu_button'):
-                self.menu_button.update_dimensions(fallback_width, fallback_height)
-            
-            print(f"Successfully restored to fallback resolution: {fallback_width}x{fallback_height}")
+                self.menu_button.update_dimensions(self.width, self.height)
+            print(f"Restored a safe window: {self.width}x{self.height}")
         except Exception as e:
             print(f"Critical error in fallback resolution: {e}")
-            # Nothing more we can do at this point
             self.running = False

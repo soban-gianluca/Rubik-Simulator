@@ -43,6 +43,10 @@ class SettingsManager:
                 "index": 0
             },
             "fullscreen": False,
+            "display_mode": "windowed",
+            "display_index": 0,
+            "hdr_enabled": False,
+            "hdr_paper_white": 200,
             "show_fps": False,
             "volume": 50,  # Keep this for backward compatibility
             "audio": {
@@ -64,6 +68,9 @@ class SettingsManager:
                 "limited_moves": "utils/skyboxes/skybox_medium.jpg"  # Use medium skybox for challenge
             }
         }
+
+        # True when no user settings file exists yet (first launch)
+        self.is_new_user = not os.path.exists(get_user_settings_path())
 
         # Load settings using new logic
         self.load_settings()
@@ -90,6 +97,12 @@ class SettingsManager:
             if "hints_enabled" not in self.settings:
                 self.settings["hints_enabled"] = self.default_settings["hints_enabled"]
                 self.save_settings()
+
+            # Older settings only had a fullscreen flag
+            if "display_mode" not in self.settings:
+                self.settings["display_mode"] = "fullscreen" if self.settings.get("fullscreen") else "windowed"
+            if "display_index" not in self.settings:
+                self.settings["display_index"] = 0
 
         except Exception as e:
             print(f"Error loading settings: {e}")

@@ -5,10 +5,10 @@ import random
 from pygame.locals import *
 from OpenGL.GL import *
 from utils.path_helper import resource_path
-from src.settings_manager import SettingsManager
-from src import display_manager
-from src import hdr as hdr_output
-from src import ui_style as ui
+from src.managers.settings_manager import SettingsManager
+from src.rendering import display_manager
+from src.rendering import hdr as hdr_output
+from src.ui import ui_style as ui
 
 """ Puts the application in the taskbar with a custom icon on Windows."""
 import ctypes

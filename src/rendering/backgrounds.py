@@ -30,6 +30,9 @@ GL_TEXTURE_CUBE_MAP_SEAMLESS = 0x884F
 BAKE_SCALE = 1.4
 BAKE_MAX = 2048
 LIGHT_SIZE = 256  # the aurora's soft curtains need little resolution
+# How much of the camera rotation the sky follows: a fraction keeps it drifting gently
+# behind the cube instead of sweeping across the screen with every turn
+FOLLOW = 0.3
 
 # (major axis, s axis, t axis) of each cube map face, in OpenGL's face order
 _FACES = [
@@ -52,8 +55,9 @@ STYLES = [
     ("planet", "Ringed planet", "Cartoon"),
     ("hills", "Sunset hills", "Cartoon"),
 ]
-STYLE_IDS = [s[0] for s in STYLES]
+STYLE_IDS = [s[0] for s in STYLES] + ["solid"]  # "solid" is only reachable through AUTO_SOLID
 AUTO = "auto"
+AUTO_SOLID = "auto_solid"
 DEFAULT_STYLE = AUTO
 
 # Background per game mode when the style is "Match game mode"
@@ -70,12 +74,14 @@ MODE_STYLES = {
 
 def menu_items():
     """(label, id) pairs for the settings dropdown."""
-    items = [("Match game mode", AUTO)]
-    items += [(f"{label}  ({category.lower()})", sid) for sid, label, category in STYLES]
+    items = [("Match game mode", AUTO), ("Match game mode - solid", AUTO_SOLID)]
+    items +=[(f"{label}  ({category.lower()})", sid) for sid, label, category in STYLES]
     return items
 
 
 def resolve(choice, mode):
+    if choice == AUTO_SOLID:
+        return "solid"
     if choice in STYLE_IDS:
         return choice
     return MODE_STYLES.get(mode, "midnight")
@@ -96,6 +102,7 @@ uniform float size;
 uniform vec3 major;
 uniform vec3 axisS;
 uniform vec3 axisT;
+uniform vec3 tint;
 
 // ---------------------------------------------------------------- noise
 float hash13(vec3 p) {
@@ -179,6 +186,17 @@ vec4 dusk(vec3 d) {
     return vec4(col, smoothstep(0.0, 0.2, y));
 }
 
+// A plain vertical gradient in the game mode's color: lighter at the horizon, dark above and below
+vec4 solid(vec3 d) {
+    float y = d.y;
+    vec3 hor = tint * 0.34;
+    vec3 zen = tint * 0.07;
+    vec3 low = tint * 0.10;
+    vec3 col = y > 0.0 ? mix(hor, zen, pow(smoothstep(0.0, 1.0, y), 0.6))
+                       : mix(hor, low, pow(smoothstep(0.0, 1.0, -y), 0.5));
+    return vec4(col, 1.0);
+}
+
 vec4 studio(vec3 d) {
     float y = d.y;
     // Cyclorama: a soft lit wall that curves into a darker floor, lit from above
@@ -217,10 +235,10 @@ vec4 auroraLight(vec3 d) {
     float y = d.y;
     vec3 ring = vec3(normalize(d.xz + 1e-5), 0.0).xzy;
     // Curtains: a wavy base line, vertical rays, a bright lower edge fading upward
-    float sway = fbm(ring * 1.3 + vec3(0.0, time * 0.02, 0.0), 3, 0.5);
+    float sway = fbm(ring * 1.3 + vec3(0.0, time * 0.008, 0.0), 3, 0.5);
     float base = 0.10 + 0.22 * sway;
     float h = y - base;
-    float rays = fbm(ring * 7.0 + vec3(sway * 2.0, time * 0.05, 0.0), 3, 0.55);
+    float rays = fbm(ring * 7.0 + vec3(sway * 2.0, time * 0.02, 0.0), 3, 0.55);
     rays = smoothstep(0.35, 0.8, rays);
     float curtain = smoothstep(-0.015, 0.03, h) * exp(-max(h, 0.0) * 5.0);
     float region = smoothstep(0.25, 0.6, fbm(ring * 0.8 + 3.0, 2, 0.5));
@@ -375,7 +393,8 @@ void main() {
     else if (style == 4) s = aurora(d);
     else if (style == 5) s = daydream(d);
     else if (style == 6) s = planet(d);
-    else s = hills(d);
+    else if (style == 7) s = hills(d);
+    else s = solid(d);
     // Stored in 8 bits: dither so slow gradients do not band
     vec2 fc = gl_FragCoord.xy + major.xy * 1931.0 + major.z * 977.0;
     float n = hash13(vec3(fc, 3.0)) + hash13(vec3(fc, 11.0)) - 1.0;
@@ -474,7 +493,7 @@ float starLayer(vec3 d, float pixel, float scale, float density, float bright) {
     float r = length(p - center) / px;               // distance in pixels
     float core = exp(-r * r * 1.1);
     float k = fract(h.z * 91.7 + h.x * 13.1);
-    float twinkle = 0.85 + 0.15 * sin(time * (1.0 + 2.0 * k) + k * 40.0);
+    float twinkle = 0.94 + 0.06 * sin(time * (0.4 + 0.8 * k) + k * 40.0);
     return core * bright * (0.25 + 0.75 * k * k * k) * twinkle;
 }
 
@@ -495,7 +514,7 @@ void main() {
         // Curtains, mirrored and rippling in the lake; masked by the mountains (sky alpha)
         vec3 ld = d;
         if (d.y < 0.0) {
-            float ripple = (noise(vec3(d.xz / max(-d.y, 0.05) * 6.0, time * 0.15)) - 0.5) * 0.02;
+            float ripple = (noise(vec3(d.xz / max(-d.y, 0.05) * 6.0, time * 0.06)) - 0.5) * 0.02;
             ld = normalize(vec3(d.x, -d.y, d.z) + vec3(0.0, ripple, 0.0));
         }
         vec4 l = textureCube(light, ld);
@@ -543,6 +562,7 @@ class Background:
 
     def __init__(self):
         self.style = "midnight"
+        self.tint = (0.5, 0.5, 0.5)  # base color of the "solid" style
         self.stars = True
         self._start = time.perf_counter()
         self.program = None
@@ -561,7 +581,7 @@ class Background:
             self._loc = {n: glGetUniformLocation(self.program, n)
                          for n in ("sky", "light", "aurora", "stars", "time")}
             self._bake_loc = {n: glGetUniformLocation(self.bake_program, n)
-                              for n in ("style", "layer", "time", "size", "major", "axisS", "axisT")}
+                              for n in ("style", "layer", "time", "size", "major", "axisS", "axisT", "tint")}
             self._fbo = glGenFramebuffers(1)
             try:
                 glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS)  # filter across face edges
@@ -588,6 +608,7 @@ class Background:
         glUniform1i(loc["layer"], layer)
         glUniform1f(loc["time"], self._time() if layer == 1 else 0.0)
         glUniform1f(loc["size"], float(size))
+        glUniform3f(loc["tint"], *self.tint)
         ok = True
         for i in faces:
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
@@ -610,11 +631,12 @@ class Background:
         """Bake the sky when the style or the view size changed; keep the curtains moving."""
         height = int(glGetIntegerv(GL_VIEWPORT)[3])
         size = max(256, min(BAKE_MAX, int(height * BAKE_SCALE)))
-        if self._sky is None or self._sky[1:] != (size, self.style):
+        key = (size, self.style, self.tint if self.style == "solid" else None)
+        if self._sky is None or self._sky[1:] != key:
             if self._sky is not None:
                 glDeleteTextures([self._sky[0]])
             texture = _cube_map(size)
-            self._sky = (texture, size, self.style)
+            self._sky = (texture, *key)
             if not self._bake(texture, size, range(6), 0):
                 raise RuntimeError("cube map faces are not renderable")
         if self.style == "aurora":
@@ -643,9 +665,9 @@ class Background:
         glDisable(GL_CULL_FACE)
         glPushMatrix()
         glLoadIdentity()
-        # Same rotation as the cube: the horizon is the cube's own horizontal plane
-        glRotatef(rotation_x, 1, 0, 0)
-        glRotatef(rotation_y, 0, 1, 0)
+        # Part of the cube's rotation (FOLLOW): enough to feel the depth, calm enough to focus
+        glRotatef(rotation_x * FOLLOW, 1, 0, 0)
+        glRotatef(rotation_y * FOLLOW, 0, 1, 0)
         glUseProgram(self.program)
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_CUBE_MAP, self._sky[0])

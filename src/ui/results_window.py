@@ -1,7 +1,7 @@
 import pygame
 import time
 import random
-from src import ui_style as ui
+from src.ui import ui_style as ui
 
 
 class ResultsWindow:
@@ -43,8 +43,9 @@ class ResultsWindow:
         self.celebration_start_time = 0
 
     # ------------------------------------------------------------ showing
-    def show_results(self, moves, solve_time, tps=None, difficulty=None):
-        """Display the results for a solved cube and start the celebration"""
+    def show_results(self, moves, solve_time, tps=None, difficulty=None, context=None):
+        """Display the results for a solved cube and start the celebration.
+        context: facts about the game for achievements (see AchievementsManager.record_solve)."""
         new_records = {}
         if self.personal_best_manager and difficulty and difficulty != "freeplay":
             new_records = self.personal_best_manager.update_record(
@@ -53,7 +54,7 @@ class ResultsWindow:
 
         newly_unlocked_achievements = []
         if self.achievements_manager and difficulty and difficulty != "freeplay":
-            newly_unlocked_achievements = self.achievements_manager.record_solve(difficulty, solve_time, moves)
+            newly_unlocked_achievements = self.achievements_manager.record_solve(difficulty, solve_time, moves, context)
 
         self.results_data = {
             'moves': moves,

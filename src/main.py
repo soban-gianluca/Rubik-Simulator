@@ -2,14 +2,15 @@ import OpenGL
 # PyOpenGL calls glGetError after every GL call, which stalls the pipeline. Must be set
 # before anything imports OpenGL.GL.
 OpenGL.ERROR_CHECKING = False
+import multiprocessing
 import pygame
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from pygame.locals import *
-from src import display_manager
-from src import hdr as hdr_output
-from src.loading_animation import LoadingAnimation
+from src.rendering import display_manager
+from src.rendering import hdr as hdr_output
+from src.ui.loading_animation import LoadingAnimation
 from src.game import Game
 
 
@@ -25,7 +26,7 @@ def main():
     pygame.init()
 
     # Resolve the saved display settings against the monitors that are actually connected
-    from src.settings_manager import SettingsManager
+    from src.managers.settings_manager import SettingsManager
     settings = SettingsManager()
     if settings.is_new_user:
         index = settings.settings.get("display_index", 0)
@@ -55,4 +56,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()  # the hint solver runs in a child process (also in the EXE)
     main()

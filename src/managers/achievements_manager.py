@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from utils.path_helper import resource_path
 
 
@@ -92,6 +92,33 @@ ACHIEVEMENTS = {
         "target": 100,
         "secret": False
     },
+    "solve_250": {
+        "name": "Cube Veteran",
+        "description": "Solve 250 cubes in any mode",
+        "icon": "utils/icons/achievements/progression/solve-250.png",
+        "category": "progression",
+        "condition_type": "total_solves",
+        "target": 250,
+        "secret": False
+    },
+    "solve_500": {
+        "name": "Living Legend",
+        "description": "Solve 500 cubes in any mode",
+        "icon": "utils/icons/achievements/progression/solve-500.png",
+        "category": "progression",
+        "condition_type": "total_solves",
+        "target": 500,
+        "secret": False
+    },
+    "hard_10": {
+        "name": "Hardened",
+        "description": "Solve 10 cubes on Hard difficulty",
+        "icon": "utils/icons/achievements/progression/hard-10.png",
+        "category": "progression",
+        "condition_type": "solve_hard",
+        "target": 10,
+        "secret": False
+    },
     
     # Speed achievements
     "speed_under_30s": {
@@ -122,6 +149,45 @@ ACHIEVEMENTS = {
         "condition_type": "time_under",
         "time_threshold": 120,
         "difficulty": "hard",
+        "secret": False
+    },
+    "speed_easy_10s": {
+        "name": "Blink",
+        "description": "Solve an Easy cube in under 10 seconds",
+        "icon": "utils/icons/achievements/speed/blink.png",
+        "category": "speed",
+        "condition_type": "time_under",
+        "time_threshold": 10,
+        "difficulty": "easy",
+        "secret": False
+    },
+    "speed_medium_30s": {
+        "name": "Quick Study",
+        "description": "Solve a Medium cube in under 30 seconds",
+        "icon": "utils/icons/achievements/speed/quick-study.png",
+        "category": "speed",
+        "condition_type": "time_under",
+        "time_threshold": 30,
+        "difficulty": "medium",
+        "secret": False
+    },
+    "speed_hard_60s": {
+        "name": "Iron Nerves",
+        "description": "Solve a Hard cube in under 1 minute",
+        "icon": "utils/icons/achievements/speed/iron-nerves.png",
+        "category": "speed",
+        "condition_type": "time_under",
+        "time_threshold": 60,
+        "difficulty": "hard",
+        "secret": False
+    },
+    "fast_fingers": {
+        "name": "Fast Fingers",
+        "description": "Make 3 or more moves per second on a Medium or Hard solve",
+        "icon": "utils/icons/achievements/speed/fast-fingers.png",
+        "category": "speed",
+        "condition_type": "solve_event",
+        "event": "fast_fingers",
         "secret": False
     },
     
@@ -162,6 +228,24 @@ ACHIEVEMENTS = {
         "target": 5,
         "secret": False
     },
+    "limited_time_10": {
+        "name": "Marathoner",
+        "description": "Win 10 Limited Time challenges",
+        "icon": "utils/icons/achievements/challenge-mode/limited-time-10.png",
+        "category": "challenge",
+        "condition_type": "solve_limited_time",
+        "target": 10,
+        "secret": False
+    },
+    "limited_moves_10": {
+        "name": "Accountant",
+        "description": "Win 10 Limited Moves challenges",
+        "icon": "utils/icons/achievements/challenge-mode/limited-moves-10.png",
+        "category": "challenge",
+        "condition_type": "solve_limited_moves",
+        "target": 10,
+        "secret": False
+    },
     
     # Daily cube achievements
     "daily_first": {
@@ -179,6 +263,24 @@ ACHIEVEMENTS = {
         "icon": "utils/icons/achievements/daily/daily-7.png",
         "category": "daily",
         "condition_type": "solve_daily",
+        "target": 7,
+        "secret": False
+    },
+    "daily_30": {
+        "name": "Monthly Regular",
+        "description": "Complete 30 Daily Cubes",
+        "icon": "utils/icons/achievements/daily/daily-30.png",
+        "category": "daily",
+        "condition_type": "solve_daily",
+        "target": 30,
+        "secret": False
+    },
+    "daily_streak_7": {
+        "name": "On a Roll",
+        "description": "Complete the Daily Cube 7 days in a row",
+        "icon": "utils/icons/achievements/daily/daily-streak-7.png",
+        "category": "daily",
+        "condition_type": "daily_streak",
         "target": 7,
         "secret": False
     },
@@ -215,6 +317,35 @@ ACHIEVEMENTS = {
         "secret": False
     },
     
+    # Mastery achievements
+    "all_rounder": {
+        "name": "All-Rounder",
+        "description": "Win at least once in every game mode",
+        "icon": "utils/icons/achievements/mastery/all-rounder.png",
+        "category": "mastery",
+        "condition_type": "all_modes",
+        "target": 6,
+        "secret": False
+    },
+    "no_help_needed": {
+        "name": "No Help Needed",
+        "description": "Solve a Hard cube without opening a hint",
+        "icon": "utils/icons/achievements/mastery/no-help-needed.png",
+        "category": "mastery",
+        "condition_type": "solve_event",
+        "event": "no_hint_hard",
+        "secret": False
+    },
+    "self_taught": {
+        "name": "Self-Taught",
+        "description": "Solve 25 cubes without opening a hint",
+        "icon": "utils/icons/achievements/mastery/self-taught.png",
+        "category": "mastery",
+        "condition_type": "hintless_solves",
+        "target": 25,
+        "secret": False
+    },
+
     # Secret achievements
     "secret_scrambler": {
         "name": "Chaos Theory",
@@ -225,6 +356,108 @@ ACHIEVEMENTS = {
         "target": 10,
         "secret": True
     },
+    "night_owl": {
+        "name": "Night Owl",
+        "description": "Solve a cube between midnight and 4 AM",
+        "icon": "utils/icons/achievements/secret/night-owl.png",
+        "category": "secret",
+        "condition_type": "solve_event",
+        "event": "night_owl",
+        "secret": True
+    },
+    "last_second": {
+        "name": "Last Second",
+        "description": "Win a Limited Time challenge with less than 3 seconds left",
+        "icon": "utils/icons/achievements/secret/last-second.png",
+        "category": "secret",
+        "condition_type": "solve_event",
+        "event": "last_second",
+        "secret": True
+    },
+    "down_to_the_wire": {
+        "name": "Down to the Wire",
+        "description": "Win a Limited Moves challenge on the very last allowed move",
+        "icon": "utils/icons/achievements/secret/down-to-the-wire.png",
+        "category": "secret",
+        "condition_type": "solve_event",
+        "event": "last_move",
+        "secret": True
+    },
+    "perfectionist": {
+        "name": "Perfectionist",
+        "description": "Solve an Easy cube in 5 moves or fewer",
+        "icon": "utils/icons/achievements/secret/perfectionist.png",
+        "category": "secret",
+        "condition_type": "solve_event",
+        "event": "perfect_easy",
+        "secret": True
+    },
+    "indecisive": {
+        "name": "Indecisive",
+        "description": "Switch game mode 10 times without solving a cube",
+        "icon": "utils/icons/achievements/secret/indecisive.png",
+        "category": "secret",
+        "condition_type": "mode_switches",
+        "target": 10,
+        "secret": True
+    },
+    "undo_addict": {
+        "name": "Undo Addict",
+        "description": "Undo 100 moves",
+        "icon": "utils/icons/achievements/secret/undo-addict.png",
+        "category": "secret",
+        "condition_type": "undo_count",
+        "target": 100,
+        "secret": True
+    },
+    "tourist": {
+        "name": "Tourist",
+        "description": "Try every background style",
+        "icon": "utils/icons/achievements/secret/tourist.png",
+        "category": "secret",
+        "condition_type": "backgrounds_tried",
+        "target": 8,
+        "secret": True
+    },
+    "marathon_session": {
+        "name": "Marathon Session",
+        "description": "Play for one hour in a single session",
+        "icon": "utils/icons/achievements/secret/marathon-session.png",
+        "category": "secret",
+        "condition_type": "session_minutes",
+        "target": 60,
+        "secret": True
+    },
+    "comeback_kid": {
+        "name": "Comeback Kid",
+        "description": "Win a Limited Moves challenge after hitting the move limit and undoing",
+        "icon": "utils/icons/achievements/secret/comeback-kid.png",
+        "category": "secret",
+        "condition_type": "solve_event",
+        "event": "comeback",
+        "secret": True
+    },
+}
+
+
+# Condition types whose progress is a number read from the stats
+STAT_CONDITIONS = {
+    "total_solves": lambda s: s.get("total_solves", 0),
+    "solve_easy": lambda s: s.get("easy_solves", 0),
+    "solve_medium": lambda s: s.get("medium_solves", 0),
+    "solve_hard": lambda s: s.get("hard_solves", 0),
+    "solve_limited_time": lambda s: s.get("limited_time_wins", 0),
+    "solve_limited_moves": lambda s: s.get("limited_moves_wins", 0),
+    "solve_daily": lambda s: s.get("daily_solves", 0),
+    "scramble_count": lambda s: s.get("scramble_count", 0),
+    "daily_streak": lambda s: s.get("best_daily_streak", 0),
+    "all_modes": lambda s: sum(1 for k in ("easy_solves", "medium_solves", "hard_solves", "limited_time_wins",
+                                           "limited_moves_wins", "daily_solves") if s.get(k, 0) > 0),
+    "hintless_solves": lambda s: s.get("hintless_solves", 0),
+    "mode_switches": lambda s: s.get("mode_switches_since_solve", 0),
+    "undo_count": lambda s: s.get("undo_count", 0),
+    "backgrounds_tried": lambda s: len(s.get("backgrounds_tried", [])),
+    "session_minutes": lambda s: s.get("longest_session_minutes", 0),
 }
 
 
@@ -244,7 +477,15 @@ class AchievementsManager:
                 "daily_solves": 0,
                 "scramble_count": 0,
                 "best_times": {},  # difficulty: best_time
-                "best_moves": {}   # difficulty: best_moves
+                "best_moves": {},  # difficulty: best_moves
+                "hintless_solves": 0,
+                "mode_switches_since_solve": 0,
+                "undo_count": 0,
+                "backgrounds_tried": [],
+                "longest_session_minutes": 0,
+                "last_daily_date": None,  # UTC date of the last Daily Cube solve
+                "daily_streak": 0,
+                "best_daily_streak": 0
             }
         }
         self.data = self.load_data()
@@ -310,23 +551,9 @@ class AchievementsManager:
         # Calculate current progress based on condition type
         condition_type = achievement.get("condition_type", "")
         
-        if condition_type == "total_solves":
-            current = self.data["stats"].get("total_solves", 0)
-        elif condition_type == "solve_easy":
-            current = self.data["stats"].get("easy_solves", 0)
-        elif condition_type == "solve_medium":
-            current = self.data["stats"].get("medium_solves", 0)
-        elif condition_type == "solve_hard":
-            current = self.data["stats"].get("hard_solves", 0)
-        elif condition_type == "solve_limited_time":
-            current = self.data["stats"].get("limited_time_wins", 0)
-        elif condition_type == "solve_limited_moves":
-            current = self.data["stats"].get("limited_moves_wins", 0)
-        elif condition_type == "solve_daily":
-            current = self.data["stats"].get("daily_solves", 0)
-        elif condition_type == "scramble_count":
-            current = self.data["stats"].get("scramble_count", 0)
-        elif condition_type in ["time_under", "moves_under"]:
+        if condition_type in STAT_CONDITIONS:
+            current = STAT_CONDITIONS[condition_type](self.data["stats"])
+        elif condition_type in ["time_under", "moves_under", "solve_event"]:
             # For these, we check if the condition was ever met
             current = 1 if self.is_unlocked(achievement_id) else 0
         else:
@@ -354,22 +581,8 @@ class AchievementsManager:
             
             unlocked = False
             
-            if condition_type == "total_solves":
-                unlocked = self.data["stats"].get("total_solves", 0) >= target
-            elif condition_type == "solve_easy":
-                unlocked = self.data["stats"].get("easy_solves", 0) >= target
-            elif condition_type == "solve_medium":
-                unlocked = self.data["stats"].get("medium_solves", 0) >= target
-            elif condition_type == "solve_hard":
-                unlocked = self.data["stats"].get("hard_solves", 0) >= target
-            elif condition_type == "solve_limited_time":
-                unlocked = self.data["stats"].get("limited_time_wins", 0) >= target
-            elif condition_type == "solve_limited_moves":
-                unlocked = self.data["stats"].get("limited_moves_wins", 0) >= target
-            elif condition_type == "solve_daily":
-                unlocked = self.data["stats"].get("daily_solves", 0) >= target
-            elif condition_type == "scramble_count":
-                unlocked = self.data["stats"].get("scramble_count", 0) >= target
+            if condition_type in STAT_CONDITIONS:
+                unlocked = STAT_CONDITIONS[condition_type](self.data["stats"]) >= target
             elif condition_type == "time_under":
                 difficulty = achievement.get("difficulty", "hard")
                 time_threshold = achievement.get("time_threshold", target)  # Fallback to target for compatibility
@@ -389,9 +602,13 @@ class AchievementsManager:
         
         return newly_unlocked
     
-    def record_solve(self, difficulty: str, solve_time: float, moves: int):
-        """Record a solve and check for achievements"""
+    def record_solve(self, difficulty: str, solve_time: float, moves: int, context: dict = None):
+        """Record a solve and check for achievements.
+
+        context (from the game): hint_used, time_limit, move_limit, undo_at_limit.
+        """
         stats = self.data["stats"]
+        ctx = context or {}
         
         # Update total solves
         stats["total_solves"] = stats.get("total_solves", 0) + 1
@@ -409,6 +626,18 @@ class AchievementsManager:
             stats["limited_moves_wins"] = stats.get("limited_moves_wins", 0) + 1
         elif difficulty == "daily_cube":
             stats["daily_solves"] = stats.get("daily_solves", 0) + 1
+            # The Daily Cube changes at midnight UTC
+            today = datetime.now(timezone.utc).date()
+            last = stats.get("last_daily_date")
+            if last != today.isoformat():
+                yesterday = (today - timedelta(days=1)).isoformat()
+                stats["daily_streak"] = stats.get("daily_streak", 0) + 1 if last == yesterday else 1
+                stats["last_daily_date"] = today.isoformat()
+                stats["best_daily_streak"] = max(stats.get("best_daily_streak", 0), stats["daily_streak"])
+
+        if not ctx.get("hint_used"):
+            stats["hintless_solves"] = stats.get("hintless_solves", 0) + 1
+        stats["mode_switches_since_solve"] = 0
         
         # Update best times
         if "best_times" not in stats:
@@ -422,11 +651,57 @@ class AchievementsManager:
         if difficulty not in stats["best_moves"] or moves < stats["best_moves"][difficulty]:
             stats["best_moves"][difficulty] = moves
         
+        # Achievements decided by this solve alone
+        tps = moves / solve_time if solve_time > 0 else 0
+        time_limit, move_limit = ctx.get("time_limit"), ctx.get("move_limit")
+        events = {
+            "fast_fingers": difficulty in ("medium", "hard") and tps >= 3,
+            "no_hint_hard": difficulty == "hard" and not ctx.get("hint_used"),
+            "night_owl": datetime.now().hour < 4,
+            "last_second": difficulty == "limited_time" and time_limit is not None and time_limit - solve_time < 3,
+            "last_move": difficulty == "limited_moves" and move_limit is not None and moves >= move_limit,
+            "perfect_easy": difficulty == "easy" and 0 < moves <= 5,
+            "comeback": difficulty == "limited_moves" and bool(ctx.get("undo_at_limit")),
+        }
+        newly_unlocked = [aid for aid, a in ACHIEVEMENTS.items()
+                          if a.get("condition_type") == "solve_event" and events.get(a.get("event"))
+                          and self.unlock_achievement(aid)]
+
         self.save_data()
-        
+
         # Check for newly unlocked achievements
+        return newly_unlocked + self.check_and_unlock()
+
+    def _add_to_stat(self, key, amount=1):
+        self.data["stats"][key] = self.data["stats"].get(key, 0) + amount
+        self.save_data()
         return self.check_and_unlock()
-    
+
+    def record_undo(self):
+        """The player undid a move. Returns list of newly unlocked achievements."""
+        return self._add_to_stat("undo_count")
+
+    def record_mode_switch(self):
+        """The player switched to another game mode. Returns list of newly unlocked achievements."""
+        return self._add_to_stat("mode_switches_since_solve")
+
+    def record_background(self, style):
+        """The player picked a background style. Returns list of newly unlocked achievements."""
+        tried = self.data["stats"].setdefault("backgrounds_tried", [])
+        if style in tried:
+            return []
+        tried.append(style)
+        self.save_data()
+        return self.check_and_unlock()
+
+    def record_session(self, minutes):
+        """Length of the current session so far. Returns list of newly unlocked achievements."""
+        if minutes <= self.data["stats"].get("longest_session_minutes", 0):
+            return []
+        self.data["stats"]["longest_session_minutes"] = minutes
+        self.save_data()
+        return self.check_and_unlock()
+
     def record_scramble(self):
         """Record a scramble action. Returns list of newly unlocked achievements."""
         self.data["stats"]["scramble_count"] = self.data["stats"].get("scramble_count", 0) + 1

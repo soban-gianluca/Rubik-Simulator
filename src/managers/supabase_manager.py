@@ -106,110 +106,50 @@ class SupabaseManager:
             print(f"Supabase request error: {e}")
             return None
     
-    def submit_record(self, username: str, region: str, game_mode: str, 
-                      best_time: float = None, best_moves: int = None, 
+    def submit_record(self, username: str, region: str, game_mode: str,
+                      best_time: float = None, best_moves: int = None,
                       best_tps: float = None, total_solves: int = 0,
                       wins: int = 0, losses: int = 0) -> bool:
         """
         Submit or update a record to the global leaderboard.
-        Uses upsert to update if exists or insert if new.
+        Writes go through the submit_record database function, which validates the
+        values and only ever improves the stored bests (tables are read only for clients).
         """
         if not self._is_configured or not self._user_hash:
             return False
-        
+
         data = {
-            "username": username,
-            "region": region,
-            "game_mode": game_mode,
-            "user_hash": self._user_hash,
-            "user_id": self._user_id,
-            "updated_at": datetime.now().isoformat()
+            "p_user_hash": self._user_hash,
+            "p_user_id": self._user_id,
+            "p_username": username,
+            "p_region": region,
+            "p_game_mode": game_mode,
+            "p_best_time": round(best_time, 3) if best_time is not None else None,
+            "p_best_moves": best_moves,
+            "p_best_tps": round(best_tps, 3) if best_tps is not None else None,
+            "p_total_solves": total_solves or 0,
+            "p_wins": wins or 0,
+            "p_losses": losses or 0,
         }
-        
-        # Only include non-None values
-        if best_time is not None:
-            data["best_time"] = round(best_time, 3)
-        if best_moves is not None:
-            data["best_moves"] = best_moves
-        if best_tps is not None:
-            data["best_tps"] = round(best_tps, 3)
-        if total_solves > 0:
-            data["total_solves"] = total_solves
-        if wins > 0:
-            data["wins"] = wins
-        if losses > 0:
-            data["losses"] = losses
-        
-        # Use upsert with on_conflict - specify the unique constraint columns
-        headers = self.headers.copy()
-        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
-        
-        # Add on_conflict parameter to specify which columns to use for conflict detection
-        url = f"{self.base_url}/rest/v1/leaderboard?on_conflict=user_hash,game_mode"
-        
-        try:
-            json_data = json.dumps(data).encode('utf-8')
-            request = urllib.request.Request(
-                url,
-                data=json_data,
-                headers=headers,
-                method="POST"
-            )
-            
-            with urllib.request.urlopen(request, timeout=10) as response:
-                return response.status in [200, 201]
-                
-        except Exception as e:
-            print(f"Error submitting record: {e}")
-            return False
-    
+        return self._make_request("POST", "rpc/submit_record", data) is not None
+
     def update_user_profile(self, new_username: str, new_region: str) -> bool:
         """
         Update username and region for all existing records belonging to the current user.
-        This should be called BEFORE changing the user_hash when a user edits their profile.
-        
+
         Args:
             new_username: The new username to set
             new_region: The new region to set
-        
+
         Returns:
             True if update successful, False otherwise
         """
         if not self._is_configured or not self._user_hash:
             print("Cannot update profile: Supabase not configured or no user hash")
             return False
-        
-        # Use PATCH to update all records matching the current user_hash
-        url = f"{self.base_url}/rest/v1/leaderboard?user_hash=eq.{self._user_hash}"
-        
-        data = {
-            "username": new_username,
-            "region": new_region,
-            "updated_at": datetime.now().isoformat()
-        }
-        
-        try:
-            headers = self.headers.copy()
-            headers["Prefer"] = "return=representation"
-            
-            json_data = json.dumps(data).encode('utf-8')
-            request = urllib.request.Request(
-                url,
-                data=json_data,
-                headers=headers,
-                method="PATCH"
-            )
-            
-            with urllib.request.urlopen(request, timeout=10) as response:
-                return response.status in [200, 204]
-                
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode('utf-8') if e.fp else ""
-            print(f"HTTP error updating user profile: {e.code} - {error_body}")
-            return False
-        except Exception as e:
-            print(f"Error updating user profile: {e}")
-            return False
+
+        data = {"p_user_hash": self._user_hash, "p_username": new_username, "p_region": new_region}
+        return self._make_request("POST", "rpc/update_profile", data) is not None
     
     def get_leaderboard(self, game_mode: str = None, region: str = None, 
                         sort_by: str = "best_time", limit: int = 50,
@@ -289,86 +229,22 @@ class SupabaseManager:
             print(f"Error fetching leaderboard: {e}")
             return ([], False)  # Other errors, not necessarily offline
     
-    def get_user_ranks(self, game_mode: str = None) -> Dict[str, int]:
-        """
-        Get the current user's rank in the leaderboard for each category.
-        Returns a dict with rank positions.
-        """
-        if not self._is_configured or not self._user_hash:
-            return {}
-        
-        # This is a simplified implementation
-        # A full implementation would use Supabase functions or multiple queries
-        leaderboard = self.get_leaderboard(game_mode=game_mode, limit=1000)
-        
-        ranks = {
-            "time_rank": None,
-            "moves_rank": None,
-            "tps_rank": None
-        }
-        
-        # Sort by each metric and find user position
-        for i, entry in enumerate(sorted(leaderboard, key=lambda x: x.get("best_time") or float('inf'))):
-            if entry.get("user_hash") == self._user_hash:
-                ranks["time_rank"] = i + 1
-                break
-        
-        for i, entry in enumerate(sorted(leaderboard, key=lambda x: x.get("best_moves") or float('inf'))):
-            if entry.get("user_hash") == self._user_hash:
-                ranks["moves_rank"] = i + 1
-                break
-        
-        for i, entry in enumerate(sorted(leaderboard, key=lambda x: -(x.get("best_tps") or 0))):
-            if entry.get("user_hash") == self._user_hash:
-                ranks["tps_rank"] = i + 1
-                break
-        
-        return ranks
-    
     def is_username_taken(self, username: str, exclude_user_hash: str = None) -> bool:
         """
-        Check if a username is already in use by another user.
-        
+        Check if a username is already in use by another user (case-insensitive).
+
         Args:
             username: The username to check
             exclude_user_hash: Optional user hash to exclude (for editing own username)
-        
+
         Returns:
             True if the username is taken by another user, False otherwise
         """
         if not self._is_configured:
             return False
-        
-        # Query the leaderboard for any entries with this username (case-insensitive)
-        # Use ilike for case-insensitive matching
-        encoded_username = urllib.parse.quote(username, safe='')
-        url = f"{self.base_url}/rest/v1/leaderboard?username=ilike.{encoded_username}&select=user_hash,username&limit=1"
-        
-        try:
-            request = urllib.request.Request(url, headers=self.headers, method="GET")
-            
-            with urllib.request.urlopen(request, timeout=10) as response:
-                response_data = response.read().decode('utf-8')
-                if response_data:
-                    results = json.loads(response_data)
-                    if results:
-                        # If we're excluding a user hash (editing own profile),
-                        # check if the found user is different
-                        if exclude_user_hash:
-                            for result in results:
-                                if result.get("user_hash") != exclude_user_hash:
-                                    return True
-                            return False
-                        return True
-                return False
-                
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode('utf-8') if e.fp else ""
-            print(f"HTTP error checking username availability: {e.code} - {error_body}")
-            return False
-        except Exception as e:
-            print(f"Error checking username availability: {e}")
-            return False  # On error, allow the operation to proceed
+
+        data = {"p_username": username, "p_user_hash": exclude_user_hash}
+        return self._make_request("POST", "rpc/is_username_taken", data) is True  # on error, allow the operation
     
     def sync_all_records(self, username: str, region: str, records: dict) -> bool:
         """
@@ -424,41 +300,17 @@ class SupabaseManager:
         if not self._is_configured or not self._user_hash:
             return False
         
-        daily_date = self.get_today_date_utc()
-        
+        # The database sets the (UTC) date itself and keeps the user's best solve of the day
         data = {
-            "username": username,
-            "region": region,
-            "user_hash": self._user_hash,
-            "user_id": self._user_id,
-            "daily_date": daily_date,
-            "solve_time": round(solve_time, 3),
-            "moves": moves,
-            "tps": round(tps, 3),
-            "submitted_at": datetime.now().isoformat()
+            "p_user_hash": self._user_hash,
+            "p_user_id": self._user_id,
+            "p_username": username,
+            "p_region": region,
+            "p_solve_time": round(solve_time, 3),
+            "p_moves": moves,
+            "p_tps": round(tps, 3),
         }
-        
-        # Use upsert with on_conflict - one record per user per day
-        headers = self.headers.copy()
-        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
-        
-        url = f"{self.base_url}/rest/v1/daily_leaderboard?on_conflict=user_hash,daily_date"
-        
-        try:
-            json_data = json.dumps(data).encode('utf-8')
-            request = urllib.request.Request(
-                url,
-                data=json_data,
-                headers=headers,
-                method="POST"
-            )
-            
-            with urllib.request.urlopen(request, timeout=10) as response:
-                return response.status in [200, 201]
-                
-        except Exception as e:
-            print(f"Error submitting daily record: {e}")
-            return False
+        return self._make_request("POST", "rpc/submit_daily_record", data) is not None
     
     def get_daily_leaderboard(self, region: str = None, limit: int = 50) -> List[Dict]:
         """
@@ -484,7 +336,7 @@ class SupabaseManager:
         
         # Build URL
         url = f"{self.base_url}/rest/v1/daily_leaderboard"
-        query_parts = filters.copy()
+        query_parts = ["select=username,region,daily_date,solve_time,moves,tps,submitted_at"] + filters
         query_parts.append("order=solve_time.asc")
         query_parts.append(f"limit={limit}")
         
@@ -506,62 +358,6 @@ class SupabaseManager:
         except Exception as e:
             print(f"Error fetching daily leaderboard: {e}")
             return ([], False)  # Other errors, not necessarily offline
-    
-    def has_user_completed_daily(self) -> bool:
-        """
-        Check if the current user has already completed today's daily cube.
-        
-        Returns:
-            True if user has a record for today, False otherwise
-        """
-        if not self._is_configured or not self._user_hash:
-            return False
-        
-        daily_date = self.get_today_date_utc()
-        
-        url = f"{self.base_url}/rest/v1/daily_leaderboard?user_hash=eq.{self._user_hash}&daily_date=eq.{daily_date}&select=id&limit=1"
-        
-        try:
-            request = urllib.request.Request(url, headers=self.headers, method="GET")
-            
-            with urllib.request.urlopen(request, timeout=10) as response:
-                response_data = response.read().decode('utf-8')
-                if response_data:
-                    results = json.loads(response_data)
-                    return len(results) > 0
-                return False
-                
-        except Exception as e:
-            print(f"Error checking daily completion: {e}")
-            return False
-    
-    def get_user_daily_record(self) -> Optional[Dict]:
-        """
-        Get the current user's record for today's daily cube.
-        
-        Returns:
-            Dict with user's daily record or None if not found
-        """
-        if not self._is_configured or not self._user_hash:
-            return None
-        
-        daily_date = self.get_today_date_utc()
-        
-        url = f"{self.base_url}/rest/v1/daily_leaderboard?user_hash=eq.{self._user_hash}&daily_date=eq.{daily_date}&limit=1"
-        
-        try:
-            request = urllib.request.Request(url, headers=self.headers, method="GET")
-            
-            with urllib.request.urlopen(request, timeout=10) as response:
-                response_data = response.read().decode('utf-8')
-                if response_data:
-                    results = json.loads(response_data)
-                    return results[0] if results else None
-                return None
-                
-        except Exception as e:
-            print(f"Error fetching user daily record: {e}")
-            return None
 
 
 # Global instance for easy access

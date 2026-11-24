@@ -6,7 +6,8 @@ import time
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from utils.path_helper import resource_path
-from src import backgrounds
+from src.rendering import backgrounds
+from src.ui import ui_style as ui
 
 class Renderer:
     def __init__(self, width=1280, height=720, cube_path="utils/cube.obj"):
@@ -85,6 +86,7 @@ class Renderer:
         if stars is not None:
             self.background.stars = bool(stars)
         self.background.style = backgrounds.resolve(self.background_choice, self.background_mode)
+        self.background.tint = tuple(c / 255.0 for c in ui.MODE_COLORS.get(self.background_mode, ui.ACCENT))
 
     def set_background_mode(self, mode):
         """Game mode changed: used when the style is set to match the game mode."""

@@ -1,5 +1,5 @@
 import pygame
-from src import ui_style as ui
+from src.ui import ui_style as ui
 
 
 class GameMenuButton:

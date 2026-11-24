@@ -159,7 +159,7 @@ def open_window(mode, display_index, size, hdr=False):
     ``hdr`` requests a 16-bit float framebuffer (see src/hdr.py); if the driver
     refuses it, a normal window is created instead.
     """
-    from src import hdr as hdr_output
+    from src.rendering import hdr as hdr_output
 
     flags = DOUBLEBUF | OPENGL
     os.environ.pop("SDL_VIDEO_WINDOW_POS", None)

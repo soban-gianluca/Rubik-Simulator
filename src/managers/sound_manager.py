@@ -4,6 +4,14 @@ import time
 import random
 from utils.path_helper import resource_path
 
+# Base gain of each sound before the volume settings. The cube move files are mastered
+# much quieter than the rest (about 10 dB), so they play at full gain to stay level
+# with the menu sounds.
+MENU_GAINS = {"menu_open": 0.5, "menu_select": 0.3, "menu_apply": 0.4}
+EFFECT_GAINS = {"winning": 0.7, "fail": 0.35, "hint": 0.4, "achievement": 0.6}
+CUBE_GAIN = 1.0
+
+
 class SoundManager:
     """Manages sound effects for the game"""
     
@@ -70,18 +78,10 @@ class SoundManager:
             for i in range(1, 7):  # Load cube_sfx_1.mp3 to cube_sfx_6.mp3
                 cube_sound_path = resource_path(f"utils/sfx/cube_sfx/cube_sfx_{i}.mp3")
                 if os.path.exists(cube_sound_path):
-                    cube_sound = pygame.mixer.Sound(cube_sound_path)
-                    cube_sound.set_volume(0.4 * self.effects_volume * self.master_volume)  # Set moderate volume for cube sounds
-                    self.cube_sounds.append(cube_sound)
+                    self.cube_sounds.append(pygame.mixer.Sound(cube_sound_path))
 
-            # Set default volumes based on sound type
-            self.sounds["menu_open"].set_volume(0.5 * self.menu_volume * self.master_volume)
-            self.sounds["menu_select"].set_volume(0.3 * self.menu_volume * self.master_volume)
-            self.sounds["menu_apply"].set_volume(0.4 * self.menu_volume * self.master_volume)
-            self.sounds["winning"].set_volume(1 * self.effects_volume * self.master_volume)
-            self.sounds["fail"].set_volume(0.3 * self.effects_volume * self.master_volume)
-            self.sounds["hint"].set_volume(0.2 * self.effects_volume * self.master_volume)
-            self.sounds["achievement"].set_volume(0.4 * self.effects_volume * self.master_volume)
+            self._update_menu_volumes()
+            self._update_cube_volumes()
 
         except Exception as e:
             print(f"Error loading sound effects: {e}")
@@ -187,12 +187,7 @@ class SoundManager:
     def _update_menu_volumes(self):
         """Update menu sound volumes"""
         if self.is_enabled and hasattr(self, 'sounds'):
-            menu_sounds = {
-                "menu_open": 0.5,
-                "menu_select": 0.3,
-                "menu_apply": 0.4
-            }
-            for sound_name, base_volume in menu_sounds.items():
+            for sound_name, base_volume in MENU_GAINS.items():
                 if sound_name in self.sounds:
                     self.sounds[sound_name].set_volume(base_volume * self.menu_volume * self.master_volume)
     
@@ -200,19 +195,13 @@ class SoundManager:
         """Update cube sound effects volumes"""
         if self.is_enabled and hasattr(self, 'cube_sounds') and self.cube_sounds:
             for cube_sound in self.cube_sounds:
-                cube_sound.set_volume(0.4 * self.effects_volume * self.master_volume)
-        
-        # Update winning sound volume
-        if self.is_enabled and hasattr(self, 'sounds') and "winning" in self.sounds:
-            self.sounds["winning"].set_volume(0.7 * self.effects_volume * self.master_volume)
-            
-        # Update fail sound volume
-        if self.is_enabled and hasattr(self, 'sounds') and "fail" in self.sounds:
-            self.sounds["fail"].set_volume(0.7 * self.effects_volume * self.master_volume)
+                cube_sound.set_volume(CUBE_GAIN * self.effects_volume * self.master_volume)
 
-        # Update achievement sound volume
-        if self.is_enabled and hasattr(self, 'sounds') and "achievement" in self.sounds:
-            self.sounds["achievement"].set_volume(0.4 * self.effects_volume * self.master_volume)
+        # Other in-game effects (win, fail, hint, achievement)
+        if self.is_enabled and hasattr(self, 'sounds'):
+            for sound_name, base_volume in EFFECT_GAINS.items():
+                if sound_name in self.sounds:
+                    self.sounds[sound_name].set_volume(base_volume * self.effects_volume * self.master_volume)
     
     def enable(self, enabled=True):
         """Enable or disable sound effects"""

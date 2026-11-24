@@ -412,3 +412,40 @@ class SettingsMixin:
         self._spacer(menu, 28)
         self._surface(menu, surf)
         self._spacer(menu, 24)
+
+    @_batched(_first_arg)
+    def _build_credits_page(self, menu):
+        width = self.pages[menu]["width"]
+        sections = [
+            ("Made by", [
+                ("Gianluca Soban", "Sound Designer, Developer"),
+                ("Leonardo Malannino", "Developer"),
+            ]),
+            ("Built with", [
+                ("Python", "Main language"),
+                ("Pygame and PyOpenGL", "Rendering and input"),
+                ("pygame-menu", "Menu layout"),
+                ("NumPy", "Cube logic"),
+                ("Supabase", "Backend database"),
+            ]),
+        ]
+        head = ui.display_font(ui.SIZE_H3)
+        body = ui.body_font()
+        small = ui.body_font(ui.SIZE_SMALL)
+        row_h = ui.px(52)
+        height = sum(head.get_height() + ui.px(14) + len(rows) * row_h + ui.px(40) for _, rows in sections)
+        surf = pygame.Surface((width, height), pygame.SRCALPHA)
+        y = 0
+        for title, rows in sections:
+            ui.draw_text(surf, title, head, ui.MUTED, (0, y))
+            y += head.get_height() + ui.px(14)
+            for name, role in rows:
+                pygame.draw.line(surf, ui.LINE, (0, y), (width, y), max(1, ui.px(1.5)))
+                r = ui.draw_text(surf, role, small, ui.MUTED, (width, y + row_h // 2), "midright")
+                ui.draw_text(surf, ui.ellipsize(name, body, r.left - ui.px(16)), body, ui.TEXT,
+                             (0, y + row_h // 2), "midleft")
+                y += row_h
+            y += ui.px(40)
+        self._spacer(menu, 28)
+        self._surface(menu, surf)
+        self._spacer(menu, 24)

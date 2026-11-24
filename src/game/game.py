@@ -347,6 +347,12 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
                 self.toggle_fullscreen()
 
+            # The achievement toast is on top of everything: a click opens the achievements page
+            elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                  and self.achievement_toast_at(event.pos)):
+                events.pop()  # not for the results window either
+                self.open_achievements_from_toast()
+
             # IMPORTANT: Pass events to menu FIRST when menu is active
             # This allows text inputs in menus to receive keyboard events
             elif self.menu.is_active():
@@ -563,7 +569,9 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
         
         # Update cursor based on menu/results window state
         mouse_pos = pygame.mouse.get_pos()
-        if hasattr(self, 'menu') and self.menu.is_active():
+        if self.achievement_toast_at(mouse_pos):
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+        elif hasattr(self, 'menu') and self.menu.is_active():
             self.menu.update_cursor(mouse_pos)
         elif hasattr(self, 'results_window') and self.results_window.active:
             self.results_window.update_cursor(mouse_pos)

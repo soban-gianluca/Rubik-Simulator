@@ -131,7 +131,7 @@ class LoadingAnimation:
 
         # Signature cube: facelets light up as loading progresses
         lit = int(round(self.shown_progress * 27))
-        ui.cube_mark(layer, (w // 2, top + edge), edge, lit=lit,
+        ui.cube_mark(layer, (w // 2, top + edge), edge, lit=lit, rounded=True,
                      colors=(ui.FACE["yellow"], ui.FACE["green"], ui.FACE["red"]))  # same faces as the logo cube
 
         # Game logo (the text of utils/rubiks_logo.png)

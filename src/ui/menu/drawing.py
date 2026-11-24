@@ -104,8 +104,15 @@ class DrawingMixin:
         if kind == "dialog":
             self._draw_dialog_panel(screen, menu)
 
+        # pygame-menu redraws a page's widgets only when one of them reports a change. The custom
+        # painted buttons also depend on our hover and keyboard focus state: redraw when it changes.
+        paint_state = (menu, self.hover_widget, self.keyboard_mode, menu.get_selected_widget())
+        if paint_state != self._paint_state:
+            self._paint_state = paint_state
+            menu.force_surface_cache_update()
+
         elapsed = time.time() - self.animation_start_time
-        cascade_end = ITEM_DELAY + ITEM_STAGGER * len(menu.get_widgets()) + ITEM_DURATION
+        cascade_end =ITEM_DELAY + ITEM_STAGGER * len(menu.get_widgets()) + ITEM_DURATION
         if kind == "main" and not settled and self.is_opening and elapsed < cascade_end:
             self._draw_main_cascade(screen, menu, elapsed)
         else:
@@ -155,8 +162,11 @@ class DrawingMixin:
         ic = ui.icon("back", int(size * 0.5), ui.TEXT)
         if ic:
             screen.blit(ic, ic.get_rect(center=back.center))
-        ui.draw_text(screen, page.get("title", ""), ui.display_font(ui.SIZE_H1), ui.TEXT,
-                     (back.right + ui.px(22), cy + ui.px(3)), "midleft")
+        # Center the capital letters on the button: the font's line box has extra room below them
+        title_font = ui.display_font(ui.SIZE_H1)
+        caps = title_font.render("H", True, ui.TEXT).get_bounding_rect()
+        ui.draw_text(screen, page.get("title", ""), title_font, ui.TEXT,
+                     (back.right + ui.px(22), cy - caps.centery), "topleft")
         hint = ui.body_font(ui.SIZE_CAPTION)
         ui.draw_text(screen, "Esc to go back", hint, ui.DIM, (x + width, cy), "midright")
         pygame.draw.line(screen, ui.LINE, (x, L.header_h - 1), (x + width, L.header_h - 1), max(1, ui.px(1.5)))
@@ -184,19 +194,33 @@ class DrawingMixin:
 
     def _draw_main_footer(self, screen):
         L = self.L
+        small = ui.body_font(ui.SIZE_SMALL)
+        y = self.height - L.panel_pad
+
+        # Round credits button, bottom right of the panel, centered on the profile line
+        size = ui.px(52)
+        credits = pygame.Rect(0, 0, size, size)
+        credits.center = (L.panel_w - L.panel_pad - size // 2, y - small.get_height() // 2)
+        self.credits_rect = credits
+        hovered = credits.collidepoint(pygame.mouse.get_pos())
+        ui.fill_rect(screen, ui.SURFACE_3 if hovered else ui.SURFACE_2, credits, size // 2)
+        ui.fill_rect(screen, ui.LINE, credits, size // 2, width=max(1, ui.px(1.5)))
+        ic = ui.icon("info", int(size * 0.5), ui.TEXT if hovered else ui.MUTED)
+        if ic:
+            screen.blit(ic, ic.get_rect(center=credits.center))
+
         if not self.user_manager.is_setup_completed():
             return
-        small = ui.body_font(ui.SIZE_SMALL)
         name = self.user_manager.get_username() or ""
         region = self.user_manager.get_region() or ""
         text = f"{name}  ·  {region}" if region else name
-        y = self.height - L.panel_pad
         ic = ui.icon("user-edit", small.get_height(), ui.MUTED)
         x = L.panel_pad + ui.px(24)
         if ic:
             screen.blit(ic, ic.get_rect(midleft=(x, y - small.get_height() // 2)))
             x += ic.get_width() + ui.px(10)
-        ui.draw_text(screen, ui.ellipsize(text, small, L.panel_w - x - L.panel_pad), small, ui.MUTED, (x, y), "bottomleft")
+        max_w = credits.left - ui.px(16) - x
+        ui.draw_text(screen, ui.ellipsize(text, small, max_w), small, ui.MUTED, (x, y), "bottomleft")
 
     def _redraw_open_dropselect(self, screen, menu):
         """pygame-menu draws a dropdown list inside its frame, so later rows paint

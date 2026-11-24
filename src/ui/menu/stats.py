@@ -526,6 +526,8 @@ class StatsMixin:
         width = self.pages[menu]["width"]
         unlocked, total = self.achievements_manager.get_unlocked_count()
         by_category = self.achievements_manager.get_achievements_by_category()
+        self._ach_seen = (self.achievements_manager, unlocked)  # this page is current (see _refresh_achievement_views)
+        self._ach_cards = {}  # achievement id: (widget of its section, card rect inside it)
 
         # Summary
         self._spacer(menu, 20)
@@ -558,8 +560,12 @@ class StatsMixin:
             self._section(menu, names.get(category, category.title()))
             n_rows = (len(items) + cols - 1) // cols
             surf = pygame.Surface((width, n_rows * card_h + (n_rows - 1) * gap), pygame.SRCALPHA)
+            rects = {}
             for i, a in enumerate(items):
                 r, c = divmod(i, cols)
-                self._achievement_card(surf, pygame.Rect(c * (card_w + gap), r * (card_h + gap), card_w, card_h), a)
-            self._surface(menu, surf)
+                rects[a["id"]] = pygame.Rect(c * (card_w + gap), r * (card_h + gap), card_w, card_h)
+                self._achievement_card(surf, rects[a["id"]], a)
+            widget = self._surface(menu, surf)
+            for aid, rect in rects.items():
+                self._ach_cards[aid] = (widget, rect)
         self._spacer(menu, 48)

@@ -1,4 +1,5 @@
 import os
+import copy
 import json
 from datetime import datetime, timedelta, timezone
 from utils.path_helper import resource_path
@@ -416,7 +417,7 @@ ACHIEVEMENTS = {
         "icon": "utils/icons/achievements/secret/tourist.png",
         "category": "secret",
         "condition_type": "backgrounds_tried",
-        "target": 8,
+        "target": 9,
         "secret": True
     },
     "marathon_session": {
@@ -501,19 +502,19 @@ class AchievementsManager:
                 # Ensure all fields exist for backward compatibility
                 for key in self.default_data:
                     if key not in loaded_data:
-                        loaded_data[key] = self.default_data[key]
+                        loaded_data[key] = copy.deepcopy(self.default_data[key])
                 
                 # Ensure all stats fields exist
                 for stat_key in self.default_data["stats"]:
                     if stat_key not in loaded_data["stats"]:
-                        loaded_data["stats"][stat_key] = self.default_data["stats"][stat_key]
+                        loaded_data["stats"][stat_key] = copy.deepcopy(self.default_data["stats"][stat_key])
                 
                 return loaded_data
             else:
-                return self.default_data.copy()
+                return copy.deepcopy(self.default_data)
         except Exception as e:
             print(f"Error loading achievements: {e}")
-            return self.default_data.copy()
+            return copy.deepcopy(self.default_data)
     
     def save_data(self):
         """Save achievements data to file"""
@@ -830,5 +831,5 @@ class AchievementsManager:
     
     def reset_achievements(self):
         """Reset all achievements (for testing or user request)"""
-        self.data = self.default_data.copy()
+        self.data = copy.deepcopy(self.default_data)
         self.save_data()

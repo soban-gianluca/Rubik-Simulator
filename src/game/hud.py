@@ -101,6 +101,7 @@ class HudMixin:
 
     def _render_achievement_notification_opengl(self):
         """Achievement toast at the top center"""
+        self._achievement_toast_rect = None
         if (not self._achievement_notification_active) or self._achievement_notification_alpha <= 0:
             return
         achievement_id = self._achievement_notification_id
@@ -129,11 +130,28 @@ class HudMixin:
             ui.draw_text(surf, ui.ellipsize(name, name_f, width - tx - pad), name_f, ui.TEXT,
                          (tx, height // 2 + ui.px(2)), "topleft")
             surf.set_alpha(int(255 * a))
-            y = self._hud_margin() + int((1.0 - a) * -ui.px(16))
-            self._blit_gl(surf, (self.width - width) // 2, max(0, y))
+            y = max(0, self._hud_margin() + int((1.0 - a) * -ui.px(16)))
+            self._blit_gl(surf, (self.width - width) // 2, y)
+            self._achievement_toast_rect = pygame.Rect((self.width - width) // 2, y, width, height)
         except Exception as e:
             if self.debug_mode:
                 print(f"Achievement banner render error: {e}")
+
+    def achievement_toast_at(self, pos):
+        rect = getattr(self, '_achievement_toast_rect', None)
+        return rect is not None and rect.collidepoint(pos)
+
+    def open_achievements_from_toast(self):
+        """Clicking the achievement toast dismisses it and opens the achievements page at its card."""
+        achievement_id = self._achievement_notification_id
+        self._achievement_notification_active = False
+        self._achievement_notification_alpha = 0.0
+        self._achievement_toast_rect = None
+        if self.results_window.active:
+            self.results_window.close_results()
+        if not self.menu.is_active() or (self.menu.is_animating and not self.menu.is_opening):
+            self.menu.toggle()
+        self.menu.show_achievements(achievement_id)
 
     def update_banner(self):
         """Update banner animation and visibility"""

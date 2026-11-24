@@ -110,6 +110,9 @@ class NavigationMixin:
     def _open_controls(self):
         self._go(self.controls_menu)
 
+    def _open_credits(self):
+        self._go(self.credits_menu)
+
     def _show_quit_confirmation(self):
         self._go(self.quit_confirmation_menu)
         try:
@@ -143,6 +146,21 @@ class NavigationMixin:
         self.sound_manager.play("menu_select")
         self._create_achievements_content()
         self._change_menu(self.achievements_menu)
+
+    def show_achievements(self, achievement_id=None):
+        """Open the achievements page (used by the game's achievement toast),
+        scrolled so the card of ``achievement_id`` is in view."""
+        self._open_achievements()
+        card = getattr(self, "_ach_cards", {}).get(achievement_id)
+        sbar = self._menu_scrollbar(self.achievements_menu)
+        if card is None or sbar is None:
+            return
+        widget, rect = card
+        lo, hi = sbar.get_minmax()
+        view_h = self.achievements_menu.get_scrollarea().get_view_rect().height
+        # Center the card in the visible part of the page
+        target = widget.get_rect().y + rect.centery - view_h // 2
+        sbar.set_value(min(max(target, lo), hi))
 
     def _open_time_selection(self):
         self._go(self.time_selection_menu)

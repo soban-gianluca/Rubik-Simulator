@@ -59,6 +59,9 @@ def _batched(menu_of):
                 if depth == 0:
                     menu.enable_render()
                     menu.render()
+                    # A rebuilt page of the same size reuses the old drawn surface:
+                    # without this the previous content stays on screen until a scroll
+                    menu.force_surface_cache_update()
         return wrapper
     return decorate
 

@@ -371,10 +371,37 @@ def _face_cell(o, u, v, i, j, n, inset):
     return [p(a0, b0), p(a1, b0), p(a1, b1), p(a0, b1)]
 
 
-def cube_mark(surface, center, size, colors=None, lit=27, body=BG):
+def _rounded(points, r, steps=6):
+    """Convex polygon with each corner replaced by a curve cut ``r`` px along both edges."""
+    out = []
+    n = len(points)
+    for k in range(n):
+        p, a, b = points[k], points[k - 1], points[(k + 1) % n]
+        ends = []
+        for q in (a, b):
+            d = math.hypot(q[0] - p[0], q[1] - p[1]) or 1
+            cut = min(r, d / 2) / d
+            ends.append((p[0] + (q[0] - p[0]) * cut, p[1] + (q[1] - p[1]) * cut))
+        (x0, y0), (x2, y2) = ends
+        for s in range(steps + 1):
+            t = s / steps
+            m0, m1, m2 = (1 - t) ** 2, 2 * (1 - t) * t, t * t
+            out.append((m0 * x0 + m1 * p[0] + m2 * x2, m0 * y0 + m1 * p[1] + m2 * y2))
+    return out
+
+
+def _poly(surface, color, points, r):
+    if r > 0:
+        points = _rounded(points, r)
+        pygame.draw.aalines(surface, color, True, points)
+    pygame.draw.polygon(surface, color, points)
+
+
+def cube_mark(surface, center, size, colors=None, lit=27, body=BG, rounded=False):
     """Isometric 3x3 cube. ``lit`` facelets (0-27) are colored, the rest dim.
 
-    ``size`` is the length of one cube edge in pixels.
+    ``size`` is the length of one cube edge in pixels. ``rounded`` softens the
+    body and sticker corners like the cubes in utils/rubiks_logo.png.
     """
     cx, cy = center
     a = size
@@ -394,7 +421,7 @@ def cube_mark(surface, center, size, colors=None, lit=27, body=BG):
         vx, vy = x - cx, y - cy
         d = math.hypot(vx, vy) or 1
         grown.append((x + vx / d * pad, y + vy / d * pad))
-    pygame.draw.polygon(surface, body, grown)
+    _poly(surface, body, grown, a * 0.16 if rounded else 0)
 
     colors = colors or (FACE["white"], FACE["green"], FACE["red"])
     faces = [
@@ -404,12 +431,13 @@ def cube_mark(surface, center, size, colors=None, lit=27, body=BG):
     ]
     k = 0
     inset = 0.09
+    sticker_r = a * 0.08 if rounded else 0
     for o, u, v, col in faces:
         for j in range(3):
             for i in range(3):
                 quad = _face_cell(o, u, v, i, j, 3, inset)
                 c = col if k < lit else SURFACE_3
-                pygame.draw.polygon(surface, c, quad)
+                _poly(surface, c, quad, sticker_r)
                 k += 1
 
 

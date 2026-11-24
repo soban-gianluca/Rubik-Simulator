@@ -104,9 +104,12 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         # Interaction state
         self.pages = {}
         self._sliders = []
+        self._drag_slider = None  # (slider, pointer offset from the handle) while a handle is dragged
         self.hover_widget = None
         self.keyboard_mode = False
+        self._paint_state = None  # what the custom painted widgets were last drawn with (see _draw_page)
         self.header_back_rect = None
+        self.credits_rect = None
         self._skip_pygame_menu_update_once = False
         self._ach_icon_cache = {}
         self._scroll = None  # smooth wheel scrolling: [scrollbar, position, target, last update time]
@@ -257,6 +260,7 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
                 except Exception:
                     pass
             self._step_scroll()
+            self._refresh_achievement_views()
 
         if self.leaderboard_ui_refresh_pending and not self.leaderboard_loading:
             if self.statistics_tab == "global_leaderboard":
@@ -277,6 +281,22 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
             self.current_alpha = self.target_alpha
             if not self.is_opening:
                 self.active = False
+
+    def _refresh_achievement_views(self):
+        """Achievements can unlock while the menu is open (session time, background, mode switch):
+        update the count on the main menu and the achievements page if it is showing."""
+        manager = self.achievements_manager
+        seen = (manager, manager.get_unlocked_count()[0])
+        if getattr(self, "_ach_seen", None) == seen:
+            return
+        first = getattr(self, "_ach_seen", None) is None
+        self._ach_seen = seen
+        if first:
+            return
+        if self.current_menu is self.main_menu:
+            self.refresh_main_menu_buttons()
+        elif self.current_menu is self.achievements_menu:
+            self._create_achievements_content()
 
     def get_current_alpha(self):
         if not self.is_animating and not self.active:
@@ -414,8 +434,10 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
                         slider.set_value(slider.snap_value(value))
                 except Exception:
                     pass
+        if self._drag_slider is not None and self._drag_slider_event(event):
+            return True
         menu = self.current_menu
-        text_menu = menu in (getattr(self, "user_setup_menu", None), getattr(self, "user_edit_menu", None))
+        text_menu =menu in (getattr(self, "user_setup_menu", None), getattr(self, "user_edit_menu", None))
 
         # Text inputs read KEYDOWN, ignore TEXTINPUT so characters are not doubled
         if text_menu and event.type == pygame.TEXTINPUT:
@@ -438,6 +460,10 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
             if (self.pages.get(menu, {}).get("kind") == "page" and self.header_back_rect
                     and self.header_back_rect.collidepoint(event.pos)):
                 self._go_back()
+                return True
+            if (self.pages.get(menu, {}).get("kind") == "main" and self.credits_rect
+                    and self.credits_rect.collidepoint(event.pos)):
+                self._open_credits()
                 return True
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
@@ -464,7 +490,32 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
             if self.debug_mode:
                 print(f"Menu event error: {e}")
         self._skip_pygame_menu_update_once = True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self._start_slider_drag(event.pos[0])
         return True
+
+    def _start_slider_drag(self, mouse_x):
+        """A press that grabbed a slider handle: keep dragging it until the button is released."""
+        for slider in self._sliders:
+            if getattr(slider, "_scrolling", False) and getattr(slider, "_selected_mouse", False):
+                rect = slider.get_rect(to_real_position=True, apply_padding=False)
+                handle_x = rect.x + slider._range_pos[0] + slider._get_pos_range(slider._value_hidden[0])
+                self._drag_slider = (slider, mouse_x - handle_x)
+                return
+
+    def _drag_slider_event(self, event):
+        """Move the dragged slider from the pointer x, wherever the pointer is. Returns True if consumed."""
+        slider, grab = self._drag_slider
+        if event.type == pygame.MOUSEMOTION and event.buttons[0]:
+            rect = slider.get_rect(to_real_position=True, apply_padding=False)
+            low, high = slider._range_values[0], slider._range_values[-1]
+            t = (event.pos[0] - grab - rect.x - slider._range_pos[0]) / max(1, slider._range_width)
+            target = low + min(max(t, 0.0), 1.0) * (high - low)
+            slider._update_value(target - slider._value_hidden[0])
+            return True
+        if event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+            self._drag_slider = None  # released (the button up still goes to the menu to end the drag)
+        return False
 
     def update_cursor(self, mouse_pos):
         if not self.active:
@@ -472,6 +523,9 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         hand = False
         if (self.pages.get(self.current_menu, {}).get("kind") == "page" and self.header_back_rect
                 and self.header_back_rect.collidepoint(mouse_pos)):
+            hand = True
+        elif (self.pages.get(self.current_menu, {}).get("kind") == "main" and self.credits_rect
+                and self.credits_rect.collidepoint(mouse_pos)):
             hand = True
         else:
             widget = self._widget_at(mouse_pos)
@@ -491,11 +545,12 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         previous_key = None
         for name in ("settings_menu", "controls_menu", "difficulty_menu", "personal_best_menu",
                      "time_selection_menu", "moves_selection_menu", "user_setup_menu", "user_edit_menu",
-                     "achievements_menu", "quit_confirmation_menu"):
+                     "achievements_menu", "quit_confirmation_menu", "credits_menu"):
             if previous is not None and getattr(self, name, None) is previous:
                 previous_key = name
         self.pages = {}
         self._sliders = []
+        self._drag_slider = None
         self.hover_widget = None
         self.header_back_rect = None
 
@@ -512,6 +567,9 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
 
         self.controls_menu = self._page("Controls", self._back_to_main)
         self._build_controls_page(self.controls_menu)
+
+        self.credits_menu = self._page("Credits", self._back_to_main, width=min(L.content_w, ui.px(860)))
+        self._build_credits_page(self.credits_menu)
 
         self.personal_best_menu = self._page("Statistics", self._back_to_main)
         self._unbuilt[self.personal_best_menu] = self._create_personal_best_content

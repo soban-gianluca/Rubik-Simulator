@@ -1,5 +1,6 @@
 import pygame
 from src.rendering.renderer import Renderer
+from src.rubiks_cube import set_color_scheme
 from src.rendering import display_manager
 from src.rendering import hdr as hdr_output
 from src.rendering import graphics
@@ -31,6 +32,8 @@ class DisplayMixin:
         graphics.set_vsync(s.get("vsync", graphics.DEFAULT_VSYNC))
         self.renderer.set_background(s.get("background_style", backgrounds.DEFAULT_STYLE),
                                      s.get("background_stars", True))
+        set_color_scheme(s.get("color_scheme", "standard"))
+        self.renderer.update_cube_colors()
 
     def toggle_fullscreen(self):
         """F11: switch between a window and borderless fullscreen on the current monitor"""

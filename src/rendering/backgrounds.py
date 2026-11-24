@@ -25,10 +25,11 @@ from OpenGL.GL import shaders
 
 GL_TEXTURE_CUBE_MAP_SEAMLESS = 0x884F
 
-# Cube map side length relative to the height of the 3D view: about one texel per
-# pixel (the view's 60 degree field covers a 90 degree cube face), capped for memory
-BAKE_SCALE = 1.4
-BAKE_MAX = 2048
+# Cube map side length relative to the height of the 3D view: one texel per pixel at the
+# center of the view (its 60 degree field spans 1.155 of the 2.0 wide cube face, 2 / 1.155
+# = 1.73), capped for memory: 2560 is about 157 MB, reached from 1440p upward
+BAKE_SCALE = 1.75
+BAKE_MAX = 2560
 LIGHT_SIZE = 256  # the aurora's soft curtains need little resolution
 # How much of the camera rotation the sky follows: a fraction keeps it drifting gently
 # behind the cube instead of sweeping across the screen with every turn
@@ -52,6 +53,7 @@ STYLES = [
     ("nebula", "Nebula", "Semi-realistic"),
     ("aurora", "Aurora", "Semi-realistic"),
     ("shallows", "Shallows", "Semi-realistic"),
+    ("summit", "Summit", "Semi-realistic"),
     ("daydream", "Daydream", "Cartoon"),
     ("planet", "Ringed planet", "Cartoon"),
     ("hills", "Sunset hills", "Cartoon"),
@@ -65,7 +67,7 @@ DEFAULT_STYLE = AUTO_SOLID
 MODE_STYLES = {
     "freeplay": "shallows",
     "easy": "aurora",
-    "medium": "dusk",
+    "medium": "summit",
     "hard": "nebula",
     "limited_time": "hills",
     "limited_moves": "daydream",
@@ -312,6 +314,127 @@ vec4 shallows(vec3 d) {
     return vec4(col, vis);
 }
 
+// How many fbm octaves (base frequency f) stay larger than a texel: as much detail as the
+// cube map can hold at this resolution, never finer (finer only shimmers)
+int detail(float f) {
+    float texel = 2.0 / size;
+    return int(clamp(1.0 + floor(log2(0.35 / (f * texel)) / log2(2.03)), 1.0, 6.0));
+}
+
+// Ridged noise: sharp crests where plain noise would be round
+float ridged(vec3 p, int octaves) {
+    float s = 0.0;
+    float a = 0.5;
+    float norm = 0.0;
+    for (int i = 0; i < 5; i++) {
+        if (i >= octaves) break;
+        s += a * (1.0 - abs(noise(p) * 2.0 - 1.0));
+        norm += a;
+        p = p * 2.07 + vec3(3.1, 7.7, 1.3);
+        a *= 0.5;
+    }
+    return s / norm;
+}
+
+// Height of a mountain range above the cloud sea, seamless around the horizon
+float peaks(vec3 d, float amp, float freq, float seed) {
+    vec3 a = vec3(normalize(d.xz + 1e-5), 0.0).xzy * freq + seed;
+    float r = ridged(a, 5);
+    float gate = smoothstep(0.25, 0.55, fbm(a * 0.3 + 5.0, 2, 0.5));  // peaks come in clusters
+    float k = max(r - 0.55, 0.0) / 0.33;                              // unclamped: summits stay pointed
+    return amp * k * gate;
+}
+
+// Medium: sunrise above a sea of clouds, snowy peaks breaking through.
+// Everything is lit by one low sun: warm on the faces turned to it, cool violet in shade.
+vec4 summit(vec3 d) {
+    float y = d.y;
+    vec3 sun = normalize(vec3(0.42, 0.075, -0.91));
+    vec3 ring = vec3(normalize(d.xz + 1e-5), 0.0).xzy;
+    vec3 sunRing = normalize(vec3(sun.x, 0.0, sun.z));
+    float toSun = dot(ring, sunRing) * 0.5 + 0.5;    // 1 looking toward the sun
+    float s = max(dot(d, sun), 0.0);
+    const float TOP = -0.035;                        // the cloud sea lies just below eye level
+
+    // Sky: golden at the horizon by the sun, rose and lilac away from it, deep blue overhead
+    vec3 hor = mix(vec3(0.86, 0.60, 0.66), vec3(1.00, 0.70, 0.40), smoothstep(0.2, 1.0, toSun));
+    vec3 mid = mix(vec3(0.42, 0.36, 0.58), vec3(0.62, 0.42, 0.50), toSun);
+    float h = pow(clamp((y - TOP) / (1.0 - TOP), 0.0, 1.0), 0.55);
+    vec3 col = grad3(h, hor, mid, vec3(0.06, 0.10, 0.27), 0.45);
+    col += vec3(1.0, 0.50, 0.20) * (pow(s, 6.0) * 0.22 + pow(s, 64.0) * 0.25);
+    float disc = fill(length(d - sun), 0.02);
+    col = mix(col, vec3(1.0, 0.98, 0.90), disc);
+    col += vec3(1.0, 0.75, 0.45) * pow(s, 900.0) * 0.6 * (1.0 - disc);   // tight bloom around the disc
+    float vis = smoothstep(0.45, 0.95, y) * 0.7;
+
+    // Two mountain ranges: the far one pale in the haze, the near one sharper.
+    // The slope of each silhouette tells which way a face turns: lit or in shade.
+    vec3 tangent = vec3(-ring.z, 0.0, ring.x);
+    const float E = 0.008;
+    for (int r = 0; r < 2; r++) {
+        float amp = r == 0 ? 0.05 : 0.15;
+        float freq = r == 0 ? 3.4 : 2.2;
+        float seed = r == 0 ? 2.0 : 17.0;
+        float top = TOP + peaks(d, amp, freq, seed);
+        float a = fill(y - top, 0.0);
+        if (a <= 0.0) continue;
+        // The light/shade split follows a crest that wanders as it runs down from the summit,
+        // instead of a straight vertical line: read the slope a little to the side, by depth
+        float depth = max(top - y, 0.0);
+        float wander = (fbm(vec3(ring.xz * 18.0, y * 25.0 + seed), detail(25.0), 0.5) - 0.5) * depth * 3.0;
+        vec3 rs = normalize(ring + tangent * wander);
+        float slope = (peaks(normalize(rs + tangent * E), amp, freq, seed)
+                     - peaks(normalize(rs - tangent * E), amp, freq, seed)) / (2.0 * E);
+        // Faces also turn with height: gullies bend the light so no face is one flat column
+        float gully = (fbm(vec3(ring.xz * 26.0, y * 60.0), detail(60.0), 0.5) - 0.5) * 2.0;
+        vec3 nrm = normalize(-ring * 0.7 - tangent * (clamp(slope * 1.5, -2.5, 2.5) + gully));
+        float face = smoothstep(-0.3, 0.5, dot(nrm, sunRing));
+        // Snow above a ragged line, rock below, with patches of snow left lower down
+        float line = TOP + amp * (0.22 + 0.3 * fbm(vec3(ring.xz * 40.0, y * 30.0), detail(40.0), 0.5));
+        float snow = smoothstep(line - 0.003, line + 0.003, y);
+        // Streaks down the gullies: stretched vertically, thinning out below the line
+        float patches = smoothstep(0.6, 0.67, fbm(vec3(ring.xz * 110.0, y * 60.0 + seed), detail(110.0), 0.55));
+        float cracks = ridged(vec3(ring.xz * 150.0, y * 120.0 + seed), detail(150.0));
+        patches *= smoothstep(0.45, 0.65, cracks);           // broken up where rock ledges show through
+        snow = max(snow, patches * smoothstep(line - amp * 0.18, line, y));
+        vec3 lit = mix(vec3(0.62, 0.40, 0.33), vec3(1.00, 0.80, 0.64), snow);
+        vec3 shade = mix(vec3(0.16, 0.15, 0.25), vec3(0.42, 0.44, 0.64), snow);
+        vec3 m = mix(shade, lit, face);
+        // Rock texture: fine cracks and ledges (ridged noise), as fine as the cube map holds
+        m *= mix(0.72 + 0.4 * cracks, 0.93 + 0.1 * cracks, snow);
+        m *= 0.9 + 0.2 * fbm(vec3(ring.xz * 90.0, y * 140.0), detail(140.0), 0.55);   // rock grain
+        float haze = r == 0 ? 0.5 : 0.1;
+        haze = mix(haze, 1.0, smoothstep(TOP + 0.025, TOP, y) * 0.85);   // peaks rise out of mist
+        m = mix(m, hor, haze);
+        col = mix(col, m, a);
+        vis *= 1.0 - a;
+    }
+
+    if (y < TOP) {
+        // The cloud sea from above: billows on a plane, lit on the side facing the sun
+        float t = TOP - y;
+        vec2 p = d.xz / max(t, 0.002) * 0.16;
+        float blur = length(fwidth(p));
+        float detail = 1.0 - smoothstep(0.1, 0.6, blur);
+        // Billows: rounded heaps (one minus ridged noise turns crests into soft domes)
+        float b = fbm(vec3(p, 1.0), 5, 0.55);
+        float heap = smoothstep(0.36, 0.66, b);
+        float b2 = smoothstep(0.36, 0.66, fbm(vec3(p - sunRing.xz * 0.07, 1.0), 5, 0.55));
+        float light = clamp(0.55 + (heap - b2) * 4.0, 0.0, 1.0);
+        light = mix(0.6, light, detail);
+        float puff = mix(0.5, heap, detail);
+        vec3 litC = mix(vec3(0.98, 0.80, 0.80), vec3(1.0, 0.76, 0.52), toSun);
+        vec3 shadeC = vec3(0.52, 0.46, 0.64);
+        vec3 cloud = mix(shadeC, litC, light) * (0.72 + 0.42 * puff);
+        // Deeper below: the sea darkens slightly; toward the horizon it melts into the haze
+        cloud *= mix(1.0, 0.82, smoothstep(0.1, 0.9, t));
+        col = mix(cloud, hor, exp(-t * 14.0));
+        col += vec3(1.0, 0.6, 0.3) * pow(s, 10.0) * 0.25 * exp(-t * 5.0);   // sun glare on the sea
+        vis = 0.0;
+    }
+    return vec4(col, vis);
+}
+
 vec4 daydream(vec3 d) {
     float y = d.y;
     vec3 col = mix(vec3(0.66, 0.86, 1.00), vec3(0.20, 0.50, 0.92), pow(smoothstep(0.0, 1.0, y), 0.7));
@@ -432,9 +555,10 @@ void main() {
     else if (style == 3) s = nebula(d);
     else if (style == 4) s = aurora(d);
     else if (style == 5) s = shallows(d);
-    else if (style == 6) s = daydream(d);
-    else if (style == 7) s = planet(d);
-    else if (style == 8) s = hills(d);
+    else if (style == 6) s = summit(d);
+    else if (style == 7) s = daydream(d);
+    else if (style == 8) s = planet(d);
+    else if (style == 9) s = hills(d);
     else s = solid(d);
     // Stored in 8 bits: dither so slow gradients do not band
     vec2 fc = gl_FragCoord.xy + major.xy * 1931.0 + major.z * 977.0;

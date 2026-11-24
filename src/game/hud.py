@@ -131,6 +131,9 @@ class HudMixin:
                          (tx, height // 2 + ui.px(2)), "topleft")
             surf.set_alpha(int(255 * a))
             y = max(0, self._hud_margin() + int((1.0 - a) * -ui.px(16)))
+            if (self.hint_banner_active or self.hint_expanded) and not self.menu.is_active():
+                # Stack below the hint so the two never overlap
+                y = max(y, getattr(self, '_hint_bottom', 0) + ui.px(12))
             self._blit_gl(surf, (self.width - width) // 2, y)
             self._achievement_toast_rect = pygame.Rect((self.width - width) // 2, y, width, height)
         except Exception as e:

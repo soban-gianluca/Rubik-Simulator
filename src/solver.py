@@ -27,7 +27,8 @@ def _exit_with_parent():
 
 def _solve(facelets):
     from src.pykociemba.search import Search
-    return Search().solution(facelets, maxDepth=21, timeOut=5, useSeparator=False)
+    # 22, not 21: some scrambles need over 5 s to find a 21 move solution, and the hint then failed
+    return Search().solution(facelets, maxDepth=22, timeOut=5, useSeparator=False)
 
 
 def start():

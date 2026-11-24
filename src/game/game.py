@@ -301,8 +301,10 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
         self.debug_print(f"Difficulty change count: {self.difficulty_change_count}")
         mode = self.menu.get_selected_difficulty()
         if mode != self._last_mode:
+            first_pick = self._last_mode is None  # the first mode of the session is not a switch
             self._last_mode = mode
-            self.enqueue_achievement_notifications(self.achievements_manager.record_mode_switch())
+            if not first_pick:
+                self.enqueue_achievement_notifications(self.achievements_manager.record_mode_switch())
 
     def get_difficulty_change_count(self):
         """Get the current difficulty change count"""

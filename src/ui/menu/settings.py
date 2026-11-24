@@ -6,6 +6,7 @@ from src.rendering import graphics
 from src.rendering import backgrounds
 from src.ui import ui_style as ui
 from src.ui.menu.common import _batched, _first_arg
+from src.rubiks_cube import COLOR_SCHEME_ITEMS, set_color_scheme
 
 
 class SettingsMixin:
@@ -184,6 +185,12 @@ class SettingsMixin:
             if style in (sid for sid, _, _ in backgrounds.STYLES):
                 self.game.enqueue_achievement_notifications(self.achievements_manager.record_background(style))
 
+    def _on_color_scheme_change(self, selected, scheme):
+        self._graphics_setting("color_scheme", scheme)
+        set_color_scheme(scheme)
+        if self.game:
+            self.game.renderer.update_cube_colors()
+
     def _on_stars_toggle(self, value):
         self._graphics_setting("background_stars", bool(value))
         if self.game:
@@ -326,6 +333,17 @@ class SettingsMixin:
         self._section(menu, "Gameplay")
         self._row(menu, "Show hints", [self._toggle(menu, self.hints_enabled, self._on_hints_toggle)],
                   desc="Offer a hint after 30 seconds without a move on Easy, Medium and Hard.", separator=False)
+
+        # Accessibility
+        self._section(menu, "Accessibility")
+        scheme_ids = [key for _, key in COLOR_SCHEME_ITEMS]
+        scheme = settings.get("color_scheme", "standard")
+        scheme_select = self._dropselect(menu, COLOR_SCHEME_ITEMS,
+                                         scheme_ids.index(scheme) if scheme in scheme_ids else 0,
+                                         self._on_color_scheme_change, control_w, visible=4,
+                                         widget_id="color_scheme")
+        self._row(menu, "Cube colors", [scheme_select],
+                  desc="Sticker colors that stay easy to tell apart with color blindness.", separator=False)
         self._spacer(menu, 48)
         # Unapplied display choices exist only in the widgets: such a page is never reused
         self._settings_built_for = None if self.settings_changed else self._settings_state()

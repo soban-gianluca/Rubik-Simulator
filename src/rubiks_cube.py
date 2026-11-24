@@ -1,6 +1,47 @@
 import numpy as np
 
+# Sticker colors per color index (top, white, right, left, front, back faces of a solved cube).
+# The colorblind schemes keep every pair of stickers clearly apart under that type of color blindness.
+_RED_GREEN = {
+    0: (1.0, 1.0, 0.0),     # Yellow
+    1: (1.0, 1.0, 1.0),     # White
+    2: (0.5, 0.22, 0.08),   # Dark red-brown
+    3: (0.81, 0.67, 0.29),  # Light ochre
+    4: (0.0, 0.25, 0.8),    # Deep blue
+    5: (0.26, 0.68, 0.99),  # Sky blue
+}
+COLOR_SCHEMES = {
+    "standard": {
+        0: (1.0, 0.95, 0.0),   # Yellow
+        1: (1.0, 1.0, 1.0),    # White
+        2: (0.9, 0.1, 0.1),    # Red
+        3: (1.0, 0.35, 0.0),   # Orange
+        4: (0.0, 0.2, 0.9),    # Blue
+        5: (0.0, 0.8, 0.2),    # Green
+    },
+    "protanopia": _RED_GREEN,
+    "deuteranopia": _RED_GREEN,
+    "tritanopia": {
+        0: (0.98, 0.63, 0.78),  # Pink
+        1: (1.0, 1.0, 1.0),     # White
+        2: (0.85, 0.05, 0.1),   # Red
+        3: (0.15, 0.56, 0.36),  # Green
+        4: (0.33, 0.12, 0.84),  # Violet
+        5: (0.56, 1.0, 0.88),   # Mint
+    },
+}
+COLOR_SCHEME_ITEMS = [("Standard", "standard"), ("Protanopia (red weak)", "protanopia"),
+                      ("Deuteranopia (green weak)", "deuteranopia"), ("Tritanopia (blue weak)", "tritanopia")]
+
+
+def set_color_scheme(name):
+    """Use a color scheme for every cube; the renderer must then call update_cube_colors()."""
+    RubiksCube.color_map = COLOR_SCHEMES.get(name, COLOR_SCHEMES["standard"])
+
+
 class RubiksCube:
+    color_map = COLOR_SCHEMES["standard"]
+
     def __init__(self):
         # Initialize a solved cube state
         # Each face is represented as a 3x3 array of colors
@@ -13,17 +54,6 @@ class RubiksCube:
             'front': np.full((3, 3), 4),   # Blue
             'back': np.full((3, 3), 5)     # Green
         }
-        
-        # Map colors to RGB values for rendering - Improved for better color distinction
-        self.color_map = {
-            0: (1.0, 0.95, 0.0),   # White - Pure white
-            1: (1.0, 1.0, 1.0),    # Yellow - Pure yellow
-            2: (0.9, 0.1, 0.1),    # Red - Deep red with slight darkness for better realism
-            3: (1.0, 0.35, 0.0),   # Orange - More distinct orange, less green component
-            4: (0.0, 0.2, 0.9),    # Blue - Brighter blue with slight lightness
-            5: (0.0, 0.8, 0.2),    # Green - Forest green for better distinction from other colors
-        }
-        
         # Move history for undo functionality
         self.move_history = []
         

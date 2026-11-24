@@ -63,6 +63,7 @@ class SettingsManager:
             "antialiasing": "msaa4",
             "vsync": "on",
             "hints_enabled": True,
+            "color_scheme": "standard",
             "difficulty_skyboxes": {
                 "freeplay": "utils/skyboxes/skybox_freeplay.png",
                 "easy": "utils/skyboxes/skybox_easy.jpg",

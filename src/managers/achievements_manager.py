@@ -417,7 +417,7 @@ ACHIEVEMENTS = {
         "icon": "utils/icons/achievements/secret/tourist.png",
         "category": "secret",
         "condition_type": "backgrounds_tried",
-        "target": 9,
+        "target": 10,
         "secret": True
     },
     "marathon_session": {
@@ -490,6 +490,8 @@ class AchievementsManager:
             }
         }
         self.data = self.load_data()
+        # Indecisive counts mode switches within one session only: a new launch starts over
+        self.data["stats"]["mode_switches_since_solve"] = 0
         self.newly_unlocked = []  # Track newly unlocked achievements for notifications
     
     def load_data(self) -> dict:

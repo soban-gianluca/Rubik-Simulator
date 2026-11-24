@@ -236,8 +236,13 @@ class WidgetsMixin:
         marker_w = cell
         name_r = ui.draw_text(surface, config["name"], name_font, ui.TEXT, (x + marker_w + ui.px(12), name_cy), "midleft")
         if d.get("current"):
-            ui.draw_text(surface, "Current", ui.body_font(ui.SIZE_CAPTION, bold=True), ui.MUTED,
-                         (rect.right - pad, name_cy - ui.px(2)), "midright")
+            cur_font = ui.body_font(ui.SIZE_CAPTION, bold=True)
+            if name_r.right + ui.px(16) + cur_font.size("Current")[0] <= rect.right - pad:
+                ui.draw_text(surface, "Current", cur_font, ui.MUTED, (rect.right - pad, name_cy - ui.px(2)), "midright")
+            else:
+                # Long names leave no room beside them: use the card's top right corner instead
+                ui.draw_text(surface, "Current", cur_font, ui.MUTED,
+                             (rect.right - ui.px(16), rect.y + ui.px(8)), "topright")
 
         if d.get("wide"):
             avail = rect.right - pad - name_r.right - ui.px(32) - (ui.px(90) if d.get("current") else 0)

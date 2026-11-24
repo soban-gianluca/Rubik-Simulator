@@ -58,6 +58,10 @@ class SettingsManager:
             "auto_rotate": False,
             "auto_rotate_speed": 0.2,
             "background": "skybox",
+            "background_style": "auto",
+            "background_stars": True,
+            "antialiasing": "msaa4",
+            "vsync": "on",
             "hints_enabled": True,
             "difficulty_skyboxes": {
                 "freeplay": "utils/skyboxes/skybox_freeplay.png",

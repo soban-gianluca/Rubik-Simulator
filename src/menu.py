@@ -1,3 +1,4 @@
+import functools
 import os
 import time
 import threading
@@ -15,6 +16,8 @@ from src.user_manager import UserManager, REGIONS
 from src.achievements_manager import AchievementsManager
 from src import display_manager
 from src import hdr as hdr_output
+from src import graphics
+from src import backgrounds
 from src import ui_style as ui
 from utils.path_helper import resource_path
 
@@ -32,6 +35,51 @@ REGION_OPTIONS = ["All Regions"] + REGIONS
 REGION_DISPLAY = {"All Regions": "All regions"}
 
 NAV_KEYS = (pygame.K_UP, pygame.K_DOWN, pygame.K_TAB)
+
+# Animation timing (seconds)
+OPEN_DURATION = 0.26
+CLOSE_DURATION = 0.18
+PAGE_DURATION = 0.30
+ITEM_DELAY = 0.05      # first main menu item starts after the panel begins to slide
+ITEM_STAGGER = 0.035   # delay between consecutive main menu items
+ITEM_DURATION = 0.32
+
+
+def _ease_out(t):
+    t = max(0.0, min(1.0, t))
+    return 1 - (1 - t) ** 3
+
+
+def _batched(menu_of):
+    """Build a page with layout paused, then lay it out once.
+
+    pygame-menu lays out the whole page again after every widget it adds, so a
+    page with a few hundred widgets took about a second to build.
+    """
+    def decorate(build):
+        @functools.wraps(build)
+        def wrapper(self, *args, **kwargs):
+            menu = menu_of(self, *args)
+            self._unbuilt.pop(menu, None)
+            depth = getattr(menu, "_batch_depth", 0)
+            if depth == 0:
+                if menu.get_scrollarea().get_world() is None:
+                    menu.render()  # dropdowns need a laid out page to exist (cheap while empty)
+                menu.disable_render()
+            menu._batch_depth = depth + 1
+            try:
+                return build(self, *args, **kwargs)
+            finally:
+                menu._batch_depth = depth
+                if depth == 0:
+                    menu.enable_render()
+                    menu.render()
+        return wrapper
+    return decorate
+
+
+def _first_arg(self, menu, *args):
+    return menu
 
 
 class _Layout:
@@ -114,10 +162,14 @@ class Menu:
         # Open/close fade
         self.is_animating = False
         self.animation_start_time = 0
-        self.animation_duration = 0.2
+        self.animation_duration = OPEN_DURATION
         self.is_opening = False
         self.target_alpha = 1.0
         self.current_alpha = 0.0
+        # Page change: a still image of the old page slides out while the new one slides in
+        self._transition = None
+        self._snapshot = None
+        self._panel_layer = None
 
         # Settings values
         self.show_fps = self.settings_manager.settings.get("show_fps", False)
@@ -333,6 +385,7 @@ class Menu:
 
     def _on_display_mode_change(self, selected, index):
         self.sound_manager.play("menu_select")
+        self._settings_built_for = None
         self.pending_mode = display_manager.MODES[index]
         self._refresh_pending_resolution()
 
@@ -355,6 +408,7 @@ class Menu:
 
     def _on_hdr_toggle(self, value):
         self.sound_manager.play("menu_select")
+        self._settings_built_for = None
         self.pending_hdr = bool(value)
         self._update_settings_changed()
         # The brightness slider only exists while HDR is on
@@ -373,6 +427,7 @@ class Menu:
 
     def _on_resolution_change(self, selected, index):
         self.sound_manager.play("menu_select")
+        self._settings_built_for = None
         options = self._pending_options()
         if 0 <= index < len(options):
             self.pending_size = options[index]
@@ -421,6 +476,31 @@ class Menu:
         if self.game:
             self.game.show_fps = value
 
+    def _graphics_setting(self, key, value):
+        self.sound_manager.play("menu_select")
+        self.settings_manager.settings[key] = value
+        self.settings_manager.save_settings()
+
+    def _on_antialiasing_change(self, selected, mode):
+        self._graphics_setting("antialiasing", mode)
+        if self.game:
+            self.game.scene_target.set_mode(mode)
+
+    def _on_vsync_change(self, selected, mode):
+        self._graphics_setting("vsync", mode)
+        if self.game:
+            graphics.set_vsync(mode)
+
+    def _on_background_change(self, selected, style):
+        self._graphics_setting("background_style", style)
+        if self.game:
+            self.game.renderer.set_background(choice=style)
+
+    def _on_stars_toggle(self, value):
+        self._graphics_setting("background_stars", bool(value))
+        if self.game:
+            self.game.renderer.set_background(stars=value)
+
     def _on_hints_toggle(self, value):
         self.sound_manager.play("menu_select")
         self.hints_enabled = value
@@ -456,6 +536,10 @@ class Menu:
         return bool(self.game and getattr(self.game, "difficulty_change_count", 0) >= 1)
 
     def _change_menu(self, new_menu):
+        self._ensure_built(new_menu)
+        old = getattr(self, "current_menu", None)
+        if old is not None and old is not new_menu and self.active and self.get_current_alpha() > 0.0:
+            self._start_transition(old, new_menu)
         self.current_menu = new_menu
         self.hover_widget = None
         self.keyboard_mode = False
@@ -485,7 +569,7 @@ class Menu:
             if self.game:
                 self.game.increment_difficulty_change_count()
         if self.game:
-            self.game.renderer.reload_skybox_texture(difficulty)
+            self.game.renderer.set_background_mode(difficulty)
             if difficulty_changed:
                 self.game.request_new_game()
         self.refresh_main_menu_buttons()
@@ -500,7 +584,7 @@ class Menu:
         self.difficulty_ever_selected = True
         if self.game:
             self.game.increment_difficulty_change_count()
-            self.game.renderer.reload_skybox_texture(difficulty)
+            self.game.renderer.set_background_mode(difficulty)
             self.game.request_new_game()
         self.refresh_main_menu_buttons()
         if not self.is_animating:
@@ -526,9 +610,19 @@ class Menu:
             self._build_modes_page(self.difficulty_menu)
             self._change_menu(self.difficulty_menu)
 
+    def _settings_state(self):
+        """Everything the settings page shows; it is rebuilt only when this changes."""
+        s = self.settings_manager.settings
+        return (self.display_mode, self.display_index, self.width, self.height, self.hdr_enabled,
+                self.hdr_paper_white, display_manager.num_displays(), hdr_output.display_hdr_info(self.display_index),
+                self.show_fps, self.hints_enabled, self.master_volume, self.music_volume, self.effects_volume,
+                self.menu_volume, self.game.scene_target.mode if self.game else s.get("antialiasing"),
+                s.get("vsync"), s.get("background_style"), s.get("background_stars"))
+
     def _open_settings(self):
         self._load_display_state()
-        self._build_settings_page(self.settings_menu)
+        if self._settings_built_for != self._settings_state():
+            self._build_settings_page(self.settings_menu)
         self._go(self.settings_menu)
 
     def _open_audio_settings(self):
@@ -845,7 +939,7 @@ class Menu:
         if not self.is_animating:
             return
         progress = min((time.time() - self.animation_start_time) / self.animation_duration, 1.0)
-        eased = 1 - (1 - progress) ** 3
+        eased = _ease_out(progress)
         self.current_alpha = eased if self.is_opening else 1.0 - eased
         if progress >= 1.0:
             self.is_animating = False
@@ -862,20 +956,29 @@ class Menu:
         return self.active and (not self.is_animating or self.current_alpha >= 1.0)
 
     def toggle(self):
-        """Fade the menu in or out"""
+        """Animate the menu in or out. Toggling mid-animation turns it around from where it is."""
+        alpha = self.get_current_alpha()
+        closing = self.is_animating and not self.is_opening
         self.is_animating = True
-        self.animation_start_time = time.time()
-        if self.active:
+        if self.active and not closing:
             self.is_opening = False
             self.target_alpha = 0.0
+            self.animation_duration = CLOSE_DURATION
+            # Start the eased curve at the current alpha (1 - ease_out(p) == alpha)
+            p = 1 - alpha ** (1 / 3)
+            self.animation_start_time = time.time() - p * CLOSE_DURATION
             self.hover_widget = None
         else:
             self.is_opening = True
             self.target_alpha = 1.0
+            self.animation_duration = OPEN_DURATION
+            p = 1 - (1 - alpha) ** (1 / 3)  # ease_out(p) == alpha
+            self.animation_start_time = time.time() - p * OPEN_DURATION
             self.active = True
             self.sound_manager.play("menu_open")
             self.refresh_main_menu_buttons()
             self._change_menu(self.main_menu)
+            self._transition = None  # opening has its own animation
 
     def is_active(self):
         return self.active
@@ -886,6 +989,9 @@ class Menu:
         self.settings_manager = game.settings
         self._load_display_state()
         self.refresh_main_menu_buttons()
+        # Build every page now, during the game's startup, so no page is slow the first time
+        for menu in list(self._unbuilt):
+            self._ensure_built(menu)
 
     def notify_game_rendered(self):
         self.game_rendered = True
@@ -1274,21 +1380,24 @@ class Menu:
         self.header_back_rect = None
 
         L = self.L
+        # Pages that are rebuilt every time they open are built on first use
+        self._unbuilt = {}
         self.difficulty_menu = self._page("Choose a mode", self._back_to_main)
-        self._build_modes_page(self.difficulty_menu)
+        self._unbuilt[self.difficulty_menu] = lambda: self._build_modes_page(self.difficulty_menu)
 
         self.settings_menu = self._page("Settings", self._back_to_main, width=min(L.content_w, ui.px(1000)))
-        self._build_settings_page(self.settings_menu)
+        self._unbuilt[self.settings_menu] = lambda: self._build_settings_page(self.settings_menu)
+        self._settings_built_for = None
         self.audio_settings_menu = self.settings_menu
 
         self.controls_menu = self._page("Controls", self._back_to_main)
         self._build_controls_page(self.controls_menu)
 
         self.personal_best_menu = self._page("Statistics", self._back_to_main)
-        self._create_personal_best_content()
+        self._unbuilt[self.personal_best_menu] = self._create_personal_best_content
 
         self.achievements_menu = self._page("Achievements", self._back_to_main, width=min(L.content_w, ui.px(1100)))
-        self._create_achievements_content()
+        self._unbuilt[self.achievements_menu] = self._create_achievements_content
 
         challenge_w = min(L.content_w, ui.px(760))
         self.time_selection_menu = self._page("Limited Time", self._back_to_difficulty, width=challenge_w)
@@ -1309,6 +1418,12 @@ class Menu:
         self.refresh_main_menu_buttons()
 
         self.current_menu = getattr(self, previous_key) if previous_key else self.main_menu
+        self._ensure_built(self.current_menu)
+
+    def _ensure_built(self, menu):
+        build = self._unbuilt.pop(menu, None)
+        if build:
+            build()
 
     def update_dimensions(self, width, height):
         if (width, height) == (self.width, self.height) and getattr(self, "main_menu", None):
@@ -1325,6 +1440,8 @@ class Menu:
         if old is not None:
             self.pages.pop(old, None)
         menu = self._page("", self._close_from_main, kind="main")
+        menu.render()
+        menu.disable_render()  # lay out once at the end (see _batched)
         L = self.L
         inner = L.panel_w - 2 * L.panel_pad
         page = self.pages[menu]
@@ -1362,11 +1479,14 @@ class Menu:
         for label, action, meta in items:
             self._custom_button(menu, label, action, inner, ui.px(58), self._paint_nav, meta=meta)
             self._spacer(menu, 2)
+        menu.enable_render()
+        menu.render()
 
         self.main_menu = menu
         if old is not None and getattr(self, "current_menu", None) is old:
             self.current_menu = menu
 
+    @_batched(_first_arg)
     def _build_modes_page(self, menu):
         menu.clear()
         L = self.L
@@ -1403,6 +1523,7 @@ class Menu:
                 frame.pack(card(mode_key, card_w, card_h, action))
         self._spacer(menu, 48)
 
+    @_batched(_first_arg)
     def _build_limit_page(self, menu, kind):
         width = self.pages[menu]["width"]
         self._spacer(menu, 24)
@@ -1447,6 +1568,7 @@ class Menu:
         self._button(menu, "Start challenge", start, w=width, h=ui.px(64), variant="primary")
         self._spacer(menu, 48)
 
+    @_batched(_first_arg)
     def _build_settings_page(self, menu):
         menu.clear()
         self.resolution_select = None
@@ -1498,11 +1620,44 @@ class Menu:
 
         self.apply_button = self._button(menu, "Apply", self._apply_settings, w=ui.px(200), h=ui.px(54),
                                          variant="primary", button_id="apply_display")
-        self._row(menu, "Apply display changes", [self.apply_button])
+        self._row(menu, "Apply display changes", [self.apply_button], separator=False)
         self._update_settings_changed()
+
+        # Graphics: applied right away, no window change needed
+        settings = self.settings_manager.settings
+        self._section(menu, "Graphics")
+        aa_items = graphics.aa_menu_items()
+        aa_ids = [key for _, key in aa_items]
+        aa = self.game.scene_target.mode if self.game else settings.get("antialiasing", graphics.DEFAULT_AA)
+        aa_select = self._dropselect(menu, aa_items, aa_ids.index(aa) if aa in aa_ids else 0,
+                                     self._on_antialiasing_change, control_w, visible=7, widget_id="graphics_aa")
+        self._row(menu, "Anti-aliasing", [aa_select],
+                  desc="Smooths jagged edges. MSAA stays sharp, SSAA is smoothest but demanding, FXAA is lightest.")
+
+        vsync_items = graphics.vsync_menu_items()
+        vsync_ids = [key for _, key in vsync_items]
+        vsync = settings.get("vsync", graphics.DEFAULT_VSYNC)
+        vsync_select = self._dropselect(menu, vsync_items, vsync_ids.index(vsync) if vsync in vsync_ids else 1,
+                                        self._on_vsync_change, control_w, visible=3, widget_id="graphics_vsync")
+        vsync_desc = "Matches the frame rate to the monitor to stop tearing."
+        if "adaptive" in vsync_ids:
+            vsync_desc += " Adaptive only syncs while the game keeps up."
+        self._row(menu, "VSync", [vsync_select], desc=vsync_desc)
 
         self._row(menu, "Show FPS counter", [self._toggle(menu, self.show_fps, self._on_fps_toggle)],
                   separator=False)
+
+        # Background
+        self._section(menu, "Background")
+        bg_items = backgrounds.menu_items()
+        bg_ids = [key for _, key in bg_items]
+        bg = settings.get("background_style", backgrounds.DEFAULT_STYLE)
+        bg_select = self._dropselect(menu, bg_items, bg_ids.index(bg) if bg in bg_ids else 0,
+                                     self._on_background_change, control_w, visible=6, widget_id="background_style")
+        self._row(menu, "Style", [bg_select], desc="Match game mode gives every mode its own background.")
+        self._row(menu, "Stars", [self._toggle(menu, bool(settings.get("background_stars", True)),
+                                               self._on_stars_toggle, "background_stars")],
+                  desc="A star field on night and space backgrounds.", separator=False)
 
         # Audio
         self._section(menu, "Audio")
@@ -1521,7 +1676,10 @@ class Menu:
         self._row(menu, "Show hints", [self._toggle(menu, self.hints_enabled, self._on_hints_toggle)],
                   desc="Offer a hint after 30 seconds without a move on Easy, Medium and Hard.", separator=False)
         self._spacer(menu, 48)
+        # Unapplied display choices exist only in the widgets: such a page is never reused
+        self._settings_built_for = None if self.settings_changed else self._settings_state()
 
+    @_batched(_first_arg)
     def _build_controls_page(self, menu):
         width = self.pages[menu]["width"]
         sections = [
@@ -1604,6 +1762,7 @@ class Menu:
         self._surface(menu, surf)
         self._spacer(menu, 24)
 
+    @_batched(_first_arg)
     def _build_quit_dialog(self, menu):
         width = self.pages[menu]["width"]
         self._surface(menu, self._text_surface("Quit the game?", ui.display_font(ui.SIZE_H1), ui.TEXT, width))
@@ -1620,6 +1779,7 @@ class Menu:
                                 button_id="quit_confirm"))
 
     # ---------------------------------------------------------------- statistics
+    @_batched(lambda self, *args: self.personal_best_menu)
     def _create_personal_best_content(self, select_id=None, keep_selection=False):
         menu = self.personal_best_menu
         if keep_selection and select_id is None:
@@ -1993,6 +2153,7 @@ class Menu:
         else:
             ui.draw_text(surf, "Locked", small, ui.DIM, (tx, bottom), "bottomleft")
 
+    @_batched(lambda self, *args: self.achievements_menu)
     def _create_achievements_content(self):
         menu = self.achievements_menu
         menu.clear()
@@ -2037,6 +2198,7 @@ class Menu:
         self._spacer(menu, 48)
 
     # ---------------------------------------------------------------- profile forms
+    @_batched(_first_arg)
     def _profile_form(self, menu, title, intro, input_id, onchange, primary, secondary):
         menu.clear()
         width = self.pages[menu]["width"]
@@ -2096,16 +2258,82 @@ class Menu:
             "edit_username_input", self._on_edit_username_change,
             ("Save", self._save_user_edit), ("Cancel", self._back_to_statistics))
 
-    # ================================================================ drawing
-    def draw(self, screen):
+    # ================================================================ animation
+    def _depth(self, menu):
+        """How deep a page is: going deeper slides in from the right, going back from the left."""
+        if menu is self.main_menu:
+            return 0
+        if menu in (self.time_selection_menu, self.moves_selection_menu, self.user_edit_menu):
+            return 2
+        return 1
+
+    def _start_transition(self, old, new):
+        surf = self._snapshot
+        if surf is None or surf.get_size() != (self.width, self.height):
+            surf = self._snapshot = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 0))
+        self._draw_page(surf, old, settled=True)
+        kinds = (self.pages.get(old, {}).get("kind"), self.pages.get(new, {}).get("kind"))
+        self._transition = {
+            "start": time.time(),
+            "dir": 1 if self._depth(new) >= self._depth(old) else -1,
+            "vertical": "dialog" in kinds,
+            "uploaded": False,
+        }
+
+    def layers(self, screen):
+        """The menu as layers for the game to composite on the GPU.
+
+        Returns [(surface, alpha, (dx, dy), changed)], back to front. ``screen`` is a
+        cleared full screen surface the current page is drawn into; during a page
+        change the old page comes first as a still snapshot (``changed`` only once).
+        """
         alpha = self.get_current_alpha()
         if alpha <= 0.0:
-            return
-        size = screen.get_size()
-        if size != (self.width, self.height):
-            self.update_dimensions(*size)
+            return []
+        if screen.get_size() != (self.width, self.height):
+            self.update_dimensions(*screen.get_size())
+            self._transition = None
+        self._draw_page(screen, self.current_menu)
 
-        menu = self.current_menu
+        # Opening and closing: the side panel slides with the fade, pages drift down a little
+        hidden = 1.0 - alpha
+        if self.pages.get(self.current_menu, {}).get("kind") == "main":
+            base = (-round(hidden * ui.px(56)), 0)
+        else:
+            base = (0, round(hidden * ui.px(20)))
+
+        t = self._transition
+        progress = (time.time() - t["start"]) / PAGE_DURATION if t else 1.0
+        if progress >= 1.0:
+            self._transition = None
+            return [(screen, alpha, base, True)]
+
+        incoming = _ease_out(progress)
+        outgoing = _ease_out(progress * 1.6)  # the old page clears out faster
+        d = t["dir"]
+        if t["vertical"]:
+            in_off, out_off = (0, round((1 - incoming) * ui.px(28))), (0, 0)
+        else:
+            in_off = (round((1 - incoming) * ui.px(56) * d), 0)
+            out_off = (round(-outgoing * ui.px(36) * d), 0)
+        changed = not t["uploaded"]
+        t["uploaded"] = True
+        return [
+            (self._snapshot, alpha * (1 - outgoing), (base[0] + out_off[0], base[1] + out_off[1]), changed),
+            (screen, alpha * incoming, (base[0] + in_off[0], base[1] + in_off[1]), True),
+        ]
+
+    # ================================================================ drawing
+    def draw(self, screen):
+        """Draw the current page without animation offsets (see layers())."""
+        if self.get_current_alpha() <= 0.0:
+            return
+        if screen.get_size() != (self.width, self.height):
+            self.update_dimensions(*screen.get_size())
+        self._draw_page(screen, self.current_menu)
+
+    def _draw_page(self, screen, menu, settled=False):
         page = self.pages.get(menu, {"kind": "page", "title": ""})
         kind = page["kind"]
         L = self.L
@@ -2125,12 +2353,42 @@ class Menu:
         if kind == "dialog":
             self._draw_dialog_panel(screen, menu)
 
-        menu.draw(screen)
+        elapsed = time.time() - self.animation_start_time
+        cascade_end = ITEM_DELAY + ITEM_STAGGER * len(menu.get_widgets()) + ITEM_DURATION
+        if kind == "main" and not settled and self.is_opening and elapsed < cascade_end:
+            self._draw_main_cascade(screen, menu, elapsed)
+        else:
+            menu.draw(screen)
         self._redraw_open_dropselect(screen, menu)
 
         if kind == "main":
             self._draw_main_footer(screen)
         self._draw_keyboard_focus(screen, menu)
+
+    def _draw_main_cascade(self, screen, menu, elapsed):
+        """Main menu items slide in one after another when the menu opens."""
+        L = self.L
+        layer = self._panel_layer
+        if layer is None or layer.get_size() != (L.panel_w, self.height):
+            layer = self._panel_layer = pygame.Surface((L.panel_w, self.height), pygame.SRCALPHA)
+        layer.fill((0, 0, 0, 0))
+        menu.draw(layer)
+        rects = []
+        for widget in menu.get_widgets():
+            try:
+                r = widget.get_rect(to_real_position=True).clip(layer.get_rect())
+            except Exception:
+                continue
+            if r.width > 1 and r.height > 1:
+                rects.append(r)
+        rects.sort(key=lambda r: r.y)
+        for i, r in enumerate(rects):
+            e = _ease_out((elapsed - ITEM_DELAY - i * ITEM_STAGGER) / ITEM_DURATION)
+            if e <= 0.0:
+                continue
+            # (each blit sets its own alpha; set_alpha(None) would stop the layer from blending)
+            layer.set_alpha(int(255 * e))
+            screen.blit(layer, (r.x - round((1 - e) * ui.px(40)), r.y), area=r)
 
     def _draw_header(self, screen, page):
         L = self.L

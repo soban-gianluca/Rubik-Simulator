@@ -3,10 +3,10 @@ from pygame.locals import *
 import numpy as np
 import math
 import time
-import random
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from utils.path_helper import resource_path
+from src import backgrounds
 
 class Renderer:
     def __init__(self, width=1280, height=720, cube_path="utils/cube.obj"):
@@ -37,10 +37,8 @@ class Renderer:
         self.animation_cubes = []  # Cubes that are part of the rotating face
         self.pending_move = None  # Move to execute when animation completes
 
-        # Skybox properties
-        self.skybox_texture = None
-        self.skybox_display_list = None
-        self.skybox_size = 20.0
+        # Viewport the 3D scene is drawn at (larger than the window with supersampling)
+        self.viewport_size = (width, height)
 
         # Rubik's cube face colors - define colors before initializing cubes
         self.cube_colors = {
@@ -57,10 +55,6 @@ class Renderer:
         from src.rubiks_cube import RubiksCube
         self.rubiks_cube = RubiksCube()
 
-        # Import settings manager to get current skybox
-        from src.settings_manager import SettingsManager
-        self.settings_manager = SettingsManager()
-
         # Now initialize cubes after colors are defined
         self.initialize_cubes()
 
@@ -70,10 +64,11 @@ class Renderer:
         # Initialize OpenGL settings
         self.setup_opengl()
 
-        # Load a procedural skybox texture (no external images)
-        # Use freeplay difficulty as default on initialization
-        self.reload_skybox_texture("freeplay")
-        self.create_spherical_skybox_display_list()  # Using spherical skybox for full panoramic image
+        # Procedural background (see src/backgrounds.py)
+        self.background = backgrounds.Background()
+        self.background_choice = backgrounds.DEFAULT_STYLE
+        self.background_mode = "freeplay"
+        self.set_background()
 
         # Create optimized display list for single cube
         self.create_cube_materials()
@@ -83,250 +78,21 @@ class Renderer:
         self.rotation_x = 0
         self.rotation_y = 0
 
-    def create_procedural_skybox_texture(self, preset="calm"):
-        """Create a lightweight procedural skybox texture (no external images)."""
-        # Use a higher 2:1 texture for better quality (generated once, cached on GPU)
-        width = 2048
-        height = 1024
+    def set_background(self, choice=None, stars=None):
+        """Pick the background style ("auto" follows the game mode) and the star layer."""
+        if choice is not None:
+            self.background_choice = choice
+        if stars is not None:
+            self.background.stars = bool(stars)
+        self.background.style = backgrounds.resolve(self.background_choice, self.background_mode)
 
-        palettes = {
-            "calm": ((42, 61, 115), (118, 160, 210), (118, 160, 210)),
-            "green": ((26, 79, 53), (54, 133, 67), (170, 220, 190)),
-            "orange": ((40, 20, 10), (170, 90, 40), (255, 200, 140)),
-            "red": ((35, 12, 18), (150, 50, 60), (240, 160, 170)),
-            "purple": ((36, 20, 70), (90, 60, 150), (175, 120, 230)),
-        }
-
-        # Preset names must match difficulty names
-        difficulty_palette = {
-            "freeplay": "calm",
-            "easy": "green",
-            "medium": "orange",
-            "hard": "red",
-            "limited_time": "calm",
-            "limited_moves": "calm",
-            "daily_cube": "purple"
-        }
-
-        palette_key = difficulty_palette.get(preset, "calm")
-        top, mid, bottom = palettes.get(palette_key, palettes["calm"])
-
-        # Create base gradient with subtle horizon glow and dithering
-        texture_data = bytearray(width * height * 3)
-        for y in range(height):
-            t = y / (height - 1)
-            # Blend top->mid->bottom
-            if t < 0.55:
-                tt = t / 0.55
-                r = int(top[0] + (mid[0] - top[0]) * tt)
-                g = int(top[1] + (mid[1] - top[1]) * tt)
-                b = int(top[2] + (mid[2] - top[2]) * tt)
-            else:
-                tt = (t - 0.55) / 0.45
-                bottom_bright = (min(255, bottom[0] * 1.4), min(255, bottom[1] * 1.4), min(255, bottom[2] * 1.4))
-                r = int(mid[0] + (bottom_bright[0] - mid[0]) * tt)
-                g = int(mid[1] + (bottom_bright[1] - mid[1]) * tt)
-                b = int(mid[2] + (bottom_bright[2] - mid[2]) * tt)
-
-            # Soft horizon glow near the middle
-            glow = max(0.0, 1.0 - abs(t - 0.55) * 6.0)
-            r = min(255, int(r + 15 * glow))
-            g = min(255, int(g + 12 * glow))
-            b = min(255, int(b + 6 * glow))
-
-            # Subtle vignette to reduce flatness
-            v = 1.0 - abs(t - 0.5) * 0.18
-            r = int(r * v)
-            g = int(g * v)
-            b = int(b * v)
-
-            row_index = y * width * 3
-            for x in range(width):
-                # Tiny deterministic dithering to reduce banding
-                noise = ((x * 73856093) ^ (y * 19349663)) & 0xFF
-                d = (noise - 128) * 0.015
-                idx = row_index + x * 3
-                texture_data[idx] = min(255, max(0, int(r + d)))
-                texture_data[idx + 1] = min(255, max(0, int(g + d)))
-                texture_data[idx + 2] = min(255, max(0, int(b + d)))
-
-        # Add sparse star field (very cheap, static)
-        rng = random.Random(1337 + hash(preset) % 1000)
-        star_count = 320 if palette_key == "calm" else 420
-        for _ in range(star_count):
-            x = rng.randrange(0, width)
-            y = rng.randrange(0, int(height * 0.65))  # upper region
-            brightness = rng.randint(180, 255)
-            idx = (y * width + x) * 3
-            texture_data[idx] = min(255, texture_data[idx] + brightness)
-            texture_data[idx + 1] = min(255, texture_data[idx + 1] + brightness)
-            texture_data[idx + 2] = min(255, texture_data[idx + 2] + brightness)
-
-        # Add a soft haze band near horizon (no stripes)
-        haze_center = int(height * 0.58)
-        haze_radius = int(height * 0.18)
-        for y in range(max(0, haze_center - haze_radius), min(height, haze_center + haze_radius)):
-            falloff = 1.0 - abs(y - haze_center) / haze_radius
-            tint = int(18 * falloff)
-            row_index = y * width * 3
-            for x in range(width):
-                idx = row_index + x * 3
-                texture_data[idx] = min(255, texture_data[idx] + tint)
-                texture_data[idx + 1] = min(255, texture_data[idx + 1] + int(tint * 0.7))
-                texture_data[idx + 2] = min(255, texture_data[idx + 2] + int(tint * 0.9))
-
-        # Generate and bind texture
-        self.skybox_texture = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
-
-        # Texture parameters for seamless panoramic wrapping
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-
-        # Upload texture data
-        glTexImage2D(
-            GL_TEXTURE_2D,
-            0,
-            GL_RGB,
-            width,
-            height,
-            0,
-            GL_RGB,
-            GL_UNSIGNED_BYTE,
-            bytes(texture_data),
-        )
-
-    def create_fallback_skybox_texture(self):
-        """Deprecated: kept for compatibility (procedural texture is used)."""
-        self.create_procedural_skybox_texture("calm")
-    
-    def reload_skybox_texture(self, new_image_path):
-        """Reload skybox texture with a new procedural style."""
-        try:
-            # Clean up old texture
-            if self.skybox_texture:
-                glDeleteTextures([self.skybox_texture])
-                self.skybox_texture = None
-
-            # Clean up old display list
-            if self.skybox_display_list:
-                glDeleteLists(self.skybox_display_list, 1)
-                self.skybox_display_list = None
-
-            # Map incoming difficulty skybox path to a procedural preset
-            lowered = (new_image_path or "").lower()
-            if "daily_cube" in lowered:
-                preset = "daily_cube"
-            elif "freeplay" in lowered:
-                preset = "freeplay"
-            elif "easy" in lowered:
-                preset = "easy"
-            elif "medium" in lowered:
-                preset = "medium"
-            elif "hard" in lowered:
-                preset = "hard"
-            elif "limited_time" in lowered:
-                preset = "limited_time"
-            elif "limited_moves" in lowered:
-                preset = "limited_moves"
-            elif "daily" in lowered:
-                preset = "daily"
-            else:
-                preset = "freeplay"
-
-            # Create new procedural texture
-            self.create_procedural_skybox_texture(preset)
-
-            # Recreate display list with new texture
-            self.create_spherical_skybox_display_list()
-
-        except Exception as e:
-            print(f"Failed to reload skybox texture: {e}")
-            self.create_procedural_skybox_texture("calm")
-            self.create_spherical_skybox_display_list()
-
-    def create_spherical_skybox_display_list(self):
-        """Create a spherical skybox for seamless panoramic image mapping"""
-        if not self.skybox_texture:
-            return
-        
-        self.skybox_display_list = glGenLists(1)
-        glNewList(self.skybox_display_list, GL_COMPILE)
-        
-        # Enable texturing
-        glEnable(GL_TEXTURE_2D)
-        glBindTexture(GL_TEXTURE_2D, self.skybox_texture)
-        glColor3f(1.0, 1.0, 1.0)
-        
-        # Create a sphere for the skybox
-        radius = self.skybox_size
-        stacks = 64  # Number of horizontal divisions (latitude)
-        slices = 128  # Number of vertical divisions (longitude)
-        
-        # Generate sphere vertices and texture coordinates
-        for i in range(stacks):
-            lat0 = math.pi * (-0.5 + float(i) / stacks)
-            z0 = radius * math.sin(lat0)
-            zr0 = radius * math.cos(lat0)
-            
-            lat1 = math.pi * (-0.5 + float(i + 1) / stacks)
-            z1 = radius * math.sin(lat1)
-            zr1 = radius * math.cos(lat1)
-            
-            glBegin(GL_QUAD_STRIP)
-            for j in range(slices + 1):
-                lng = 2 * math.pi * float(j) / slices
-                x = math.cos(lng)
-                y = math.sin(lng)
-                
-                # Texture coordinates for panoramic mapping
-                # u goes from 0 to 1 as we go around horizontally
-                # v goes from 0 to 1 as we go from bottom to top
-                u = float(j) / slices
-                v0 = float(i) / stacks
-                v1 = float(i + 1) / stacks
-                
-                # First vertex (lower latitude)
-                glTexCoord2f(u, v0)
-                glVertex3f(x * zr0, z0, y * zr0)
-                
-                # Second vertex (higher latitude)
-                glTexCoord2f(u, v1)
-                glVertex3f(x * zr1, z1, y * zr1)
-            glEnd()
-        
-        glDisable(GL_TEXTURE_2D)
-        glEndList()
+    def set_background_mode(self, mode):
+        """Game mode changed: used when the style is set to match the game mode."""
+        self.background_mode = mode
+        self.set_background()
 
     def render_skybox(self):
-        """Render the spherical skybox"""
-        if not self.skybox_display_list:
-            return
-        
-        # Save current matrix
-        glPushMatrix()
-        
-        # Disable depth testing and lighting for skybox
-        glDisable(GL_DEPTH_TEST)
-        glDisable(GL_LIGHTING)
-        
-        # Move skybox with camera (no translation, only rotation)
-        # The skybox should always be centered on the camera
-        glLoadIdentity()
-        glRotatef(self.rotation_x, 1, 0, 0)
-        glRotatef(self.rotation_y, 0, 1, 0)
-        
-        # Render the skybox
-        glCallList(self.skybox_display_list)
-        
-        # Re-enable depth testing and lighting
-        glEnable(GL_DEPTH_TEST)
-        glEnable(GL_LIGHTING)
-        
-        # Restore matrix
-        glPopMatrix()
+        self.background.draw(self.rotation_x, self.rotation_y)
 
     def start_face_animation(self, face_name, clockwise=True):
         """Start animation for a face rotation"""
@@ -879,9 +645,9 @@ void main() {
         """
         # Check if viewport matches the current dimensions
         viewport = glGetIntegerv(GL_VIEWPORT)
-        if viewport[2] != self.width or viewport[3] != self.height:
+        if (viewport[2], viewport[3]) != tuple(self.viewport_size):
             # Viewport doesn't match our dimensions, reset it
-            glViewport(0, 0, self.width, self.height)
+            glViewport(0, 0, *self.viewport_size)
             
             # Also reset projection matrix
             glMatrixMode(GL_PROJECTION)
@@ -932,15 +698,8 @@ void main() {
             glDeleteProgram(self.cube_program)
             self.cube_program = None
 
-        # Clean up skybox resources
-        if self.skybox_texture:
-            glDeleteTextures([self.skybox_texture])
-            self.skybox_texture = None
-        
-        if self.skybox_display_list:
-            glDeleteLists(self.skybox_display_list, 1)
-            self.skybox_display_list = None
-    
+        self.background.delete()
+
     def render_visual_hint(self, face, clockwise, pulse_time):
         """Render a visual hint arrow showing which face to rotate and in which direction
         

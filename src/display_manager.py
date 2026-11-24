@@ -174,8 +174,8 @@ def open_window(mode, display_index, size, hdr=False):
         # pixel row, off the bottom of the screen, keeps it a normal desktop window.
         size = (w, h + 1)
 
-    def create(with_hdr, msaa=True):
-        hdr_output.request_framebuffer(with_hdr, msaa)
+    def create(with_hdr):
+        hdr_output.request_framebuffer(with_hdr)
         try:
             return pygame.display.set_mode(size, flags, display=display_index)
         except TypeError:
@@ -186,11 +186,7 @@ def open_window(mode, display_index, size, hdr=False):
             return create(True)
         except pygame.error as e:
             print(f"HDR window not available, using a standard window: {e}")
-    try:
-        return create(False)
-    except pygame.error as e:
-        print(f"Multisampling not available, using a plain window: {e}")
-        return create(False, msaa=False)
+    return create(False)
 
 
 def display_label(index):

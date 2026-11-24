@@ -17,6 +17,8 @@ from src.mouse_interaction import MouseInteraction
 from src.game_menu_button import GameMenuButton
 from src import display_manager
 from src import hdr as hdr_output
+from src import graphics
+from src import backgrounds
 from src import ui_style as ui
 from src.personal_best_manager import PersonalBestManager
 from src.achievements_manager import AchievementsManager, ACHIEVEMENTS
@@ -93,6 +95,7 @@ class Game:
 
         # Initialize renderer
         self.renderer = Renderer(self.width, self.height)
+        self.apply_graphics_settings()
         
         # Set initial camera position: 45° to the right horizontally and 45° up
         self.renderer.rotation_y = -45  # 45° to the right (azimuth)
@@ -998,6 +1001,14 @@ class Game:
             paper_white = self.settings.settings.get("hdr_paper_white", hdr_output.PAPER_WHITE_DEFAULT)
             self.hdr_presenter = hdr_output.create_presenter(self.width, self.height, paper_white)
 
+    def apply_graphics_settings(self):
+        """Anti-aliasing, VSync and background from the settings, for the current OpenGL context."""
+        s = self.settings.settings
+        self.scene_target = graphics.SceneTarget(s.get("antialiasing", graphics.DEFAULT_AA))
+        graphics.set_vsync(s.get("vsync", graphics.DEFAULT_VSYNC))
+        self.renderer.set_background(s.get("background_style", backgrounds.DEFAULT_STYLE),
+                                     s.get("background_stars", True))
+
     def toggle_fullscreen(self):
         """F11: switch between a window and borderless fullscreen on the current monitor"""
         if self.display_mode == "windowed":
@@ -1074,11 +1085,13 @@ class Game:
 
             # New OpenGL context: rebuild the renderer and restore the cube
             self._overlay_tex = None
+            self._snapshot_tex = None
             self._setup_hdr()
             self.renderer = Renderer(self.width, self.height)
+            self.apply_graphics_settings()
             skybox_mode = self.menu.get_selected_difficulty() if hasattr(self, 'menu') else None
             if skybox_mode and self.difficulty_change_count > 0:
-                self.renderer.reload_skybox_texture(skybox_mode)
+                self.renderer.set_background_mode(skybox_mode)
             if hasattr(self, 'mouse_interaction'):
                 self.mouse_interaction.update_renderer(self.renderer)
             if cube_state is not None:
@@ -1609,8 +1622,11 @@ class Game:
             gluPerspective(getattr(self.renderer, 'fov', 45), self.width / self.height, 0.1, 50.0)
             glMatrixMode(GL_MODELVIEW)
 
-        # Render 3D cube with combined callback
+        # Render 3D cube with combined callback, through the anti-aliasing buffer
+        offscreen = self.scene_target.begin(self.width, self.height)
+        self.renderer.viewport_size = self.scene_target.scene_size if offscreen else (self.width, self.height)
         self.renderer.render_frame(debug_callback=combined_callback)
+        self.scene_target.end()
 
         if self._lens_shift:
             glMatrixMode(GL_PROJECTION)
@@ -1659,8 +1675,10 @@ class Game:
         # Render menu overlay if active (including during animation)
         if menu_alpha > 0.0:
             overlay = self._get_overlay_surface()
-            self.menu.draw(overlay)
-            self._draw_overlay(overlay, menu_alpha)
+            for surface, alpha, offset, changed in self.menu.layers(overlay):
+                # The old page of a page change is a still image with its own texture
+                texture = "_overlay_tex" if surface is overlay else "_snapshot_tex"
+                self._draw_overlay(surface, alpha, offset, texture, upload=changed)
 
         # Render results window overlay if active
         elif self.results_window.active:
@@ -1716,37 +1734,41 @@ class Game:
         surf.fill((0, 0, 0, 0))
         return surf
 
-    def _draw_overlay(self, surface, alpha):
+    def _draw_overlay(self, surface, alpha, offset=(0, 0), texture='_overlay_tex', upload=True):
         """Upload a full screen surface to a texture and draw it as one quad.
 
         Much faster than tostring + glDrawPixels at high resolutions: the
-        surface's BGRA pixels are uploaded without an extra copy."""
+        surface's BGRA pixels are uploaded without an extra copy. ``offset`` moves
+        the quad (menu animations); ``upload=False`` reuses the texture as it is."""
         w, h = surface.get_size()
-        if getattr(self, '_overlay_tex', None) is None or getattr(self, '_overlay_tex_size', None) != (w, h):
-            self._overlay_tex = glGenTextures(1)
-            self._overlay_tex_size = (w, h)
-            glBindTexture(GL_TEXTURE_2D, self._overlay_tex)
+        if getattr(self, texture, None) is None or getattr(self, texture + '_size', None) != (w, h):
+            setattr(self, texture, glGenTextures(1))
+            setattr(self, texture + '_size', (w, h))
+            upload = True
+            glBindTexture(GL_TEXTURE_2D, getattr(self, texture))
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, None)
-        glBindTexture(GL_TEXTURE_2D, self._overlay_tex)
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, surface.get_pitch() // 4)
-        view = surface.get_view('1')
-        pixels = np.frombuffer(view, dtype=np.uint8)
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, pixels)
-        del pixels, view  # unlock the surface
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0)
+        glBindTexture(GL_TEXTURE_2D, getattr(self, texture))
+        if upload:
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, surface.get_pitch() // 4)
+            view = surface.get_view('1')
+            pixels = np.frombuffer(view, dtype=np.uint8)
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, pixels)
+            del pixels, view  # unlock the surface
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0)
 
+        x, y = offset
         glEnable(GL_TEXTURE_2D)
         glColor4f(1.0, 1.0, 1.0, max(0.0, min(1.0, alpha)))
         glBegin(GL_QUADS)
-        glTexCoord2f(0, 0); glVertex2f(0, 0)
-        glTexCoord2f(1, 0); glVertex2f(w, 0)
-        glTexCoord2f(1, 1); glVertex2f(w, h)
-        glTexCoord2f(0, 1); glVertex2f(0, h)
+        glTexCoord2f(0, 0); glVertex2f(x, y)
+        glTexCoord2f(1, 0); glVertex2f(x + w, y)
+        glTexCoord2f(1, 1); glVertex2f(x + w, y + h)
+        glTexCoord2f(0, 1); glVertex2f(x, y + h)
         glEnd()
         glColor4f(1.0, 1.0, 1.0, 1.0)
         glBindTexture(GL_TEXTURE_2D, 0)
@@ -2390,7 +2412,9 @@ class Game:
             ui.set_screen(self.width, self.height)
             ui.clear_caches()
             self._overlay_tex = None
+            self._snapshot_tex = None
             self.renderer = Renderer(self.width, self.height)
+            self.apply_graphics_settings()
             if hasattr(self, 'mouse_interaction'):
                 self.mouse_interaction.update_renderer(self.renderer)
             if hasattr(self, 'menu'):

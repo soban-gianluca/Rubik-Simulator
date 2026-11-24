@@ -281,9 +281,8 @@ class ResultsWindow:
             rating = self.calculate_performance_rating(data.get('moves', 0), data.get('time', 0))
             subtitle = f"{mode_name}  ·  {self.RATING_LABELS.get(rating, 'Solved')}"
             records = data.get('new_records') or {}
-            notes = [label for key, label in (("is_best_time", "New best time"),
-                                              ("is_best_moves", "New fewest moves"),
-                                              ("is_best_tps", "New best TPS")) if records.get(key)]
+            # One flag per stat column, in the same order as the stats below
+            notes = [bool(records.get(key)) for key in ("is_best_time", "is_best_moves", "is_best_tps")]
 
         stats = [("Time", ui.format_clock(data.get('time', 0), decimals=True)),
                  ("Moves", str(data.get('moves', 0))),
@@ -292,10 +291,11 @@ class ResultsWindow:
         # Measure
         title_h = f_title.get_height()
         stat_h = f_label.get_height() + ui.px(6) + f_value.get_height() + ui.px(36)
-        note_h = (f_note.get_height() + ui.px(14)) if notes else 0
+        note_h = (f_note.get_height() + ui.px(4)) if any(notes) else 0  # "New best" line inside the stats box
+        stat_h += note_h
         btn_h = ui.px(60)
         card_h = (pad + title_h - ui.px(10) + f_sub.get_height() + ui.px(32) + stat_h + ui.px(24)
-                  + note_h + btn_h + pad)
+                  + btn_h + pad)
 
         card = pygame.Rect(0, 0, card_w, card_h)
         card.center = (w // 2, h // 2 + int((1 - ease) * ui.px(28)))
@@ -320,18 +320,14 @@ class ResultsWindow:
         for i, (label, value) in enumerate(stats):
             cx = x + col_w * i + ui.px(22)
             ui.draw_text(layer, label, f_label, ui.MUTED, (cx, y + ui.px(18)))
-            ui.draw_text(layer, value, f_value, ui.TEXT, (cx, y + ui.px(18) + f_label.get_height() + ui.px(6)))
+            value_y = y + ui.px(18) + f_label.get_height() + ui.px(6)
+            ui.draw_text(layer, value, f_value, ui.TEXT, (cx, value_y))
+            if i < len(notes) and notes[i]:
+                ui.draw_text(layer, "New best", f_note, ui.ACCENT, (cx, value_y + f_value.get_height() + ui.px(4)))
             if i:
                 lx = x + col_w * i
                 pygame.draw.line(layer, ui.LINE, (lx, y + ui.px(16)), (lx, y + stat_h - ui.px(16)), max(1, ui.px(1.5)))
         y += stat_h + ui.px(24)
-
-        if notes:
-            nx = x
-            for note in notes:
-                r = ui.draw_text(layer, note, f_note, ui.ACCENT, (nx, y))
-                nx = r.right + ui.px(24)
-            y += note_h
 
         # Buttons
         gap = ui.px(16)

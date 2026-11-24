@@ -58,7 +58,7 @@ class SettingsManager:
             "auto_rotate": False,
             "auto_rotate_speed": 0.2,
             "background": "skybox",
-            "background_style": "auto",
+            "background_style": "auto_solid",
             "background_stars": True,
             "antialiasing": "msaa4",
             "vsync": "on",

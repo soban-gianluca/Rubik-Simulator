@@ -33,15 +33,17 @@ FACE = {
 }
 SUCCESS = FACE["green"]
 DANGER = FACE["red"]
+FREEPLAY = (45, 196, 182)  # teal, apart from every face color
+DAILY = (151, 106, 238)  # purple
 
 MODE_COLORS = {
-    "freeplay": FACE["white"],
+    "freeplay": FREEPLAY,
     "easy": FACE["green"],
     "medium": FACE["orange"],
     "hard": FACE["red"],
     "limited_time": FACE["yellow"],
     "limited_moves": FACE["blue"],
-    "daily_cube": FACE["yellow"],
+    "daily_cube": DAILY,
 }
 
 MODE_NAMES = {

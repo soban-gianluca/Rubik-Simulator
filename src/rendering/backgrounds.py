@@ -51,6 +51,7 @@ STYLES = [
     ("studio", "Studio", "Gradient"),
     ("nebula", "Nebula", "Semi-realistic"),
     ("aurora", "Aurora", "Semi-realistic"),
+    ("shallows", "Shallows", "Semi-realistic"),
     ("daydream", "Daydream", "Cartoon"),
     ("planet", "Ringed planet", "Cartoon"),
     ("hills", "Sunset hills", "Cartoon"),
@@ -58,11 +59,11 @@ STYLES = [
 STYLE_IDS = [s[0] for s in STYLES] + ["solid"]  # "solid" is only reachable through AUTO_SOLID
 AUTO = "auto"
 AUTO_SOLID = "auto_solid"
-DEFAULT_STYLE = AUTO
+DEFAULT_STYLE = AUTO_SOLID
 
 # Background per game mode when the style is "Match game mode"
 MODE_STYLES = {
-    "freeplay": "midnight",
+    "freeplay": "shallows",
     "easy": "aurora",
     "medium": "dusk",
     "hard": "nebula",
@@ -272,6 +273,45 @@ vec4 aurora(vec3 d) {
     return vec4(col, r.a * fade);
 }
 
+// Free Play: calm shallow water seen from below. A rippled bright window to the sky
+// overhead, soft light shafts, and sand with caustics fading into the teal distance.
+vec4 shallows(vec3 d) {
+    float y = d.y;
+    // Water column: deep below, lighter toward the surface
+    vec3 col = grad3(smoothstep(-0.7, 0.9, y), vec3(0.008, 0.045, 0.060), vec3(0.030, 0.200, 0.215),
+                     vec3(0.090, 0.450, 0.440), 0.5);
+    float vis = 0.45;  // stars show as faint suspended particles in open water
+    if (y > 0.45) {
+        // Surface seen from below: the sky only through Snell's window, a wavy bright disk
+        vec2 s = d.xz / y;
+        float rip = fbm(vec3(s * 2.6, 0.0), 3, 0.5);
+        float win = smoothstep(0.64, 0.74, y + (rip - 0.5) * 0.06);
+        vec3 sky = mix(vec3(0.36, 0.78, 0.74), vec3(0.82, 0.98, 0.93), smoothstep(0.78, 1.0, y));
+        col = mix(col, sky * (0.8 + 0.4 * rip), win);
+        vis *= 1.0 - win;
+    }
+    // Light shafts: angular streaks reaching down from the surface, fading with depth
+    vec3 ring = vec3(normalize(d.xz + 1e-5), 0.0).xzy;
+    float shafts = smoothstep(0.5, 0.8, fbm(ring * 8.0 + 2.0, 3, 0.5));
+    col += vec3(0.12, 0.42, 0.38) * shafts * smoothstep(-0.4, 0.2, y) * (1.0 - smoothstep(0.3, 0.7, y)) * 0.45;
+    if (y < 0.0) {
+        // Sand on a flat floor; the water hides it with distance
+        float t = -y;
+        vec2 p = d.xz / max(t, 0.03);
+        vec3 sand = mix(vec3(0.30, 0.42, 0.36), vec3(0.22, 0.32, 0.29), noise(vec3(p * 0.9, 5.0)));
+        // Caustics: two layers of ridged noise, faded out where they would alias
+        float c1 = 1.0 - abs(noise(vec3(p * 2.4, 1.0)) * 2.0 - 1.0);
+        float c2 = 1.0 - abs(noise(vec3(p * 3.7 + 7.0, 2.0)) * 2.0 - 1.0);
+        float caustic = pow(c1, 6.0) + pow(c2, 6.0) * 0.6;
+        caustic *= 1.0 - smoothstep(0.15, 0.45, length(fwidth(p)) * 3.7);
+        sand += vec3(0.30, 0.55, 0.48) * caustic * 0.55;
+        float seen = exp(-0.35 / max(t, 0.01));
+        col = mix(col, sand, seen);
+        vis *= 1.0 - seen;
+    }
+    return vec4(col, vis);
+}
+
 vec4 daydream(vec3 d) {
     float y = d.y;
     vec3 col = mix(vec3(0.66, 0.86, 1.00), vec3(0.20, 0.50, 0.92), pow(smoothstep(0.0, 1.0, y), 0.7));
@@ -391,9 +431,10 @@ void main() {
     else if (style == 2) s = studio(d);
     else if (style == 3) s = nebula(d);
     else if (style == 4) s = aurora(d);
-    else if (style == 5) s = daydream(d);
-    else if (style == 6) s = planet(d);
-    else if (style == 7) s = hills(d);
+    else if (style == 5) s = shallows(d);
+    else if (style == 6) s = daydream(d);
+    else if (style == 7) s = planet(d);
+    else if (style == 8) s = hills(d);
     else s = solid(d);
     // Stored in 8 bits: dither so slow gradients do not band
     vec2 fc = gl_FragCoord.xy + major.xy * 1931.0 + major.z * 977.0;

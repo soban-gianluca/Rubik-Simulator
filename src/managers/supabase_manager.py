@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import socket
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -61,6 +62,17 @@ class SupabaseManager:
     def get_user_hash(self) -> Optional[str]:
         """Get the current user's hash."""
         return self._user_hash
+
+    @staticmethod
+    def _failure_kind(error: Exception) -> str:
+        """Tell a missing internet connection ("offline") apart from an unreachable or paused database ("server_down")."""
+        if isinstance(error, urllib.error.HTTPError):
+            return "server_down"  # the server answered, but with an error (a paused project answers this way)
+        try:
+            socket.create_connection(("1.1.1.1", 443), timeout=3).close()
+            return "server_down"  # the internet works, only the database does not
+        except OSError:
+            return "offline"
     
     def _make_request(self, method: str, endpoint: str, data: dict = None, params: dict = None) -> Optional[Any]:
         """Make an HTTP request to the Supabase REST API."""
@@ -194,8 +206,8 @@ class SupabaseManager:
         # Build URL with filters
         url = f"{self.base_url}/rest/v1/leaderboard"
         
-        # Add filters as query params
-        query_parts = []
+        # Add filters as query params; an explicit select is required, the hidden user_hash column cannot be read
+        query_parts = [f"select={params['select']}"]
         for f in filters:
             query_parts.append(f)
         
@@ -218,16 +230,12 @@ class SupabaseManager:
             with urllib.request.urlopen(request, timeout=10) as response:
                 response_data = response.read().decode('utf-8')
                 if response_data:
-                    return (json.loads(response_data), False)  # (data, is_offline)
-                return ([], False)
-                
-        except (urllib.error.URLError, OSError, TimeoutError) as e:
-            # Network-related errors (no connection, timeout, DNS failure, etc.)
-            print(f"Network error fetching leaderboard: {e}")
-            return ([], True)  # (empty data, is_offline=True)
+                    return (json.loads(response_data), None)  # (data, failure kind)
+                return ([], None)
+
         except Exception as e:
             print(f"Error fetching leaderboard: {e}")
-            return ([], False)  # Other errors, not necessarily offline
+            return ([], self._failure_kind(e))
     
     def is_username_taken(self, username: str, exclude_user_hash: str = None) -> bool:
         """
@@ -348,16 +356,12 @@ class SupabaseManager:
             with urllib.request.urlopen(request, timeout=10) as response:
                 response_data = response.read().decode('utf-8')
                 if response_data:
-                    return (json.loads(response_data), False)  # (data, is_offline)
-                return ([], False)
-                
-        except (urllib.error.URLError, OSError, TimeoutError) as e:
-            # Network-related errors (no connection, timeout, DNS failure, etc.)
-            print(f"Network error fetching daily leaderboard: {e}")
-            return ([], True)  # (empty data, is_offline=True)
+                    return (json.loads(response_data), None)  # (data, failure kind)
+                return ([], None)
+
         except Exception as e:
             print(f"Error fetching daily leaderboard: {e}")
-            return ([], False)  # Other errors, not necessarily offline
+            return ([], self._failure_kind(e))
 
 
 # Global instance for easy access

@@ -1,8 +1,9 @@
+import math
 import time
 
 import pygame
 import pygame_menu
-from pygame_menu.locals import ALIGN_CENTER, POSITION_EAST
+from pygame_menu.locals import ALIGN_CENTER, POSITION_EAST, ORIENTATION_VERTICAL
 
 from src.managers.settings_manager import SettingsManager
 from src.managers.sound_manager import SoundManager
@@ -57,7 +58,6 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         self.leaderboard_data = []
         self.leaderboard_loading = False
         self.leaderboard_error = None
-        self.leaderboard_is_offline = False
         self.leaderboard_filter_mode = "All Modes"
         self.leaderboard_filter_region = "All Regions"
         self.leaderboard_last_fetch = 0
@@ -67,7 +67,6 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         self.daily_leaderboard_data = []
         self.daily_leaderboard_loading = False
         self.daily_leaderboard_error = None
-        self.daily_leaderboard_is_offline = False
         self.daily_leaderboard_filter_region = "All Regions"
         self.daily_leaderboard_last_fetch = 0
         self.daily_leaderboard_ui_refresh_pending = False
@@ -110,6 +109,7 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         self.header_back_rect = None
         self._skip_pygame_menu_update_once = False
         self._ach_icon_cache = {}
+        self._scroll = None  # smooth wheel scrolling: [scrollbar, position, target, last update time]
 
         self._patch_pygame_menu_scrollbar_render()
         self._create_menus()
@@ -256,6 +256,7 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
                     self.current_menu.update([])
                 except Exception:
                     pass
+            self._step_scroll()
 
         if self.leaderboard_ui_refresh_pending and not self.leaderboard_loading:
             if self.statistics_tab == "global_leaderboard":
@@ -356,6 +357,47 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         if new is not self.hover_widget:
             self.hover_widget = new
 
+    def _menu_scrollbar(self, menu):
+        """The visible vertical scrollbar of a page, or None if the page does not scroll."""
+        area = menu.get_scrollarea()
+        if not area.get_hidden_height():
+            return None
+        for sbar in area._scrollbars:
+            if sbar.is_visible() and sbar.get_orientation() == ORIENTATION_VERTICAL:
+                return sbar
+        return None
+
+    def _wheel_scroll(self, menu, amount):
+        """Move the scroll target by a wheel amount; update() eases the page towards it."""
+        if not menu.get_scrollarea().mouse_is_over():
+            return
+        sbar = self._menu_scrollbar(menu)
+        if sbar is None:
+            return
+        lo, hi = sbar.get_minmax()
+        if self._scroll is None or self._scroll[0] is not sbar:
+            value = float(sbar.get_value())
+            self._scroll = [sbar, value, value, time.time()]
+        self._scroll[2] = min(max(self._scroll[2] - amount * ui.px(110), lo), hi)
+
+    def _step_scroll(self):
+        if self._scroll is None:
+            return
+        sbar, pos, target, last = self._scroll
+        now = time.time()
+        # Something else moved the page (dragging the bar, keyboard focus): stop easing
+        if sbar is not self._menu_scrollbar(self.current_menu) or abs(sbar.get_value() - pos) > 2:
+            self._scroll = None
+            return
+        pos += (target - pos) * (1.0 - math.exp(-min(now - last, 0.1) * 16.0))
+        if abs(target - pos) < 0.5:
+            pos = target
+        # Set the slider as a float: set_value() snaps to whole slider pixels, which moves long pages in jumps
+        lo, hi = sbar.get_minmax()
+        sbar._set_slider_position((pos - lo) * (sbar._page_ctrl_length - sbar._page_step) / (hi - lo))
+        self._scroll = None if pos == target else [sbar, pos, target, now]
+        self._update_hover(pygame.mouse.get_pos())
+
     def handle_event(self, event):
         """Handle an event. Returns True if the menu consumed it."""
         if not self.active or (self.is_animating and not self.is_opening):
@@ -378,6 +420,15 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         # Text inputs read KEYDOWN, ignore TEXTINPUT so characters are not doubled
         if text_menu and event.type == pygame.TEXTINPUT:
             return True
+
+        # Wheel scrolling is eased here; an open dropdown list keeps the default handling
+        selected = menu.get_selected_widget()
+        if not getattr(selected, "active", False):
+            if event.type == pygame.MOUSEWHEEL:
+                self._wheel_scroll(menu, getattr(event, "precise_y", event.y))
+                return True
+            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP) and event.button in (4, 5):
+                return True  # the same wheel step, already handled as MOUSEWHEEL
 
         if event.type == pygame.MOUSEMOTION:
             self.keyboard_mode = False

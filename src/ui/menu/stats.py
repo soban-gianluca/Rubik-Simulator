@@ -43,16 +43,14 @@ class StatsMixin:
             try:
                 game_mode = None if self.leaderboard_filter_mode == "All Modes" else self.leaderboard_filter_mode
                 region = None if self.leaderboard_filter_region == "All Regions" else self.leaderboard_filter_region
-                data, is_offline = self.supabase_manager.get_leaderboard(
+                data, failure = self.supabase_manager.get_leaderboard(
                     game_mode=game_mode, region=region, sort_by="best_time", limit=50, ascending=True)
                 self.leaderboard_data = data if data else []
                 self.leaderboard_last_fetch = time.time()
-                self.leaderboard_is_offline = is_offline
-                self.leaderboard_error = None
+                self.leaderboard_error = failure
             except Exception as e:
                 print(f"Error fetching leaderboard: {e}")
                 self.leaderboard_error = "failed"
-                self.leaderboard_is_offline = False
                 self.leaderboard_data = []
             finally:
                 self.leaderboard_loading = False
@@ -80,15 +78,13 @@ class StatsMixin:
         def fetch_task():
             try:
                 region = None if self.daily_leaderboard_filter_region == "All Regions" else self.daily_leaderboard_filter_region
-                data, is_offline = self.supabase_manager.get_daily_leaderboard(region=region, limit=50)
+                data, failure = self.supabase_manager.get_daily_leaderboard(region=region, limit=50)
                 self.daily_leaderboard_data = data if data else []
                 self.daily_leaderboard_last_fetch = time.time()
-                self.daily_leaderboard_is_offline = is_offline
-                self.daily_leaderboard_error = None
+                self.daily_leaderboard_error = failure
             except Exception as e:
                 print(f"Error fetching daily leaderboard: {e}")
                 self.daily_leaderboard_error = "failed"
-                self.daily_leaderboard_is_offline = False
                 self.daily_leaderboard_data = []
             finally:
                 self.daily_leaderboard_loading = False
@@ -313,18 +309,46 @@ class StatsMixin:
             self._table(menu, [("Mode", 3, "left"), ("Wins", 2, "right"), ("Losses", 2, "right"),
                                ("Win rate", 2, "right")], challenge_rows)
 
-    def _leaderboard_state(self, loading, error, offline, data, empty_title, empty_body):
+    def _error_banner(self, menu, icon_name, title, body, color):
+        """A bordered banner with an icon tile, a title and a wrapped explanation."""
+        width = self.pages[menu]["width"]
+        pad = ui.px(24)
+        tile = ui.px(56)
+        title_f = ui.display_font(ui.SIZE_H3)
+        text_x = pad + tile + ui.px(20)
+        body_surf = self._text_surface(body, ui.body_font(), ui.MUTED, width - text_x - pad)
+        text_h = title_f.get_height() + ui.px(6) + body_surf.get_height()
+        height = max(tile, text_h) + 2 * pad
+        surf = pygame.Surface((width, height), pygame.SRCALPHA)
+        ui.panel(surf, surf.get_rect(), fill=ui.SURFACE, border=(*color, 140))
+        tile_rect = pygame.Rect(pad, (height - tile) // 2, tile, tile)
+        ui.fill_rect(surf, (*color, 36), tile_rect, ui.radius(10))
+        mark = ui.icon(icon_name, ui.px(28), color)
+        if mark:
+            surf.blit(mark, mark.get_rect(center=tile_rect.center))
+        y = (height - text_h) // 2
+        ui.draw_text(surf, title, title_f, ui.TEXT, (text_x, y))
+        surf.blit(body_surf, (text_x, y + title_f.get_height() + ui.px(6)))
+        self._spacer(menu, 8)
+        self._surface(menu, surf)
+
+    def _leaderboard_state(self, loading, error, data, empty_title, empty_body):
         """Shows loading, error, offline and empty states. Returns True if a message was shown."""
         menu = self.personal_best_menu
         if error == "not_configured":
             self._message(menu, "Leaderboard unavailable", "Online records are not set up in this build.")
         elif loading:
             self._message(menu, "Loading", "Fetching the latest times.")
+        elif error == "offline":
+            self._error_banner(menu, "wifi-off", "You are offline",
+                               "Online features require an internet connection. "
+                               "Check your connection, then press Refresh.", ui.FACE["orange"])
+        elif error == "server_down":
+            self._error_banner(menu, "server-off", "Game servers are not available",
+                               "The leaderboards cannot be reached right now. "
+                               "Please try again later.", ui.DANGER)
         elif error:
             self._message(menu, "Could not load the leaderboard", "Try refreshing in a moment.", ui.DANGER)
-        elif not data and offline:
-            self._message(menu, "You are offline", "Leaderboards need an internet connection. "
-                                                   "Check your connection and refresh.")
         elif not data:
             self._message(menu, empty_title, empty_body)
         else:
@@ -352,7 +376,7 @@ class StatsMixin:
     def _create_leaderboard_content(self):
         menu = self.personal_best_menu
         if not (self.supabase_manager and self.supabase_manager.is_configured()):
-            self._leaderboard_state(False, "not_configured", False, [], "", "")
+            self._leaderboard_state(False, "not_configured", [], "", "")
             return
         mode_items = [(GAME_MODE_DISPLAY.get(m, m), i) for i, m in enumerate(GAME_MODE_OPTIONS)]
         region_items = [(REGION_DISPLAY.get(r, r), i) for i, r in enumerate(REGION_OPTIONS)]
@@ -362,8 +386,8 @@ class StatsMixin:
                                  ("Region", region_items, region_index, self._on_leaderboard_region_filter_change, "lb_region")],
                           self._refresh_leaderboard)
 
-        if self._leaderboard_state(self.leaderboard_loading, self.leaderboard_error, self.leaderboard_is_offline,
-                                   self.leaderboard_data, "No records yet", "Be the first to post a time."):
+        if self._leaderboard_state(self.leaderboard_loading, self.leaderboard_error, self.leaderboard_data,
+                                   "No records yet", "Be the first to post a time."):
             return
 
         me = self.user_manager.get_username() if self.user_manager else ""
@@ -393,7 +417,7 @@ class StatsMixin:
     def _create_daily_leaderboard_content(self):
         menu = self.personal_best_menu
         if not (self.supabase_manager and self.supabase_manager.is_configured()):
-            self._leaderboard_state(False, "not_configured", False, [], "", "")
+            self._leaderboard_state(False, "not_configured", [], "", "")
             return
         date_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
         self._text(menu, f"Today's Daily Cube, {date_str} (UTC). Everyone gets the same scramble.",
@@ -406,7 +430,7 @@ class StatsMixin:
                           self._refresh_daily_leaderboard)
 
         if self._leaderboard_state(self.daily_leaderboard_loading, self.daily_leaderboard_error,
-                                   self.daily_leaderboard_is_offline, self.daily_leaderboard_data,
+                                   self.daily_leaderboard_data,
                                    "Nobody has solved today's cube yet",
                                    "Play Daily Cube from the mode screen to claim the top spot."):
             return

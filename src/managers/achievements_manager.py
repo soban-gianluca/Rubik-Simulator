@@ -355,6 +355,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "scramble_count",
         "target": 10,
+        "hint": "Some people just like to watch things fall apart.",
         "secret": True
     },
     "night_owl": {
@@ -364,6 +365,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "solve_event",
         "event": "night_owl",
+        "hint": "Some puzzles are better solved when the world is asleep.",
         "secret": True
     },
     "last_second": {
@@ -373,6 +375,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "solve_event",
         "event": "last_second",
+        "hint": "Cutting it close has its rewards.",
         "secret": True
     },
     "down_to_the_wire": {
@@ -382,6 +385,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "solve_event",
         "event": "last_move",
+        "hint": "Every move counts, even the final one.",
         "secret": True
     },
     "perfectionist": {
@@ -391,6 +395,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "solve_event",
         "event": "perfect_easy",
+        "hint": "Is there a limit to how clean an easy solve can be?",
         "secret": True
     },
     "indecisive": {
@@ -400,6 +405,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "mode_switches",
         "target": 10,
+        "hint": "Hard to commit to just one thing.",
         "secret": True
     },
     "undo_addict": {
@@ -409,6 +415,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "undo_count",
         "target": 100,
+        "hint": "Second thoughts add up.",
         "secret": True
     },
     "tourist": {
@@ -418,6 +425,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "backgrounds_tried",
         "target": 10,
+        "hint": "The scenery changes if you look around.",
         "secret": True
     },
     "marathon_session": {
@@ -427,6 +435,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "session_minutes",
         "target": 60,
+        "hint": "Time flies when you stay put.",
         "secret": True
     },
     "comeback_kid": {
@@ -436,6 +445,7 @@ ACHIEVEMENTS = {
         "category": "secret",
         "condition_type": "solve_event",
         "event": "comeback",
+        "hint": "Not every dead end is the end.",
         "secret": True
     },
 }

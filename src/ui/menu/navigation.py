@@ -185,7 +185,12 @@ class NavigationMixin:
         self._change_menu(self.personal_best_menu)
 
     def _close_from_main(self):
-        if not self.is_animating:
+        # Allowed mid open-animation too (toggle turns the animation around); only a running
+        # close animation is left alone
+        # No mode picked yet: the menu is the only thing to show, so it can't be closed
+        if self.game and self.game.get_difficulty_change_count() < 1:
+            return
+        if not (self.is_animating and not self.is_opening):
             self.toggle()
 
     # ================================================================ challenge limits

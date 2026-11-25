@@ -363,10 +363,14 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
                 # Let menu handle the event first
                 if self.menu.handle_event(event):
                     continue
-                # Only handle ESC here for menu toggle (F11 handled below for all states)
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    # Menu's handle_event already deals with ESC
-                    pass
+                # The menu ignores input while it animates closed: ESC then reopens it
+                # instead of being swallowed
+                if (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
+                        and self.menu.is_animating and not self.menu.is_opening
+                        and not self.results_window.active
+                        and self.difficulty_change_count >= 1):
+                    self.menu.toggle()
+                    self.debug_print("Menu: reopened during close animation")
                 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -679,6 +683,9 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
                 # Set auto-rotation based on difficulty
                 self.set_auto_rotation_by_difficulty(difficulty)
                 
+                # The menu's idle shuffle ends here; the scramble below resets the cube
+                self.stop_menu_idle_shuffle()
+
                 # Only scramble if this is a new game request or the very first start
                 if self.new_game_requested or not hasattr(self, '_ever_started'):
                     if not hasattr(self, '_ever_started'):
@@ -719,6 +726,8 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
             # Slow turntable behind the main menu before the first game
             dt = self.clock.get_time() / 1000.0
             self.renderer.rotate_camera(azimuth=12.0 * min(dt, 0.1), elevation=0)
+            # ...while the solved cube slowly mixes itself
+            self.update_menu_idle_shuffle()
         
         # Frame-rate independent keyboard controls for camera rotation
         if not self.menu.is_active() and not self.results_window.active:

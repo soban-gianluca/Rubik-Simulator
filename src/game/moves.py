@@ -207,6 +207,44 @@ class MovesMixin:
             if hasattr(self.renderer.rubiks_cube, 'move_history'):
                 self.renderer.rubiks_cube.move_history.clear()
     
+    # Idle shuffle shown behind the main menu before the first mode is picked
+    MENU_SHUFFLE_TURN_DURATION = 0.7  # seconds per face turn
+    MENU_SHUFFLE_PAUSE = 0.6  # seconds between turns
+
+    def update_menu_idle_shuffle(self):
+        """Slowly mix the solved cube with random turns while the main menu waits for a mode."""
+        if self.renderer.is_animating:
+            return
+        now = time.time()
+        if not getattr(self, '_menu_shuffle_active', False):
+            # First call: the cube is still solved, give a moment before the first turn
+            self._menu_shuffle_active = True
+            self._menu_shuffle_saved_duration = self.renderer.animation_duration
+            self._menu_shuffle_last_axis = None
+            self._menu_shuffle_next_time = now + 1.5
+            return
+        if now < self._menu_shuffle_next_time:
+            return
+
+        import random
+        axis = {'R': 'x', 'L': 'x', 'M': 'x', 'U': 'y', 'D': 'y', 'E': 'y', 'F': 'z', 'B': 'z', 'S': 'z'}
+        faces = [f for f in axis if axis[f] != self._menu_shuffle_last_axis]
+        face = random.choice(faces)
+        clockwise = random.random() < 0.5
+        self._menu_shuffle_last_axis = axis[face]
+
+        self.renderer.animation_duration = self.MENU_SHUFFLE_TURN_DURATION
+        if self.renderer.start_face_animation(face, clockwise):
+            self.renderer.pending_move = face if clockwise else face + "'"
+        self._menu_shuffle_next_time = now + self.MENU_SHUFFLE_TURN_DURATION + self.MENU_SHUFFLE_PAUSE
+
+    def stop_menu_idle_shuffle(self):
+        """End the menu shuffle and restore the normal turn speed."""
+        if not getattr(self, '_menu_shuffle_active', False):
+            return
+        self._menu_shuffle_active = False
+        self.renderer.animation_duration = self._menu_shuffle_saved_duration
+
     def scramble_cube_by_difficulty(self, difficulty):
         """Scramble the cube based on difficulty level"""
         # Play a cube sound for scrambling

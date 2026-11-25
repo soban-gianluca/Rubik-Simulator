@@ -470,26 +470,40 @@ class StatsMixin:
         self._ach_icon_cache[key] = surf
         return surf
 
+    GLOW_STEPS = 9
+
     def _achievement_card(self, surf, rect, a):
         unlocked = a.get("unlocked", False)
         secret = a.get("secret", False) and not unlocked
+        if unlocked and a.get("secret", False):
+            # Outer glow: fading rings outside the border (the section surface has a margin for it)
+            rad = ui.radius(12)
+            step = ui.px(1.5)
+            for i in range(self.GLOW_STEPS, 0, -1):
+                ring = rect.inflate(2 * i * step, 2 * i * step)
+                ui.fill_rect(surf, (*ui.ACCENT, int(90 * (1 - (i - 1) / self.GLOW_STEPS) ** 2)), ring,
+                             rad + i * step, width=max(1, step) + 1)
         ui.panel(surf, rect, fill=ui.SURFACE, border=(ui.ACCENT if unlocked else ui.LINE))
         pad = ui.px(18)
         icon_size = min(rect.height - 2 * pad, ui.px(84))
-        icon_rect = pygame.Rect(rect.x + pad, rect.centery - icon_size // 2, icon_size, icon_size)
+        # Text has internal line leading above the name, so nudge the icon up to match its visual center
+        icon_rect = pygame.Rect(rect.x + pad, rect.centery - icon_size // 2 - ui.px(4), icon_size, icon_size)
         img = None if secret else self._achievement_icon(a.get("icon", ""), icon_size, unlocked)
         if img:
             surf.blit(img, icon_rect)
         else:
             ui.fill_rect(surf, ui.SURFACE_2, icon_rect, ui.radius(10))
-            ui.draw_text(surf, "?", ui.display_font(ui.SIZE_H1), ui.DIM, icon_rect.center, "center")
+            q_font = ui.display_font(ui.SIZE_H1)
+            q = q_font.render("?", True, ui.DIM)
+            bbox = q.get_bounding_rect()  # center on the visible glyph, not the font box
+            surf.blit(q, (icon_rect.centerx - bbox.centerx, icon_rect.centery - bbox.centery))
 
         tx = icon_rect.right + ui.px(20)
         tw = rect.right - pad - tx
         name_f = ui.body_font(ui.SIZE_BODY, bold=True)
         desc_f = ui.body_font(ui.SIZE_SMALL - 1)
         name = "Secret achievement" if secret else a.get("name", "")
-        desc = "Keep playing to discover it." if secret else a.get("description", "")
+        desc = a.get("hint", "Keep playing to discover it.") if secret else a.get("description", "")
         y = rect.y + pad - ui.px(2)
         ui.draw_text(surf, ui.ellipsize(name, name_f, tw), name_f, ui.TEXT if unlocked else (205, 209, 216), (tx, y))
         y += name_f.get_linesize()
@@ -559,11 +573,12 @@ class StatsMixin:
                 continue
             self._section(menu, names.get(category, category.title()))
             n_rows = (len(items) + cols - 1) // cols
-            surf = pygame.Surface((width, n_rows * card_h + (n_rows - 1) * gap), pygame.SRCALPHA)
+            m = self.GLOW_STEPS * ui.px(1.5) + 2  # margin around the cards for the outer glow
+            surf = pygame.Surface((width + 2 * m, n_rows * card_h + (n_rows - 1) * gap + 2 * m), pygame.SRCALPHA)
             rects = {}
             for i, a in enumerate(items):
                 r, c = divmod(i, cols)
-                rects[a["id"]] = pygame.Rect(c * (card_w + gap), r * (card_h + gap), card_w, card_h)
+                rects[a["id"]] = pygame.Rect(m + c * (card_w + gap), m + r * (card_h + gap), card_w, card_h)
                 self._achievement_card(surf, rects[a["id"]], a)
             widget = self._surface(menu, surf)
             for aid, rect in rects.items():

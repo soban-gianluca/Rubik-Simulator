@@ -192,6 +192,7 @@ class Renderer:
             if hasattr(self, 'pending_move') and self.pending_move:
                 self.rubiks_cube.execute_move(self.pending_move)
                 self.pending_move = None
+                self._carry_grain_orientation()
                 # Update cube colors immediately to prevent flicker
                 self.update_cube_colors()
             
@@ -201,6 +202,24 @@ class Renderer:
         
         return current_angle
     
+    def _carry_grain_orientation(self):
+        """A finished turn moves pieces to new slots: hand each piece's grain orientation
+        to the slot it landed in, so the surface grain stays put when the slice is
+        redrawn unturned with the new colors."""
+        ax = np.array(self.animation_axis, dtype=np.float64)
+        a = math.radians(self.animation_angle_total)
+        k = np.array([[0, -ax[2], ax[1]], [ax[2], 0, -ax[0]], [-ax[1], ax[0], 0]])
+        # Rodrigues; quarter turns are exact, so round away float noise
+        rot = np.rint(np.identity(3) + math.sin(a) * k + (1 - math.cos(a)) * (k @ k))
+        by_slot = {cube['grid_pos']: cube for cube in self.cubes}
+        landed = {}
+        for cube in self.animation_cubes:
+            new_slot = tuple(int(c) for c in rot @ np.array(cube['grid_pos']))
+            # Same point on the piece: G_new @ (rot @ v) == G_old @ v
+            landed[new_slot] = (cube['grain_orient'] @ rot.T).astype(np.float32)
+        for slot, orient in landed.items():
+            by_slot[slot]['grain_orient'] = orient
+
     def initialize_cubes(self):
         """Initialize the position and colors for each small cube in the 3x3x3 grid"""
         self.cubes = []
@@ -218,7 +237,9 @@ class Renderer:
                     
                     self.cubes.append({
                         'position': position,
-                        'grid_pos': (x, y, z)  # Store grid position for updates
+                        'grid_pos': (x, y, z),  # Store grid position for updates
+                        # Orientation of the piece in this slot, so its grain turns with it
+                        'grain_orient': np.identity(3, dtype=np.float32),
                     })
         self.update_cube_colors()
 
@@ -341,6 +362,7 @@ uniform float bodyGloss;
 uniform float uTime;
 uniform float stickerSeeds[6]; // physical sticker id per side (stays with the sticker as it moves)
 uniform vec4 stickerFrames[6]; // pattern right (xy) and up (zw) per side, in plate coordinates
+uniform mat3 grainOrient;      // slot -> piece frame, so the grain stays on the piece as it moves
 varying vec3 vObjP;
 varying vec3 vObjN;
 varying vec3 vEyeP;
@@ -493,15 +515,18 @@ void main() {
     vec4 pr = plate[side];
     vec2 p = (q - pr.xz) / (pr.yw - pr.xz) - 0.5;
 
-    // Very light grain (tileable texture, mipmapped so it never shimmers)
-    vec3 w = pow(a, vec3(6.0));
+    // Very light grain (tileable texture, mipmapped so it never shimmers).
+    // Sampled in the piece's own frame so it travels with the piece between slots.
+    vec3 gp = grainOrient * vObjP;
+    vec3 w = pow(abs(grainOrient * on), vec3(6.0));
     w /= (w.x + w.y + w.z);
-    vec2 gx = texture2D(grain, vObjP.yz * 4.0).rg - 0.5;
-    vec2 gy = texture2D(grain, vObjP.xz * 4.0).rg - 0.5;
-    vec2 gz = texture2D(grain, vObjP.xy * 4.0).rg - 0.5;
+    vec2 gx = texture2D(grain, gp.yz * 4.0).rg - 0.5;
+    vec2 gy = texture2D(grain, gp.xz * 4.0).rg - 0.5;
+    vec2 gz = texture2D(grain, gp.xy * 4.0).rg - 0.5;
     vec3 pert = w.x * (gx.x * vec3(0.0, 1.0, 0.0) + gx.y * vec3(0.0, 0.0, 1.0))
               + w.y * (gy.x * vec3(1.0, 0.0, 0.0) + gy.y * vec3(0.0, 0.0, 1.0))
               + w.z * (gz.x * vec3(1.0, 0.0, 0.0) + gz.y * vec3(0.0, 1.0, 0.0));
+    pert = pert * grainOrient;  // back to the slot frame (transpose of a rotation)
 
     mat3 m = mat3(gl_ModelViewMatrix);
 
@@ -572,6 +597,7 @@ void main() {
             self._time_loc = glGetUniformLocation(program, "uTime")
             self._seeds_loc = glGetUniformLocation(program, "stickerSeeds")
             self._frames_loc = glGetUniformLocation(program, "stickerFrames")
+            self._grain_orient_loc = glGetUniformLocation(program, "grainOrient")
         except Exception as e:
             print(f"Cube shader unavailable, using basic shading: {e}")
             return
@@ -625,7 +651,11 @@ void main() {
         """
         verts = np.array(self.obj_vertices, dtype=np.float64)
         faces = self.obj_faces
-        center = (verts.min(axis=0) + verts.max(axis=0)) / 2
+        # The model is slightly off-center. Centered, it is symmetric under quarter
+        # turns, so a turned piece lands exactly where its unturned redraw sits and
+        # does not jump when a move ends.
+        verts -= (verts.min(axis=0) + verts.max(axis=0)) / 2
+        center = np.zeros(3)
 
         # Smooth vertex normals (area weighted face normals), oriented outward
         vnormals = np.zeros_like(verts)
@@ -795,6 +825,7 @@ void main() {
             
             if textured:
                 glUniform3fv(self._stickers_loc, 6, cube['colors_flat'])
+                glUniformMatrix3fv(self._grain_orient_loc, 1, GL_TRUE, cube['grain_orient'])
                 if patterned:  # the solid skins never read these
                     glUniform1fv(self._ids_loc, 6, cube['ids'])
                     glUniform1fv(self._seeds_loc, 6, cube['seeds'])

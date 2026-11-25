@@ -119,7 +119,8 @@ def _pattern(pid, px, py, base, ids, seed, accent, aa):
         n = _wob(px, py, seed)
         v = np.abs(np.sin((px * 2.0 + py) * 6.0 + n * 3.0))
         vein = 1.0 - _smoothstep(0.0, 0.18, v)
-        diff = _mix(base, accent, vein * 0.75) * (0.92 + 0.08 * n)[:, None]
+        vein_col = np.array(accent) if base.mean() >= 0.7 else np.array([0.98, 0.97, 0.94])
+        diff = _mix(base, vein_col, vein * 0.95) * (0.92 + 0.08 * n)[:, None]
     elif pid == cube_skins.PATTERNS["lava"]:
         n = _wob(px, py, seed)
         crack = np.abs(np.sin(px * 8.0 + n * 4.0 + seed) * np.sin(py * 7.0 - n * 3.0 + seed * 0.7))

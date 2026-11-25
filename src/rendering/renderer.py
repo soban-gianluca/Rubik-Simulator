@@ -450,13 +450,18 @@ void skinColor(int side, vec2 p, vec3 base, vec2 look, float facing, float aa, o
         diff = mix(base * 0.82, light, 0.35 * swirl + 0.3 * haze);
     } else if (skinPattern == 7) {     // marble
         float n = wob(p, seed);
-        float v = abs(sin((p.x * 2.0 + p.y) * 6.0 + n * 3.0));
-        float vein = 1.0 - smoothstep(0.0, 0.18, v);
-        diff = mix(base, skinAccent, vein * 0.75) * (0.92 + 0.08 * n);
+        float ph = (p.x * 2.0 + p.y) * 6.0 + n * 3.0;
+        float fw = aa * 20.0;                                   // veins per pixel: large at grazing angles
+        float v = abs(sin(ph));
+        float vein = 1.0 - smoothstep(0.0, 0.18 + min(fw, 1.0) * 0.5, v);
+        vein *= 1.0 - smoothstep(0.8, 2.0, fw);                 // fade thin veins out before they alias
+        vec3 veinCol = mix(vec3(0.98, 0.97, 0.94), skinAccent, step(0.7, dot(base, vec3(0.333))));
+        diff = mix(base, veinCol, vein * 0.95) * (0.92 + 0.08 * n);
     } else if (skinPattern == 8) {     // lava
         float n = wob(p, seed);
         float crack = abs(sin(p.x * 8.0 + n * 4.0 + seed) * sin(p.y * 7.0 - n * 3.0 + seed * 0.7));
         float glow = 1.0 - smoothstep(0.0, 0.22, crack);
+        glow = mix(glow, 0.2, smoothstep(0.6, 1.5, aa * 16.0));   // thin cracks average out at grazing angles
         float pulse = 0.7 + 0.3 * sin(uTime * 1.7 + seed + n * 3.0);
         diff = skinAccent * (0.8 + 0.4 * n) + base * 0.12;
         emis = base * glow * pulse * 1.3 + vec3(1.0, 0.9, 0.6) * pow(glow, 4.0) * 0.4 * pulse;
@@ -478,10 +483,12 @@ void skinColor(int side, vec2 p, vec3 base, vec2 look, float facing, float aa, o
                                                  + facing * 1.6 + uTime * 0.05));
         diff = mix(base, rainbow, 0.2);
         float s = hash21(floor(p * 28.0) + seed);
-        emis = vec3(step(0.97, s) * (0.5 + 0.5 * sin(uTime * 6.0 + s * 80.0)) * 0.5);
+        float fine = 1.0 - smoothstep(0.3, 0.8, aa * 28.0);       // tiny glints vanish instead of flickering
+        emis = vec3(step(0.97, s) * (0.5 + 0.5 * sin(uTime * 6.0 + s * 80.0)) * 0.5 * fine);
     } else if (skinPattern == 11) {    // static
         float n = hash21(floor(p * 22.0) + floor(uTime * 18.0) * vec2(1.7, 9.2) + seed);
-        float scan = 0.85 + 0.15 * sin((p.y + uTime * 0.3) * 90.0);
+        n = mix(n, 0.5, smoothstep(0.4, 1.0, aa * 22.0));
+        float scan = 0.85 + 0.15 * sin((p.y + uTime * 0.3) * 90.0) * (1.0 - smoothstep(0.25, 0.6, aa * 14.3));
         diff = base * (0.45 + 0.75 * n) * scan;
         emis = base * 0.15 * n;
     } else if (skinPattern == 12) {    // pixel

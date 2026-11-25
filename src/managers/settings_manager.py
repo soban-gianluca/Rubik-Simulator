@@ -61,7 +61,7 @@ class SettingsManager:
             "background_style": "auto_solid",
             "background_stars": True,
             "antialiasing": "msaa4",
-            "vsync": "on",
+            "vsync": "off",
             "hints_enabled": True,
             "color_scheme": "standard",
             "difficulty_skyboxes": {

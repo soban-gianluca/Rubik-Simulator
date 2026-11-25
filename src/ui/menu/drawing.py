@@ -121,6 +121,9 @@ class DrawingMixin:
 
         if kind == "main":
             self._draw_main_footer(screen)
+            self._draw_update_banner(screen)
+        else:
+            self.update_rect = None
         self._draw_keyboard_focus(screen, menu)
 
     def _draw_main_cascade(self, screen, menu, elapsed):
@@ -221,6 +224,28 @@ class DrawingMixin:
             x += ic.get_width() + ui.px(10)
         max_w = credits.left - ui.px(16) - x
         ui.draw_text(screen, ui.ellipsize(text, small, max_w), small, ui.MUTED, (x, y), "bottomleft")
+
+    def _draw_update_banner(self, screen):
+        """Top right of the main menu, shown only when GitHub has a newer release."""
+        checker = self.update_checker
+        if not checker.update_available:
+            self.update_rect = None
+            return
+        font = ui.body_font(ui.SIZE_SMALL)
+        label = f"Version {checker.latest_tag} is out"
+        btn_label = "Download"
+        pad = ui.px(14)
+        btn_w = ui.text_width(btn_label, ui.body_font(ui.SIZE_SMALL, bold=True)) + ui.px(40)
+        btn_h = ui.px(40)
+        w = pad + ui.text_width(label, font) + ui.px(20) + btn_w + pad // 2
+        h = btn_h + pad
+        panel = pygame.Rect(self.width - self.L.margin - w, self.L.margin, w, h)
+        ui.panel(screen, panel, fill=ui.SURFACE, border=ui.LINE, rad=ui.radius(12))
+        ui.draw_text(screen, label, font, ui.TEXT, (panel.x + pad, panel.centery), "midleft")
+        btn = pygame.Rect(panel.right - pad // 2 - btn_w, panel.y + pad // 2, btn_w, btn_h)
+        self.update_rect = panel
+        ui.button(screen, btn, btn_label, "primary", hovered=panel.collidepoint(pygame.mouse.get_pos()),
+                  ref_font=ui.SIZE_SMALL)
 
     def _redraw_open_dropselect(self, screen, menu):
         """pygame-menu draws a dropdown list inside its frame, so later rows paint

@@ -1,5 +1,6 @@
 import math
 import time
+import webbrowser
 
 import pygame
 import pygame_menu
@@ -9,6 +10,8 @@ from src.managers.settings_manager import SettingsManager
 from src.managers.sound_manager import SoundManager
 from src.managers.personal_best_manager import PersonalBestManager
 from src.managers.user_manager import UserManager
+from src.managers.update_checker import UpdateChecker
+from src.version import APP_VERSION
 from src.managers.achievements_manager import AchievementsManager
 from src.ui import ui_style as ui
 from src.ui.menu.common import NAV_KEYS, OPEN_DURATION, CLOSE_DURATION, _ease_out, _Layout
@@ -113,6 +116,8 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         self._paint_state = None  # what the custom painted widgets were last drawn with (see _draw_page)
         self.header_back_rect = None
         self.credits_rect = None
+        self.update_checker = UpdateChecker()
+        self.update_rect = None
         self._skip_pygame_menu_update_once = False
         self._ach_icon_cache = {}
         self._scroll = None  # smooth wheel scrolling: [scrollbar, position, target, last update time]
@@ -481,6 +486,10 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
                     and self.credits_rect.collidepoint(event.pos)):
                 self._open_credits()
                 return True
+            if (self.pages.get(menu, {}).get("kind") == "main" and self.update_rect
+                    and self.update_rect.collidepoint(event.pos)):
+                webbrowser.open(self.update_checker.release_url)
+                return True
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self._go_back()
@@ -540,8 +549,8 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         if (self.pages.get(self.current_menu, {}).get("kind") == "page" and self.header_back_rect
                 and self.header_back_rect.collidepoint(mouse_pos)):
             hand = True
-        elif (self.pages.get(self.current_menu, {}).get("kind") == "main" and self.credits_rect
-                and self.credits_rect.collidepoint(mouse_pos)):
+        elif (self.pages.get(self.current_menu, {}).get("kind") == "main"
+                and any(r and r.collidepoint(mouse_pos) for r in (self.credits_rect, self.update_rect))):
             hand = True
         else:
             widget = self._widget_at(mouse_pos)
@@ -652,7 +661,12 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
             row = pygame.Surface((inner, logo.get_height()), pygame.SRCALPHA)
             row.blit(logo, (0, 0))
             self._surface(menu, row)
-        self._spacer(menu, 48)
+        self._spacer(menu, 10)
+        text = ui.render(f"Version {APP_VERSION}", ui.body_font(ui.SIZE_CAPTION), ui.DIM)
+        row = pygame.Surface((inner, text.get_height()), pygame.SRCALPHA)
+        row.blit(text, (inner - text.get_width(), 0))
+        self._surface(menu, row)
+        self._spacer(menu, 38)
 
         in_game = self._in_game()
         if in_game:

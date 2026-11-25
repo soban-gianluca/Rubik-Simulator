@@ -96,7 +96,8 @@ class NavigationMixin:
                 self.hdr_paper_white, display_manager.num_displays(), hdr_output.display_hdr_info(self.display_index),
                 self.show_fps, self.hints_enabled, self.master_volume, self.music_volume, self.effects_volume,
                 self.menu_volume, self.game.scene_target.mode if self.game else s.get("antialiasing"),
-                s.get("vsync"), s.get("background_style"), s.get("background_stars"), s.get("color_scheme"))
+                s.get("vsync"), s.get("background_style"), s.get("background_stars"), s.get("color_scheme"),
+                s.get("fps_limit_game"), s.get("fps_limit_menu"), s.get("show_scramble_animation"))
 
     def _open_settings(self):
         self._load_display_state()
@@ -195,6 +196,8 @@ class NavigationMixin:
 
     # ================================================================ challenge limits
     def _format_time_display(self, seconds):
+        if seconds < 60:
+            return f"{seconds} sec"
         minutes = seconds // 60
         return f"{minutes} min"
 

@@ -128,33 +128,69 @@ class MovesMixin:
         if newly_unlocked:
             self.enqueue_achievement_notifications(newly_unlocked, delay_seconds=0.0)
     
-    def animated_scramble_cube(self, num_moves):
-        """Scramble the cube with animated moves for visual effect"""
+    SCRAMBLE_AXIS = {'R': 'x', 'L': 'x', 'M': 'x', 'U': 'y', 'D': 'y', 'E': 'y', 'F': 'z', 'B': 'z', 'S': 'z'}
+
+    def _random_scramble(self, num_moves, face_turns_only=False):
+        """Random move list. Consecutive moves never share an axis, so they cannot cancel
+        each other out (R R', R L R' L') and leave the cube solved."""
         import random
-        
-        # Available moves for scrambling
-        moves = ['R', "R'", 'L', "L'", 'U', "U'", 'D', "D'", 'F', "F'", 'B', "B'", 'M', "M'", 'E', "E'", 'S', "S'"]
-        
-        # Generate the scramble sequence. Consecutive moves never share an axis, so they
-        # cannot cancel each other out (R R', R L R' L') and leave the cube solved.
-        axis = {'R': 'x', 'L': 'x', 'M': 'x', 'U': 'y', 'D': 'y', 'E': 'y', 'F': 'z', 'B': 'z', 'S': 'z'}
-        scramble_sequence = []
+        moves = ['R', "R'", 'L', "L'", 'U', "U'", 'D', "D'", 'F', "F'", 'B', "B'"]
+        if not face_turns_only:
+            moves += ['M', "M'", 'E', "E'", 'S', "S'"]
+        sequence = []
         for _ in range(num_moves):
-            last_axis = axis[scramble_sequence[-1][0]] if scramble_sequence else None
-            move = random.choice([m for m in moves if axis[m[0]] != last_axis])
-            scramble_sequence.append(move)
+            last_axis = self.SCRAMBLE_AXIS[sequence[-1][0]] if sequence else None
+            sequence.append(random.choice([m for m in moves if self.SCRAMBLE_AXIS[m[0]] != last_axis]))
+        return sequence
+
+    def _scramble_solvable_within(self, max_moves, num_moves, attempts=10):
+        """Face-turn scramble that the hint solver (G key) solves in at most `max_moves` game
+        moves, a half turn counting as the two clicks it takes. Slice moves are left out because
+        the solver only turns faces, so they would inflate its solution. Returns None if none found."""
+        from src import solver
+        for _ in range(attempts):
+            sequence = self._random_scramble(num_moves, face_turns_only=True)
+            cube = RubiksCube()
+            for move in sequence:
+                cube.execute_move(move)
+            try:
+                solution = solver.solve(self._cube_to_facelets(cube), max_depth=max_moves, timeout=2)
+            except Exception:
+                return None
+            if solution.startswith('Error'):
+                continue
+            if sum(2 if turn.endswith('2') else 1 for turn in solution.split()) <= max_moves:
+                return sequence
+        return None
+
+    def animated_scramble_cube(self, num_moves, sequence=None):
+        """Scramble the cube with animated moves for visual effect"""
+        scramble_sequence = sequence if sequence is not None else self._random_scramble(num_moves)
+        num_moves = len(scramble_sequence)
+
+        self._start_scramble(scramble_sequence)
+        self.debug_print(f"Starting fast animated scramble with {num_moves} moves: {' '.join(scramble_sequence)}")
+
+    def _start_scramble(self, scramble_sequence):
+        """Play a scramble, or apply it at once when "Show scramble animation" is off."""
+        if not self.settings.settings.get("show_scramble_animation", True):
+            for move in scramble_sequence:
+                self.renderer.rubiks_cube.execute_move(move)
+            self.renderer.update_cube_colors()
+            # An empty queue lets update_animated_scramble() finish the setup next frame
+            self.scramble_queue = []
+            self.is_scrambling = True
+            return
 
         # Store original animation duration (unless a scramble is already running) and scramble faster
         if not hasattr(self, 'original_animation_duration'):
             self.original_animation_duration = self.renderer.animation_duration
         self.renderer.animation_duration = 0.1  # Faster animation (100ms instead of 300ms)
-        
+
         # Store the scramble sequence for animated execution
         self.scramble_queue = scramble_sequence.copy()
         self.is_scrambling = True
         self.scramble_start_time = time.time()
-        
-        self.debug_print(f"Starting fast animated scramble with {num_moves} moves: {' '.join(scramble_sequence)}")
     
     def animated_daily_scramble_cube(self, num_moves=20):
         """Scramble the cube with the daily deterministic scramble (animated).
@@ -163,16 +199,7 @@ class MovesMixin:
         # Get the daily scramble sequence from the cube
         scramble_sequence = self.renderer.rubiks_cube.get_daily_scramble_sequence(num_moves)
         
-        # Store original animation duration (unless a scramble is already running) and scramble faster
-        if not hasattr(self, 'original_animation_duration'):
-            self.original_animation_duration = self.renderer.animation_duration
-        self.renderer.animation_duration = 0.1  # Faster animation (100ms instead of 300ms)
-
-        # Store the scramble sequence for animated execution
-        self.scramble_queue = scramble_sequence.copy()
-        self.is_scrambling = True
-        self.scramble_start_time = time.time()
-
+        self._start_scramble(scramble_sequence)
         self.debug_print(f"Starting daily scramble with {num_moves} moves: {' '.join(scramble_sequence)}")
     
     def update_animated_scramble(self):
@@ -208,6 +235,7 @@ class MovesMixin:
                 self.renderer.rubiks_cube.move_history.clear()
     
     # Idle shuffle shown behind the main menu before the first mode is picked
+    AVG_HUMAN_MOVES_PER_SECOND = 2  # average casual cuber turn rate (speedcubers reach 5 to 10)
     MENU_SHUFFLE_TURN_DURATION = 0.7  # seconds per face turn
     MENU_SHUFFLE_PAUSE = 0.6  # seconds between turns
 
@@ -316,13 +344,23 @@ class MovesMixin:
             self.animated_scramble_cube(scramble_moves)
             self.debug_print(f"Hard mode: Completely random scramble!")
         elif difficulty == "limited_time":
-            # Limited Time: Medium scramble with time pressure
-            self.animated_scramble_cube(15)
-            self.debug_print(f"Limited Time mode: Scramble with 15 moves!")
+            # Limited Time: the scramble's own inverse is a solution of the same length, so
+            # capping its length to what an average human can turn in the time guarantees
+            # the cube is solvable within the limit
+            length = 15
+            if self.time_limit is not None:
+                length = max(1, min(length, int(self.time_limit * self.AVG_HUMAN_MOVES_PER_SECOND)))
+            self.animated_scramble_cube(length)
+            self.debug_print(f"Limited Time mode: Scramble with {length} moves!")
         elif difficulty == "limited_moves":
-            # Limited Moves: Medium scramble with move restriction
-            self.animated_scramble_cube(15)
-            self.debug_print(f"Limited Moves mode: Scramble with 15 moves!")
+            # Limited Moves: the solution the game proposes (G key) must fit in the limit, so the
+            # scramble is checked against the solver. Short scrambles keep that check fast.
+            limit = self.move_limit or 15
+            sequence = self._scramble_solvable_within(limit, min(10, limit))
+            if sequence is None:
+                sequence = self._random_scramble(max(1, min(6, limit)), face_turns_only=True)
+            self.animated_scramble_cube(len(sequence), sequence)
+            self.debug_print(f"Limited Moves mode: Scramble with {len(sequence)} moves!")
         elif difficulty == "daily_cube":
             # Daily Cube: Same scramble for all players today
             self.animated_daily_scramble_cube(20)

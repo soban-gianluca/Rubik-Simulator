@@ -76,7 +76,7 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
 
         # Challenge settings
         self.selected_time_limit = 300
-        self.time_limit_options = [60, 300, 600, 900]
+        self.time_limit_options = [30, 60, 120, 180, 300, 420, 600, 900, 1200, 1800]
         self.selected_move_limit = 25
         self.move_limit_options = list(range(15, 51, 5))
 
@@ -154,6 +154,17 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         # The focus dimming replaces pixels on our transparent overlay, which
         # punches holes in it; the menu has its own scrim, so turn it off.
         pygame_menu.Menu._draw_focus_widget = lambda self, surface, widget, force=False: None
+
+        # Hovering selects a widget and pygame-menu then scrolls it fully into view, which
+        # moves the page under the cursor. Only keyboard selection should scroll.
+        original_scroll_to_widget = pygame_menu.Menu.scroll_to_widget
+
+        def _scroll_to_widget_not_on_hover(self, widget, *args, **kwargs):
+            if getattr(self, '_last_selected_type', None) == 'mouse_motion':
+                return self
+            return original_scroll_to_widget(self, widget, *args, **kwargs)
+
+        pygame_menu.Menu.scroll_to_widget = _scroll_to_widget_not_on_hover
 
     def _build_theme(self):
         t = pygame_menu.themes.THEME_DARK.copy()

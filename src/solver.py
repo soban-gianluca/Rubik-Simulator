@@ -25,10 +25,10 @@ def _exit_with_parent():
         threading.Thread(target=watch, daemon=True).start()
 
 
-def _solve(facelets):
+def _solve(facelets, max_depth=22, timeout=5):
     from src.pykociemba.search import Search
     # 22, not 21: some scrambles need over 5 s to find a 21 move solution, and the hint then failed
-    return Search().solution(facelets, maxDepth=22, timeOut=5, useSeparator=False)
+    return Search().solution(facelets, maxDepth=max_depth, timeOut=timeout, useSeparator=False)
 
 
 def start():
@@ -40,9 +40,9 @@ def start():
     return _pool
 
 
-def solve(facelets):
+def solve(facelets, max_depth=22, timeout=5):
     """Solution string for a facelet string (blocks the calling thread, not the game)."""
-    return start().submit(_solve, facelets).result(timeout=30)
+    return start().submit(_solve, facelets, max_depth, timeout).result(timeout=30)
 
 
 def shutdown():

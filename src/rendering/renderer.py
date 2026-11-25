@@ -423,9 +423,10 @@ void skinColor(int side, vec2 p, vec3 base, vec2 look, float facing, float aa, o
         float u = (p.x + p.y) * 2.5;
         diff = mix(base, skinAccent, 1.0 - smoothstep(-aa, aa, (abs(fract(u) - 0.5) - 0.25) / 2.5));
     } else if (skinPattern == 2) {     // checker
-        float s = sin(p.x * 12.566) * sin(p.y * 12.566);
-        float w = 9.0 * aa;  // about the screen-space change of s over one pixel
-        diff = mix(base, skinAccent, smoothstep(-w, w, s));
+        // 4x4 squares with crisp, antialiased edges: a square wave per axis, one pixel wide at the edge
+        vec2 t = abs(mod(p * 4.0 + 0.5, 2.0) - 1.0) - 0.5;
+        float w = max(4.0 * aa, 1e-4);
+        diff = mix(base, skinAccent, 0.5 + 0.5 * clamp(t.x / w, -1.0, 1.0) * clamp(t.y / w, -1.0, 1.0));
     } else if (skinPattern == 3) {     // dots
         vec2 g = fract(p * 3.0 + 0.5) - 0.5;
         diff = mix(base, skinAccent, 1.0 - smoothstep(-aa, aa, (length(g) - 0.28) / 3.0));
@@ -439,11 +440,14 @@ void skinColor(int side, vec2 p, vec3 base, vec2 look, float facing, float aa, o
         diff = base * 0.06;
         emis = (base * (core * 1.1 + glow * 0.55) + vec3(core * 0.35)) * pulse;
     } else if (skinPattern == 6) {     // psychedelic
-        float r = length(p);
-        float a = atan(p.y, p.x);
-        float h = id / 6.0 + 0.06 * sin(a * 3.0 + uTime * 2.0 + r * 10.0)
-                + 0.04 * sin(r * 18.0 - uTime * 3.0) + uTime * 0.03;
-        diff = hsv2rgb(fract(h), 0.85, 1.0) * (0.8 + 0.2 * sin(r * 30.0 - uTime * 4.0));
+        // Soft drifting swirls of light over the sticker color. Everything is low contrast, low
+        // frequency and slow (a full cycle takes over half a minute): nothing flashes or flickers.
+        float t = uTime * 0.18;
+        vec2 w = p + 0.1 * vec2(sin(p.y * 3.0 + t + seed), cos(p.x * 3.0 - t * 0.8 + seed));
+        float swirl = 0.5 + 0.5 * sin((w.x + w.y) * 4.0 + t * 1.5 + seed);
+        float haze = 0.5 + 0.5 * sin(length(w) * 5.0 - t + seed * 0.7);
+        vec3 light = mix(base, vec3(1.0), 0.4);
+        diff = mix(base * 0.82, light, 0.35 * swirl + 0.3 * haze);
     } else if (skinPattern == 7) {     // marble
         float n = wob(p, seed);
         float v = abs(sin((p.x * 2.0 + p.y) * 6.0 + n * 3.0));

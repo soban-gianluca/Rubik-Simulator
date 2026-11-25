@@ -11,14 +11,14 @@ from src.pykociemba.facecube import FaceCube
 class HintsMixin:
     """Move suggestions: the Kociemba solver, the hint banner and the 3D hint arrow."""
 
-    def _cube_to_facelets(self):
+    def _cube_to_facelets(self, cube=None):
         """Convert current `RubiksCube` state to a facelet string for pykociemba.
 
         CRITICAL FIX: The scramble includes slice moves (M, E, S) which move centers.
         We must map based on WHICH PHYSICAL FACE each sticker is on, not the color value.
         """
-        c = self.renderer.rubiks_cube
-        
+        c = cube if cube is not None else self.renderer.rubiks_cube
+
         # Read the center color of each physical face to determine orientation
         center_top = int(c.faces['top'][1, 1])
         center_right = int(c.faces['right'][1, 1])

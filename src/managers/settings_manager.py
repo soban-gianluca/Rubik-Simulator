@@ -62,7 +62,10 @@ class SettingsManager:
             "background_stars": True,
             "antialiasing": "msaa4",
             "vsync": "off",
+            "fps_limit_game": 0,  # 0 = no limit
+            "fps_limit_menu": 60,
             "hints_enabled": True,
+            "show_scramble_animation": True,
             "color_scheme": "standard",
             "cube_skin": "classic",
             "difficulty_skyboxes": {

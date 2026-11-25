@@ -92,8 +92,10 @@ def _pattern(pid, px, py, base, ids, seed, accent, aa):
         u = (px + py) * 2.5
         diff = _mix(base, accent, _fill((np.abs(_fract(u) - 0.5) - 0.25) / 2.5, aa))
     elif pid == cube_skins.PATTERNS["checker"]:
-        s = np.sin(px * 12.566) * np.sin(py * 12.566)
-        diff = _mix(base, accent, _smoothstep(-0.08, 0.08, s))
+        tx = np.abs(np.mod(px * 4.0 + 0.5, 2.0) - 1.0) - 0.5
+        ty = np.abs(np.mod(py * 4.0 + 0.5, 2.0) - 1.0) - 0.5
+        w = max(4.0 * aa, 1e-4)
+        diff = _mix(base, accent, 0.5 + 0.5 * np.clip(tx / w, -1.0, 1.0) * np.clip(ty / w, -1.0, 1.0))
     elif pid == cube_skins.PATTERNS["dots"]:
         gx, gy = _fract(px * 3.0 + 0.5) - 0.5, _fract(py * 3.0 + 0.5) - 0.5
         diff = _mix(base, accent, _fill((np.hypot(gx, gy) - 0.28) / 3.0, aa))
@@ -107,10 +109,12 @@ def _pattern(pid, px, py, base, ids, seed, accent, aa):
         diff = base * 0.06
         emis = (base * (core * 1.1 + glow * 0.55)[:, None] + (core * 0.35)[:, None]) * pulse
     elif pid == cube_skins.PATTERNS["psychedelic"]:
-        r = np.hypot(px, py)
-        a = np.arctan2(py, px)
-        h = ids / 6.0 + 0.06 * np.sin(a * 3.0 + r * 10.0) + 0.04 * np.sin(r * 18.0)
-        diff = _hsv2rgb(_fract(h), 0.85, 1.0) * (0.8 + 0.2 * np.sin(r * 30.0))[:, None]
+        wx = px + 0.1 * np.sin(py * 3.0 + seed)
+        wy = py + 0.1 * np.cos(px * 3.0 + seed)
+        swirl = 0.5 + 0.5 * np.sin((wx + wy) * 4.0 + seed)
+        haze = 0.5 + 0.5 * np.sin(np.hypot(wx, wy) * 5.0 + seed * 0.7)
+        light = base + (1.0 - base) * 0.4
+        diff = base * 0.82 + (light - base * 0.82) * (0.35 * swirl + 0.3 * haze)[:, None]
     elif pid == cube_skins.PATTERNS["marble"]:
         n = _wob(px, py, seed)
         v = np.abs(np.sin((px * 2.0 + py) * 6.0 + n * 3.0))

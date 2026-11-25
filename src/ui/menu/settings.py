@@ -9,6 +9,10 @@ from src.ui.menu.common import _batched, _first_arg
 from src.rubiks_cube import COLOR_SCHEME_ITEMS, set_color_scheme
 
 
+# Frame rate cap sliders for the game and the menus: the lowest value means no cap (stored as 0)
+FPS_LIMIT_MIN, FPS_LIMIT_MAX, FPS_LIMIT_STEP = 20, 240, 10
+
+
 class SettingsMixin:
     """Settings: display, graphics and audio values, and the settings and controls pages."""
 
@@ -163,6 +167,19 @@ class SettingsMixin:
         if self.game:
             self.game.show_fps = value
 
+    @staticmethod
+    def _fps_limit_text(value):
+        # Always seven characters wide (monospace), so the row never outgrows its frame
+        return f"{'Off' if value <= FPS_LIMIT_MIN else f'{value} FPS':>7}"
+
+    def _set_fps_limit(self, key, value):
+        self._slider_dirty = True
+        self.settings_manager.settings[key] = 0 if value <= FPS_LIMIT_MIN else int(value)
+        self.settings_manager.save_settings()
+        label = self.fps_labels.get(key)
+        if label is not None:
+            label.set_title(self._fps_limit_text(value))
+
     def _graphics_setting(self, key, value):
         self.sound_manager.play("menu_select")
         self.settings_manager.settings[key] = value
@@ -302,6 +319,20 @@ class SettingsMixin:
             vsync_desc += " Adaptive only syncs while the game keeps up."
         self._row(menu, "VSync", [vsync_select], desc=vsync_desc)
 
+        self.fps_labels = {}
+        for key, title, default, desc in (
+                ("fps_limit_game", "FPS limit in game", 0, "Caps the frame rate while playing. Drag to the lowest value for no limit."),
+                ("fps_limit_menu", "FPS limit in menus", 60, "Caps the frame rate while a menu is open, to save power. Lowest value is no limit.")):
+            current = int(settings.get(key, default) or 0)
+            value = max(FPS_LIMIT_MIN, min(FPS_LIMIT_MAX, int(round(current / FPS_LIMIT_STEP) * FPS_LIMIT_STEP))) \
+                if current else FPS_LIMIT_MIN
+            slider = self._slider(menu, value, (FPS_LIMIT_MIN, FPS_LIMIT_MAX), FPS_LIMIT_STEP,
+                                  lambda v, k=key: self._set_fps_limit(k, v), control_w - ui.px(118))
+            label = menu.add.label(self._fps_limit_text(value), font_name=ui.FONT_MONO,
+                                   font_size=ui.fs(ui.SIZE_SMALL), font_color=ui.MUTED)
+            self.fps_labels[key] = label
+            self._row(menu, title, [label, slider], desc=desc)
+
         self._row(menu, "Show FPS counter", [self._toggle(menu, self.show_fps, self._on_fps_toggle)],
                   separator=False)
 
@@ -332,7 +363,12 @@ class SettingsMixin:
         # Gameplay
         self._section(menu, "Gameplay")
         self._row(menu, "Show hints", [self._toggle(menu, self.hints_enabled, self._on_hints_toggle)],
-                  desc="Offer a hint after 30 seconds without a move on Easy, Medium and Hard.", separator=False)
+                  desc="Offer a hint after 30 seconds without a move on Easy, Medium and Hard.")
+        self._row(menu, "Show scramble animation",
+                  [self._toggle(menu, bool(settings.get("show_scramble_animation", True)),
+                                lambda value: self._graphics_setting("show_scramble_animation", bool(value)),
+                                "show_scramble_animation")],
+                  desc="Off starts every mode already scrambled, with no animation.", separator=False)
 
         # Accessibility
         self._section(menu, "Accessibility")

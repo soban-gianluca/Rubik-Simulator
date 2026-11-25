@@ -949,8 +949,9 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
             self.handle_events()
             self.update()
             self.render()
-            self.clock.tick()
-            
+            key = "fps_limit_menu" if self.menu.is_active() else "fps_limit_game"
+            self.clock.tick(int(self.settings.settings.get(key, 60 if key == "fps_limit_menu" else 0) or 0))
+
         # Before exiting, save settings (borderless keeps the last window size)
         if self.display_mode != "borderless":
             self.settings.settings["resolution"] = {"width": self.width, "height": self.height}

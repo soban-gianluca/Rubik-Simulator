@@ -18,9 +18,12 @@ from src.ui.menu.navigation import NavigationMixin
 from src.ui.menu.stats import StatsMixin
 from src.ui.menu.profile import ProfileMixin
 from src.ui.menu.drawing import DrawingMixin
+from src.ui.menu.customization import CustomizationMixin
+from src import cube_skins
 
 
-class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixin, DrawingMixin):
+class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixin, CustomizationMixin,
+           DrawingMixin):
     def __init__(self, screen_width, screen_height, game_instance=None):
         self.width = screen_width
         self.height = screen_height
@@ -297,6 +300,8 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
             self.refresh_main_menu_buttons()
         elif self.current_menu is self.achievements_menu:
             self._create_achievements_content()
+        elif self.current_menu is self.customization_menu:
+            self._create_customization_content()
 
     def get_current_alpha(self):
         if not self.is_animating and not self.active:
@@ -545,7 +550,7 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         previous_key = None
         for name in ("settings_menu", "controls_menu", "difficulty_menu", "personal_best_menu",
                      "time_selection_menu", "moves_selection_menu", "user_setup_menu", "user_edit_menu",
-                     "achievements_menu", "quit_confirmation_menu", "credits_menu"):
+                     "achievements_menu", "customization_menu", "quit_confirmation_menu", "credits_menu"):
             if previous is not None and getattr(self, name, None) is previous:
                 previous_key = name
         self.pages = {}
@@ -576,6 +581,11 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
 
         self.achievements_menu = self._page("Achievements", self._back_to_main, width=min(L.content_w, ui.px(1100)))
         self._unbuilt[self.achievements_menu] = self._create_achievements_content
+
+        # Wider than the other pages: four columns of skin cards with their names in full
+        skins_w = min(ui.px(1500), self.width - 2 * L.margin - 2 * L.sb_space)
+        self.customization_menu = self._page("Customization", self._back_to_main, width=skins_w)
+        self._unbuilt[self.customization_menu] = self._create_customization_content
 
         challenge_w = min(L.content_w, ui.px(760))
         self.time_selection_menu = self._page("Limited Time", self._back_to_difficulty, width=challenge_w)
@@ -650,6 +660,7 @@ class Menu(WidgetsMixin, SettingsMixin, NavigationMixin, StatsMixin, ProfileMixi
         items += [
             ("Statistics", self._open_personal_best, None),
             ("Achievements", self._open_achievements, f"{unlocked} / {total}"),
+            ("Customization", self._open_customization, "{} / {}".format(*cube_skins.unlocked_count(self.achievements_manager))),
             ("Settings", self._open_settings, None),
             ("Controls", self._open_controls, None),
             ("Quit", self._show_quit_confirmation, None),

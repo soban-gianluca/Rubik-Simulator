@@ -1,6 +1,7 @@
 import pygame
 from src.rendering.renderer import Renderer
 from src.rubiks_cube import set_color_scheme
+from src import cube_skins
 from src.rendering import display_manager
 from src.rendering import hdr as hdr_output
 from src.rendering import graphics
@@ -33,7 +34,16 @@ class DisplayMixin:
         self.renderer.set_background(s.get("background_style", backgrounds.DEFAULT_STYLE),
                                      s.get("background_stars", True))
         set_color_scheme(s.get("color_scheme", "standard"))
-        self.renderer.update_cube_colors()
+        self.renderer.set_skin(self.equipped_skin_id())
+
+    def equipped_skin_id(self):
+        """The saved cube skin, or the default one if it is unknown or no longer unlocked."""
+        skin_id = self.settings.settings.get("cube_skin", cube_skins.DEFAULT_SKIN)
+        skin = cube_skins.SKINS_BY_ID.get(skin_id)
+        manager = getattr(self, "achievements_manager", None)
+        if skin is None or (manager is not None and not cube_skins.is_unlocked(skin, manager)):
+            return cube_skins.DEFAULT_SKIN
+        return skin_id
 
     def toggle_fullscreen(self):
         """F11: switch between a window and borderless fullscreen on the current monitor"""

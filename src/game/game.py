@@ -118,7 +118,9 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
         
         # Initialize achievements manager
         self.achievements_manager = AchievementsManager()
-        
+        # The saved skin was applied before achievements were loaded: check it is still unlocked
+        self.renderer.set_skin(self.equipped_skin_id())
+
         # Initialize Supabase manager for global leaderboard
         self.supabase_manager = get_supabase_manager()
         

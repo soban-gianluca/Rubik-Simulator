@@ -8,6 +8,7 @@ from OpenGL.GLU import *
 from utils.path_helper import resource_path
 from src.rendering import backgrounds
 from src.ui import ui_style as ui
+from src import cube_skins
 
 class Renderer:
     def __init__(self, width=1280, height=720, cube_path="utils/cube.obj"):
@@ -55,6 +56,8 @@ class Renderer:
         # Import and initialize the Rubik's cube logic
         from src.rubiks_cube import RubiksCube
         self.rubiks_cube = RubiksCube()
+        self.skin = cube_skins.get_skin(cube_skins.DEFAULT_SKIN)
+        self._time_origin = time.perf_counter()
 
         # Now initialize cubes after colors are defined
         self.initialize_cubes()
@@ -87,6 +90,29 @@ class Renderer:
             self.background.stars = bool(stars)
         self.background.style = backgrounds.resolve(self.background_choice, self.background_mode)
         self.background.tint = tuple(c / 255.0 for c in ui.MODE_COLORS.get(self.background_mode, ui.ACCENT))
+
+    def set_skin(self, skin_id):
+        """Draw the cube with a skin from src/cube_skins.py."""
+        self.skin = cube_skins.get_skin(skin_id)
+        self.update_cube_colors()
+
+    def _sticker_color(self, index):
+        if index < 0:
+            return (0.1, 0.1, 0.1)  # inside the cube
+        palette = self.skin.get("colors") or self.rubiks_cube.color_map
+        return palette[index]
+
+    # Plate axes (T, B) the cube shader uses for each side: top, bottom, right, left, front, back
+    _PLATE_AXES = [(0, 2), (0, 2), (1, 2), (1, 2), (0, 1), (0, 1)]
+    _NORMALS = [(0, 1, 0), (0, -1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)]
+
+    def _sticker_frame(self, face_index, up):
+        """The sticker's pattern right and up directions in its side's plate coordinates."""
+        if up is None:
+            return (1.0, 0.0, 0.0, 1.0)
+        right = np.cross(up, self._NORMALS[face_index])
+        t, b = self._PLATE_AXES[face_index]
+        return (float(right[t]), float(right[b]), float(up[t]), float(up[b]))
 
     def set_background_mode(self, mode):
         """Game mode changed: used when the style is set to match the game mode."""
@@ -190,27 +216,28 @@ class Renderer:
                         z * self.cube_spacing * scale_factor
                     ]
                     
-                    # Get colors from the Rubik's cube state
-                    colors = []
-                    for face_index in range(6):
-                        color = self.rubiks_cube.get_cube_color(x, y, z, face_index)
-                        colors.append(color)
-                    
                     self.cubes.append({
                         'position': position,
-                        'colors': colors,
                         'grid_pos': (x, y, z)  # Store grid position for updates
                     })
-    
+        self.update_cube_colors()
+
     def update_cube_colors(self):
-        """Update cube colors based on current Rubik's cube state"""
+        """Update cube colors based on current Rubik's cube state and the skin"""
         for cube in self.cubes:
             x, y, z = cube['grid_pos']
-            colors = []
+            ids = [self.rubiks_cube.get_color_index(x, y, z, face_index) for face_index in range(6)]
+            cube['colors'] = [self._sticker_color(i) for i in ids]
+            # Uniform data, ready to upload every frame without conversions
+            cube['ids'] = np.array(ids, dtype=np.float32)
+            cube['colors_flat'] = np.array(cube['colors'], dtype=np.float32).ravel()
+            seeds, frames = [], []
             for face_index in range(6):
-                color = self.rubiks_cube.get_cube_color(x, y, z, face_index)
-                colors.append(color)
-            cube['colors'] = colors
+                tag, up = self.rubiks_cube.get_sticker(x, y, z, face_index)
+                seeds.append(float(max(tag, 0)))
+                frames.extend(self._sticker_frame(face_index, up))
+            cube['seeds'] = np.array(seeds, dtype=np.float32)
+            cube['frames'] = np.array(frames, dtype=np.float32)
     
     def load_obj(self, filename):
         """Load vertices, faces, and normals from OBJ file"""
@@ -305,7 +332,15 @@ void main() {
 #version 120
 uniform sampler2D grain;
 uniform vec3 stickers[6];   // sticker color per side: top, bottom, right, left, front, back
+uniform float stickerIds[6]; // color index (0-5) per side, -1 for sides inside the cube
 uniform vec4 plate[6];      // flat plate extents per side: amin, amax, bmin, bmax
+uniform int skinPattern;    // see src/cube_skins.py PATTERNS
+uniform vec3 skinAccent;
+uniform vec3 bodyColor;
+uniform float bodyGloss;
+uniform float uTime;
+uniform float stickerSeeds[6]; // physical sticker id per side (stays with the sticker as it moves)
+uniform vec4 stickerFrames[6]; // pattern right (xy) and up (zw) per side, in plate coordinates
 varying vec3 vObjP;
 varying vec3 vObjN;
 varying vec3 vEyeP;
@@ -330,6 +365,113 @@ vec3 shade(vec3 n, vec3 base, float shin, float spec_k, float rim_k) {
     float s = smoothstep(0.35, 0.55, pow(max(dot(n, normalize(l0 + v)), 0.0), shin)) * spec_k;
     float rim = smoothstep(0.55, 0.9, 1.0 - max(dot(n, v), 0.0)) * rim_k;
     return base * d + vec3(s) + vec3(0.55, 0.65, 0.85) * rim;
+}
+
+// ---------------------------------------------------------------- skin patterns
+// Mirrored on the CPU for the menu previews: src/rendering/skin_preview.py
+float hash21(vec2 q) { return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
+float box2(vec2 p, vec2 b) { vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
+vec3 hsv2rgb(float h, float s, float v) {
+    vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return v * mix(vec3(1.0), k, s);
+}
+float wob(vec2 p, float seed) {
+    return sin(p.x * 7.1 + seed) * 0.5 + sin(p.y * 9.3 + p.x * 3.7 + seed * 1.7) * 0.35
+         + sin((p.x - p.y) * 13.0 + seed * 2.3) * 0.2;
+}
+float glyph(float id, vec2 p) {
+    if (id < 0.5) return length(p) - 0.27;                                              // circle
+    if (id < 1.5) return min(box2(p, vec2(0.30, 0.08)), box2(p, vec2(0.08, 0.30)));      // plus
+    if (id < 2.5) { vec2 t = vec2(p.x, p.y + 0.09);                                      // triangle
+                    return max(abs(t.x) * 0.866 + t.y * 0.5, -t.y) - 0.18; }
+    if (id < 3.5) return (abs(p.x) + abs(p.y) - 0.34) * 0.7071;                          // diamond
+    if (id < 4.5) return abs(length(p) - 0.22) - 0.07;                                   // ring
+    vec2 r = vec2(p.x + p.y, p.x - p.y) * 0.7071;                                        // cross
+    return min(box2(r, vec2(0.32, 0.075)), box2(r, vec2(0.075, 0.32)));
+}
+
+// Sticker color (lit) and glow (unlit) for a point p (-0.5..0.5) on a sticker
+void skinColor(int side, vec2 p, vec3 base, vec2 look, float facing, float aa, out vec3 diff, out vec3 emis) {
+    float id = stickerIds[side];
+    diff = base;
+    emis = vec3(0.0);
+    if (id < -0.5 || skinPattern == 0) return;
+    float seed = stickerSeeds[side] * 7.31;
+    if (skinPattern == 1) {            // stripes
+        float u = (p.x + p.y) * 2.5;
+        diff = mix(base, skinAccent, 1.0 - smoothstep(-aa, aa, (abs(fract(u) - 0.5) - 0.25) / 2.5));
+    } else if (skinPattern == 2) {     // checker
+        float s = sin(p.x * 12.566) * sin(p.y * 12.566);
+        float w = 9.0 * aa;  // about the screen-space change of s over one pixel
+        diff = mix(base, skinAccent, smoothstep(-w, w, s));
+    } else if (skinPattern == 3) {     // dots
+        vec2 g = fract(p * 3.0 + 0.5) - 0.5;
+        diff = mix(base, skinAccent, 1.0 - smoothstep(-aa, aa, (length(g) - 0.28) / 3.0));
+    } else if (skinPattern == 4) {     // glyphs
+        diff = mix(base, skinAccent, 1.0 - smoothstep(-aa, aa, glyph(id, p)));
+    } else if (skinPattern == 5) {     // neon
+        float line = abs(rrect(p, 0.36, 0.12));
+        float core = 1.0 - smoothstep(-aa, aa, line - 0.025);
+        float glow = exp(-line * 26.0);
+        float pulse = 0.78 + 0.22 * sin(uTime * 2.2 + seed);
+        diff = base * 0.06;
+        emis = (base * (core * 1.1 + glow * 0.55) + vec3(core * 0.35)) * pulse;
+    } else if (skinPattern == 6) {     // psychedelic
+        float r = length(p);
+        float a = atan(p.y, p.x);
+        float h = id / 6.0 + 0.06 * sin(a * 3.0 + uTime * 2.0 + r * 10.0)
+                + 0.04 * sin(r * 18.0 - uTime * 3.0) + uTime * 0.03;
+        diff = hsv2rgb(fract(h), 0.85, 1.0) * (0.8 + 0.2 * sin(r * 30.0 - uTime * 4.0));
+    } else if (skinPattern == 7) {     // marble
+        float n = wob(p, seed);
+        float v = abs(sin((p.x * 2.0 + p.y) * 6.0 + n * 3.0));
+        float vein = 1.0 - smoothstep(0.0, 0.18, v);
+        diff = mix(base, skinAccent, vein * 0.75) * (0.92 + 0.08 * n);
+    } else if (skinPattern == 8) {     // lava
+        float n = wob(p, seed);
+        float crack = abs(sin(p.x * 8.0 + n * 4.0 + seed) * sin(p.y * 7.0 - n * 3.0 + seed * 0.7));
+        float glow = 1.0 - smoothstep(0.0, 0.22, crack);
+        float pulse = 0.7 + 0.3 * sin(uTime * 1.7 + seed + n * 3.0);
+        diff = skinAccent * (0.8 + 0.4 * n) + base * 0.12;
+        emis = base * glow * pulse * 1.3 + vec3(1.0, 0.9, 0.6) * pow(glow, 4.0) * 0.4 * pulse;
+    } else if (skinPattern == 9) {     // eyes: they follow the camera and blink now and then
+        float phase = fract(uTime * 0.21 + hash21(vec2(seed, 3.7)));
+        float open = 1.0 - smoothstep(0.0, 0.025, phase) * (1.0 - smoothstep(0.035, 0.065, phase));
+        float eye_h = 0.40 * open * max(0.0, 1.0 - 3.6 * p.x * p.x);
+        float eye = 1.0 - smoothstep(-aa, aa, abs(p.y) - eye_h);
+        vec2 c = p - look * 0.13;
+        float ir = length(c);
+        vec3 e = mix(vec3(0.96, 0.94, 0.9), base * (0.6 + 0.6 * smoothstep(0.0, 0.19, ir)),
+                     1.0 - smoothstep(-aa, aa, ir - 0.19));
+        e = mix(e, vec3(0.02), 1.0 - smoothstep(-aa, aa, ir - 0.075));
+        e = mix(e, vec3(1.0), 1.0 - smoothstep(-aa, aa, length(c - vec2(0.05, 0.05)) - 0.03));
+        e *= 1.0 - 0.6 * (1.0 - smoothstep(0.0, 0.05, eye_h - abs(p.y)));
+        diff = mix(mix(skinAccent, base, 0.2), e, eye);
+    } else if (skinPattern == 10) {    // hologram
+        vec3 rainbow = 0.5 + 0.5 * cos(6.2832 * (vec3(0.0, 0.33, 0.67) + (p.x - p.y) * 0.9
+                                                 + facing * 1.6 + uTime * 0.05));
+        diff = mix(base, rainbow, 0.2);
+        float s = hash21(floor(p * 28.0) + seed);
+        emis = vec3(step(0.97, s) * (0.5 + 0.5 * sin(uTime * 6.0 + s * 80.0)) * 0.5);
+    } else if (skinPattern == 11) {    // static
+        float n = hash21(floor(p * 22.0) + floor(uTime * 18.0) * vec2(1.7, 9.2) + seed);
+        float scan = 0.85 + 0.15 * sin((p.y + uTime * 0.3) * 90.0);
+        diff = base * (0.45 + 0.75 * n) * scan;
+        emis = base * 0.15 * n;
+    } else if (skinPattern == 12) {    // pixel
+        vec2 q = (p + 0.5) * 6.0;
+        vec2 l = fract(q) - 0.5;
+        float inner = 1.0 - smoothstep(-aa, aa, (max(abs(l.x), abs(l.y)) - 0.40) / 6.0);
+        diff = mix(base * 0.35, base * (0.78 + 0.3 * hash21(floor(q) + seed)), inner);
+    } else if (skinPattern == 13) {    // gems
+        float a = atan(p.y, p.x);
+        float sector = floor((a + 3.14159) / 0.785398);
+        float table = 1.0 - smoothstep(-aa, aa, abs(p.x) + abs(p.y) - 0.22);
+        float fb = mix(0.55 + 0.6 * hash21(vec2(sector, id * 3.1)), 1.25, table);
+        float tw = pow(max(0.0, sin(uTime * 2.0 + sector * 1.3 + seed)), 16.0) * 0.4;
+        diff = base * fb;
+        emis = base * tw * 0.5 + vec3(tw * 0.15);
+    }
 }
 
 void main() {
@@ -363,22 +505,39 @@ void main() {
 
     mat3 m = mat3(gl_ModelViewMatrix);
 
-    // Body: dark glossy plastic
+    // Body: plastic in the skin's color
     vec3 nb = normalize(m * normalize(on - pert * 0.25));
-    vec3 col = shade(nb, vec3(0.055, 0.058, 0.07), 40.0, 0.22, 0.35);
+    vec3 col = shade(nb, bodyColor, 40.0, 0.22 + bodyGloss, 0.35);
+
+    // Screen derivatives must be taken outside the branch below
+    float paa = max(length(fwidth(p)), 1e-4);
 
     // Sticker: rounded tile that wraps slightly over the bevel
     float d = rrect(p, TILE_HALF, TILE_RADIUS);
     float aa = max(fwidth(d) * 0.7, 1e-4);
     float tile = 1.0 - smoothstep(-aa, aa, d);
     if (tile > 0.0) {
+        // Skin pattern, only where there is a sticker. It is drawn in the sticker's own
+        // frame so it turns with the sticker; the view direction (object space) lets
+        // patterns react to the camera.
+        vec3 sdiff = stickers[side];
+        vec3 semis = vec3(0.0);
+        if (skinPattern != 0) {
+            vec3 ve = normalize(-vEyeP);
+            vec3 vo = normalize(vec3(dot(m[0], ve), dot(m[1], ve), dot(m[2], ve)));
+            vec4 fr = stickerFrames[side];
+            vec2 sp = vec2(dot(p, fr.xy), dot(p, fr.zw));
+            vec2 look = vec2(dot(vo, T), dot(vo, B));
+            look = vec2(dot(look, fr.xy), dot(look, fr.zw));
+            skinColor(side, sp, stickers[side], look, abs(dot(vo, on)), paa, sdiff, semis);
+        }
         float eps = 0.004;
         vec2 gd = vec2(rrect(p + vec2(eps, 0.0), TILE_HALF, TILE_RADIUS) - d,
                        rrect(p + vec2(0.0, eps), TILE_HALF, TILE_RADIUS) - d) / eps;
         float rim = 1.0 - smoothstep(0.0, 0.03, -d);
         vec3 tilt = (gd.x * T + gd.y * B) * rim * 0.5;
         vec3 nt = normalize(m * normalize(on - pert * 0.6 + tilt));
-        vec3 sticker = shade(nt, stickers[side], 30.0, 0.20, 0.10);
+        vec3 sticker = shade(nt, sdiff, 30.0, 0.20, 0.10) + semis;
         col = mix(col, sticker, tile);
     }
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
@@ -405,6 +564,14 @@ void main() {
             self._grain_loc = glGetUniformLocation(program, "grain")
             self._stickers_loc = glGetUniformLocation(program, "stickers")
             self._plate_loc = glGetUniformLocation(program, "plate")
+            self._ids_loc = glGetUniformLocation(program, "stickerIds")
+            self._pattern_loc = glGetUniformLocation(program, "skinPattern")
+            self._accent_loc = glGetUniformLocation(program, "skinAccent")
+            self._body_loc = glGetUniformLocation(program, "bodyColor")
+            self._gloss_loc = glGetUniformLocation(program, "bodyGloss")
+            self._time_loc = glGetUniformLocation(program, "uTime")
+            self._seeds_loc = glGetUniformLocation(program, "stickerSeeds")
+            self._frames_loc = glGetUniformLocation(program, "stickerFrames")
         except Exception as e:
             print(f"Cube shader unavailable, using basic shading: {e}")
             return
@@ -577,9 +744,17 @@ void main() {
             glUniform1i(self._grain_loc, 0)
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_2D, self.grain_texture)
+            skin = self.skin
+            patterned = skin["pattern_id"] != 0
+            glUniform1i(self._pattern_loc, skin["pattern_id"])
+            glUniform3fv(self._accent_loc, 1, skin["accent"])
+            glUniform3fv(self._body_loc, 1, skin["body"])
+            glUniform1f(self._gloss_loc, skin["gloss"])
+            # Wrapped so the float stays precise in the shader during long sessions
+            glUniform1f(self._time_loc, (time.perf_counter() - self._time_origin) % 3600.0)
         else:
             glEnable(GL_NORMALIZE)
-        body_color = (0.04, 0.04, 0.045)
+        body_color = self.skin["body"]
         glEnable(GL_CULL_FACE)  # the cubie mesh is closed and wound outward
 
         # Render each small cube
@@ -619,7 +794,11 @@ void main() {
             glScalef(0.8, 0.8, 0.8)
             
             if textured:
-                glUniform3fv(self._stickers_loc, 6, [c for color in colors for c in color])
+                glUniform3fv(self._stickers_loc, 6, cube['colors_flat'])
+                if patterned:  # the solid skins never read these
+                    glUniform1fv(self._ids_loc, 6, cube['ids'])
+                    glUniform1fv(self._seeds_loc, 6, cube['seeds'])
+                    glUniform4fv(self._frames_loc, 6, cube['frames'])
                 glCallList(self.full_display_list)
             else:
                 # Black plastic body, then each sticker plate in its color

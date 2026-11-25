@@ -64,6 +64,7 @@ class SettingsManager:
             "vsync": "off",
             "hints_enabled": True,
             "color_scheme": "standard",
+            "cube_skin": "classic",
             "difficulty_skyboxes": {
                 "freeplay": "utils/skyboxes/skybox_freeplay.png",
                 "easy": "utils/skyboxes/skybox_easy.jpg",

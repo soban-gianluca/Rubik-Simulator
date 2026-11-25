@@ -343,7 +343,8 @@ class SettingsMixin:
                                          self._on_color_scheme_change, control_w, visible=4,
                                          widget_id="color_scheme")
         self._row(menu, "Cube colors", [scheme_select],
-                  desc="Sticker colors that stay easy to tell apart with color blindness.", separator=False)
+                  desc="Sticker colors that stay easy to tell apart with color blindness (Classic skin).",
+                  separator=False)
         self._spacer(menu, 48)
         # Unapplied display choices exist only in the widgets: such a page is never reused
         self._settings_built_for = None if self.settings_changed else self._settings_state()

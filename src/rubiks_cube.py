@@ -1,3 +1,6 @@
+import functools
+import itertools
+
 import numpy as np
 
 # Sticker colors per color index (top, white, right, left, front, back faces of a solved cube).
@@ -39,6 +42,62 @@ def set_color_scheme(name):
     RubiksCube.color_map = COLOR_SCHEMES.get(name, COLOR_SCHEMES["standard"])
 
 
+FACE_NAMES = ['top', 'bottom', 'right', 'left', 'front', 'back']
+_SIDE_NORMALS = [(0, 1, 0), (0, -1, 0), (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)]
+
+
+def _slot(x, y, z, face_index):
+    """(face name, row, col) of the sticker on side ``face_index`` of the cubie at (x, y, z),
+    or None if that side is inside the cube. x, y, z are in [-1, 0, 1].
+    This mapping is critical - it determines how the logical cube maps to visual."""
+    if face_index == 0 and y == 1:  # Top face (white)
+        row, col = z+1, x+1
+    elif face_index == 1 and y == -1:  # Bottom face (yellow)
+        row, col = 1-z, x+1
+    elif face_index == 2 and x == 1:  # Right face (red)
+        row, col = 1-y, 1-z  # Fixed: prevent conflict with front face
+    elif face_index == 3 and x == -1:  # Left face (orange)
+        row, col = 1-y, z+1  # Fixed: prevent conflict with front face
+    elif face_index == 4 and z == 1:  # Front face (blue)
+        row, col = 1-y, x+1
+    elif face_index == 5 and z == -1:  # Back face (green)
+        row, col = 1-y, 1-x
+    else:
+        return None
+    if 0 <= row < 3 and 0 <= col < 3:
+        return FACE_NAMES[face_index], row, col
+    return None
+
+
+# Where every sticker slot sits: slot index = face index * 9 + row * 3 + col
+SLOT_POS = np.zeros((54, 3), dtype=int)
+SLOT_NORMAL = np.zeros((54, 3), dtype=int)
+for _x, _y, _z, _f in itertools.product((-1, 0, 1), (-1, 0, 1), (-1, 0, 1), range(6)):
+    _s = _slot(_x, _y, _z, _f)
+    if _s is not None:
+        _i = _f * 9 + _s[1] * 3 + _s[2]
+        SLOT_POS[_i] = (_x, _y, _z)
+        SLOT_NORMAL[_i] = _SIDE_NORMALS[_f]
+# Pattern "up" of each sticker on a solved cube: world up on the sides, towards the
+# back on top and towards the front underneath (upright when the cube is tipped forward)
+_INITIAL_UP = np.array([(0, 0, -1) if n[1] > 0 else (0, 0, 1) if n[1] < 0 else (0, 1, 0)
+                        for n in SLOT_NORMAL], dtype=int)
+# The 24 rotations of a cube (signed permutation matrices with determinant 1)
+_ROTATIONS = [m for m in (np.array([[sx if j == a else 0 for j in range(3)] for a, sx in zip(perm, signs)])
+                          for perm in itertools.permutations(range(3))
+                          for signs in itertools.product((1, -1), repeat=3))
+              if round(np.linalg.det(m)) == 1]
+
+
+def _tracked(move):
+    """A base layer move that also carries the physical stickers along (see _track_stickers)."""
+    @functools.wraps(move)
+    def wrapper(self, clockwise=True):
+        move(self, clockwise)
+        self._track_stickers(move, clockwise)
+    return wrapper
+
+
 class RubiksCube:
     color_map = COLOR_SCHEMES["standard"]
 
@@ -56,37 +115,75 @@ class RubiksCube:
         }
         # Move history for undo functionality
         self.move_history = []
+        self.reset_sticker_tracking()
+
+    # ------------------------------------------------------------ physical stickers
+    # Colors alone do not say which physical sticker is where, nor how it is turned. Skins
+    # with patterns need both, so every sticker carries an id (permuted exactly like the
+    # colors) and the direction its pattern points ("up"), rotated with each layer turn.
+    def reset_sticker_tracking(self):
+        self.tags = {name: np.arange(i * 9, i * 9 + 9).reshape(3, 3) for i, name in enumerate(FACE_NAMES)}
+        self.sticker_up = _INITIAL_UP.copy()
+
+    def _slots_of_tags(self, tags):
+        flat = np.concatenate([tags[name].ravel() for name in FACE_NAMES])
+        slots = np.empty(54, dtype=int)
+        slots[flat] = np.arange(54)
+        return slots
+
+    def _track_stickers(self, move, clockwise):
+        """Apply a base move that just changed the colors to the sticker ids too, then turn
+        the pattern direction of every sticker in the layer that moved."""
+        old_slots = self._slots_of_tags(self.tags)
+        history_len = len(self.move_history)
+        self.faces, self.tags = self.tags, self.faces
+        try:
+            move(self, clockwise)
+        finally:
+            self.faces, self.tags = self.tags, self.faces
+            del self.move_history[history_len:]
+        new_slots = self._slots_of_tags(self.tags)
+
+        # The layer's rotation, from any moved sticker that is not a center
+        # (a center's position and normal are parallel, which leaves its twist open)
+        for tag in np.nonzero(old_slots != new_slots)[0]:
+            a, b = old_slots[tag], new_slots[tag]
+            if not np.array_equal(SLOT_POS[a], SLOT_NORMAL[a]):
+                break
+        else:
+            return
+        for rot in _ROTATIONS:
+            if (np.array_equal(rot @ SLOT_POS[a], SLOT_POS[b])
+                    and np.array_equal(rot @ SLOT_NORMAL[a], SLOT_NORMAL[b])):
+                break
+        else:
+            return
+        axis = int(np.argmax(np.diag(rot) == 1))  # the axis the layer turns around
+        in_layer = SLOT_POS[old_slots][:, axis] == SLOT_POS[a][axis]
+        self.sticker_up[in_layer] = self.sticker_up[in_layer] @ rot.T
+
+    def get_sticker(self, x, y, z, face_index):
+        """(sticker id, pattern up vector) of the sticker on side ``face_index`` of the cubie
+        at (x, y, z), or (-1, None) if that side is inside the cube."""
+        slot = _slot(x, y, z, face_index)
+        if slot is None:
+            return -1, None
+        tag = int(self.tags[slot[0]][slot[1], slot[2]])
+        return tag, self.sticker_up[tag]
         
+    def get_color_index(self, x, y, z, face_index):
+        """Color index (0-5) of the sticker on side ``face_index`` of the cubie at (x, y, z),
+        or -1 if that side is inside the cube."""
+        slot = _slot(x, y, z, face_index)
+        if slot is None:
+            return -1
+        return int(self.faces[slot[0]][slot[1], slot[2]])
+
     def get_cube_color(self, x, y, z, face_index):
         """Get the color for a specific cube face at position (x,y,z)"""
-        # Convert 3D position to face position
-        # x,y,z are in range [-1, 0, 1]
-        face_names = ['top', 'bottom', 'right', 'left', 'front', 'back']
-        
-        # Map 3D coordinates to 2D face coordinates
-        # This mapping is critical - it determines how the logical cube maps to visual
-        if face_index == 0 and y == 1:  # Top face (white)
-            row, col = z+1, x+1  
-        elif face_index == 1 and y == -1:  # Bottom face (yellow)
-            row, col = 1-z, x+1  
-        elif face_index == 2 and x == 1:  # Right face (red)
-            row, col = 1-y, 1-z  # Fixed: prevent conflict with front face
-        elif face_index == 3 and x == -1:  # Left face (orange)
-            row, col = 1-y, z+1  # Fixed: prevent conflict with front face
-        elif face_index == 4 and z == 1:  # Front face (blue)
-            row, col = 1-y, x+1
-        elif face_index == 5 and z == -1:  # Back face (green)
-            row, col = 1-y, 1-x
-        else:
-            return (0.1, 0.1, 0.1)  # Internal face (black)
-        
-        # Ensure coordinates are valid
-        if 0 <= row < 3 and 0 <= col < 3:
-            color_index = self.faces[face_names[face_index]][row, col]
-            return self.color_map[color_index]
-        
-        return (0.1, 0.1, 0.1)  # Black for internal faces
-    
+        index = self.get_color_index(x, y, z, face_index)
+        return self.color_map[index] if index >= 0 else (0.1, 0.1, 0.1)
+
     def rotate_face_clockwise(self, face_array):
         """Rotate a 3x3 face array 90 degrees clockwise"""
         return np.rot90(face_array, -1)
@@ -95,6 +192,7 @@ class RubiksCube:
         """Rotate a 3x3 face array 90 degrees counterclockwise"""
         return np.rot90(face_array, 1)
     
+    @_tracked
     def move_R(self, clockwise=True):
         """Rotate the right face - Standard Rubik's cube R move"""
         self.move_history.append(('R', clockwise))
@@ -120,6 +218,7 @@ class RubiksCube:
             self.faces['back'][:, 0] = self.faces['bottom'][:, 2][::-1].copy()  
             self.faces['bottom'][:, 2] = temp.copy()
     
+    @_tracked
     def move_L(self, clockwise=True):
         """Rotate the left face - Standard Rubik's cube L move"""
         self.move_history.append(('L', clockwise))
@@ -145,6 +244,7 @@ class RubiksCube:
             self.faces['back'][:, 2] = self.faces['top'][:, 0][::-1].copy()  
             self.faces['top'][:, 0] = temp.copy()
     
+    @_tracked
     def move_U(self, clockwise=True):
         """Rotate the upper (top) face - Standard Rubik's cube U move"""
         self.move_history.append(('U', clockwise))
@@ -170,6 +270,7 @@ class RubiksCube:
             self.faces['back'][0, :] = self.faces['right'][0, :].copy()
             self.faces['right'][0, :] = temp.copy()
     
+    @_tracked
     def move_D(self, clockwise=True):
         """Rotate the down (bottom) face - Standard Rubik's cube D move"""
         self.move_history.append(('D', clockwise))
@@ -195,6 +296,7 @@ class RubiksCube:
             self.faces['back'][2, :] = self.faces['left'][2, :].copy()
             self.faces['left'][2, :] = temp.copy()
     
+    @_tracked
     def move_F(self, clockwise=True):
         """Rotate the front face - Standard Rubik's cube F move"""
         self.move_history.append(('F', clockwise))
@@ -220,6 +322,7 @@ class RubiksCube:
             self.faces['bottom'][0, :] = self.faces['left'][:, 2].copy()
             self.faces['left'][:, 2] = temp[::-1].copy()
     
+    @_tracked
     def move_B(self, clockwise=True):
         """Rotate the back face - Standard Rubik's cube B move"""
         self.move_history.append(('B', clockwise))
@@ -245,6 +348,7 @@ class RubiksCube:
             self.faces['bottom'][2, :] = self.faces['right'][:, 2][::-1].copy()
             self.faces['right'][:, 2] = temp.copy()
 
+    @_tracked
     def move_M(self, clockwise=True):
         """Rotate the middle slice (M move) - between L and R faces"""
         self.move_history.append(('M', clockwise))
@@ -265,6 +369,7 @@ class RubiksCube:
             self.faces['back'][:, 1] = self.faces['bottom'][:, 1][::-1].copy()
             self.faces['bottom'][:, 1] = temp.copy()
 
+    @_tracked
     def move_E(self, clockwise=True):
         """Rotate the equatorial slice (E move) - between U and D faces"""
         self.move_history.append(('E', clockwise))
@@ -285,6 +390,7 @@ class RubiksCube:
             self.faces['back'][1, :] = self.faces['right'][1, :].copy()
             self.faces['right'][1, :] = temp.copy()
 
+    @_tracked
     def move_S(self, clockwise=True):
         """Rotate the standing slice (S move) - between F and B faces"""
         self.move_history.append(('S', clockwise))
@@ -643,7 +749,9 @@ class RubiksCube:
         """Get the current cube state for saving"""
         return {
             'faces': {face_name: face_array.copy() for face_name, face_array in self.faces.items()},
-            'move_history': self.move_history.copy()
+            'move_history': self.move_history.copy(),
+            'tags': {face_name: tag_array.copy() for face_name, tag_array in self.tags.items()},
+            'sticker_up': self.sticker_up.copy(),
         }
     
     def set_state(self, state):
@@ -652,3 +760,8 @@ class RubiksCube:
             self.faces = {face_name: face_array.copy() for face_name, face_array in state['faces'].items()}
         if 'move_history' in state:
             self.move_history = state['move_history'].copy()
+        if 'tags' in state and 'sticker_up' in state:
+            self.tags = {face_name: tag_array.copy() for face_name, tag_array in state['tags'].items()}
+            self.sticker_up = state['sticker_up'].copy()
+        else:
+            self.reset_sticker_tracking()

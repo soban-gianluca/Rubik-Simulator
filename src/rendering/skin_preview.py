@@ -62,21 +62,40 @@ def _wob(px, py, seed):
             + np.sin((px - py) * 13.0 + seed * 2.3) * 0.2)
 
 
-def _glyph(ids, px, py):
-    tri_y = py + 0.09
-    rx, ry = (px + py) * 0.7071, (px - py) * 0.7071
-    shapes = [
-        np.hypot(px, py) - 0.27,
-        np.minimum(_box2(px, py, 0.30, 0.08), _box2(px, py, 0.08, 0.30)),
-        np.maximum(np.abs(px) * 0.866 + tri_y * 0.5, -tri_y) - 0.18,
-        (np.abs(px) + np.abs(py) - 0.34) * 0.7071,
-        np.abs(np.hypot(px, py) - 0.22) - 0.07,
-        np.minimum(_box2(rx, ry, 0.32, 0.075), _box2(rx, ry, 0.075, 0.32)),
-    ]
-    out = shapes[5].copy()
-    for i in range(5):
-        out = np.where(ids == i, shapes[i], out)
+def _ell(px, py, cx, cy, rx, ry):
+    return (np.hypot((px - cx) / rx, (py - cy) / ry) - 1.0) * min(rx, ry)
+
+
+def _glyph_raw(ids, px, py):
+    """Hieroglyphs (ankh, eye of Horus, scarab, feather, cobra, sun disk), like glyph() in the shader."""
+    r = np.hypot
+    ankh = np.minimum(np.abs(r(px, py - 0.17) - 0.09) - 0.04,
+                      np.minimum(_box2(px, py + 0.1, 0.04, 0.2), _box2(px, py, 0.15, 0.04)))
+    a = np.abs(py) - 0.13 * np.maximum(0.0, 1.0 - px * px / 0.09)
+    outline = np.maximum(np.abs(a) - 0.027, np.abs(px) - 0.31)
+    eye = np.minimum(np.minimum(outline, r(px - 0.03, py) - 0.065),
+                     np.minimum(_box2(px, py - 0.22, 0.3, 0.027),
+                                np.minimum(_box2(px - 0.12, py + 0.2, 0.027, 0.065),
+                                           np.abs(r(px + 0.08, py + 0.24) - 0.045) - 0.022)))
+    body = np.maximum(_ell(px, py, 0.0, -0.03, 0.15, 0.19), 0.012 - np.abs(px))
+    head = _ell(px, py, 0.0, 0.2, 0.09, 0.05)
+    qx = np.abs(px) - 0.2
+    legs = np.minimum(_box2(qx, py + 0.1, 0.07, 0.016),
+                      np.minimum(_box2(qx, py + 0.01, 0.07, 0.016), _box2(qx, py - 0.08, 0.07, 0.016)))
+    scarab = np.minimum(np.minimum(body, head), legs)
+    feather = np.minimum(np.abs(_ell(px, py, 0.0, 0.05, 0.13, 0.25)) - 0.022, _box2(px, py + 0.02, 0.02, 0.3))
+    hood = np.maximum(_ell(px, py, 0.0, 0.12, 0.14, 0.17), 0.022 - r(px - 0.05, py - 0.2))
+    tail = np.maximum(np.abs(px - 0.07 * np.sin(py * 16.0)) - 0.045, np.maximum(py, -py - 0.3))
+    cobra = np.minimum(hood, tail)
+    sun = np.minimum(np.abs(r(px, py) - 0.26) - 0.038, r(px, py) - 0.075)
+    out = sun
+    for i, shape in enumerate((ankh, eye, scarab, feather, cobra)):
+        out = np.where(ids == i, shape, out)
     return out
+
+
+def _glyph(ids, px, py):
+    return _glyph_raw(ids, px * 0.72, py * 0.72) / 0.72
 
 
 def _mix(a, b, t):
@@ -100,7 +119,42 @@ def _pattern(pid, px, py, base, ids, seed, accent, aa):
         gx, gy = _fract(px * 3.0 + 0.5) - 0.5, _fract(py * 3.0 + 0.5) - 0.5
         diff = _mix(base, accent, _fill((np.hypot(gx, gy) - 0.28) / 3.0, aa))
     elif pid == cube_skins.PATTERNS["glyphs"]:
-        diff = _mix(base, accent, _fill(_glyph(ids, px, py), aa))
+        fine = 1.0 - float(_smoothstep(0.4, 1.0, aa * 90.0))
+        grain = 0.5 + (_hash21(np.floor(px * 90.0) + seed, np.floor(py * 90.0) + seed) - 0.5) * fine
+        coarse = 0.5 + (_hash21(np.floor(px * 38.0) + seed * 1.9, np.floor(py * 38.0) + seed * 1.9) - 0.5) * fine
+        stone = base * ((0.86 + 0.16 * grain + 0.14 * coarse) * (0.94 + 0.08 * _wob(px * 1.5, py * 1.5, seed)))[:, None]
+        ripple = 1.0 + 0.045 * fine * np.sin((px * 0.45 + py) * 46.0 + _wob(px * 2.0, py * 2.0, seed) * 5.0)
+        stone = stone * ripple[:, None]
+        pale = np.broadcast_to(np.array([0.85, 0.72, 0.5]), stone.shape)
+        stone = _mix(stone, pale, 0.25 * _smoothstep(0.35, 0.8, _wob(px * 2.7 + 5.0, py * 2.7 + 5.0, seed * 1.7) + 0.3))
+        glint = np.where(_hash21(np.floor(px * 90.0) + seed * 3.3, np.floor(py * 90.0) + seed * 3.3) > 0.975, fine, 0.0)
+        stone = stone + np.array([0.1, 0.09, 0.06]) * glint[:, None]
+        pits = np.where(_hash21(np.floor(px * 55.0) + seed * 1.3, np.floor(py * 55.0) + seed * 1.3) > 0.985, 0.25 * fine, 0.0)
+        stone = stone * (1.0 - pits)[:, None]
+        chip = np.where(_hash21(np.floor(px * 18.0) + seed * 0.4, np.floor(py * 18.0) + seed * 0.4) >= 0.9, 0.03, 0.0)
+        d = (_glyph(ids, px, py) + _wob(px * 3.0, py * 3.0, seed + ids) * 0.014 + chip * fine
+             + (_hash21(np.floor(px * 45.0) + seed * 0.7, np.floor(py * 45.0) + seed * 0.7) - 0.5) * 0.016 * fine)
+        inside = _fill(d, aa)
+        edge = 1.0 - _smoothstep(0.0, 0.03, -d)
+        wear = (0.5 + 0.5 * _wob(px * 3.4 + ids, py * 3.4 + ids, seed * 1.3)
+                + (_hash21(np.floor(px * 40.0) + seed * 2.1, np.floor(py * 40.0) + seed * 2.1) - 0.5) * 0.5 * fine
+                + (_hash21(np.floor(px * 90.0) + seed * 4.7, np.floor(py * 90.0) + seed * 4.7) - 0.5) * 0.3 * fine
+                + 0.22 * edge)
+        speck = np.where(_hash21(np.floor(px * 70.0) + seed * 5.9, np.floor(py * 70.0) + seed * 5.9) >= 0.82, 0.45 * fine, 0.0)
+        paint = (1.0 - _smoothstep(0.66, 0.78, wear)) * (1.0 - speck)
+        crack = (1.0 - _smoothstep(0.0, 0.09, np.abs(np.sin((px * 0.7 - py) * 35.0 + _wob(px * 4.0, py * 4.0, seed) * 6.0)))) * fine
+        teal = np.array([0.09, 0.4, 0.41]) * (0.8 + 0.4 * grain)[:, None]
+        teal = _mix(teal, np.broadcast_to(np.array([0.2, 0.5, 0.45]), teal.shape),
+                    0.4 * (0.5 + 0.5 * _wob(px * 5.0, py * 5.0, seed * 0.9)))
+        teal = teal * (1.0 - 0.45 * crack)[:, None]
+        plaster = np.array([0.84, 0.79, 0.67]) * (0.9 + 0.2 * grain)[:, None]
+        bare = _mix(stone * 0.6, plaster, 0.7 * edge)
+        paint = paint * _fill(d + 0.009, aa)   # paint stays inside the carved edge, with a thin bare rim
+        groove = _mix(bare, teal, paint)
+        shadow = inside * (1.0 - _fill(_glyph(ids, px - 0.018, py + 0.018), aa))
+        lit = inside * (1.0 - _fill(_glyph(ids, px + 0.018, py - 0.018), aa))
+        groove = groove * ((1.0 - 0.55 * shadow) * (1.0 + 0.35 * lit))[:, None]
+        diff = _mix(stone, groove, inside)
     elif pid == cube_skins.PATTERNS["neon"]:
         line = np.abs(_rrect(px, py, 0.36, 0.12))
         core = _fill(line - 0.025, aa)
@@ -128,18 +182,32 @@ def _pattern(pid, px, py, base, ids, seed, accent, aa):
         pulse = 0.7 + 0.3 * np.sin(seed + n * 3.0)
         diff = accent * (0.8 + 0.4 * n)[:, None] + base * 0.12
         emis = base * (glow * pulse * 1.3)[:, None] + np.array([1.0, 0.9, 0.6]) * (glow ** 4 * 0.4 * pulse)[:, None]
-    elif pid == cube_skins.PATTERNS["eyes"]:
-        eye_h = 0.40 * np.maximum(0.0, 1.0 - 3.6 * px * px)
-        eye = _fill(np.abs(py) - eye_h, aa)
-        ir = np.hypot(px, py)
-        sclera = np.array([0.96, 0.94, 0.9])
-        iris = base * (0.6 + 0.6 * _smoothstep(0.0, 0.19, ir))[:, None]
-        e = sclera + (iris - sclera) * _fill(ir - 0.19, aa)[:, None]
-        e = _mix(e, np.full_like(e, 0.02), _fill(ir - 0.075, aa))
-        e = _mix(e, np.ones_like(e), _fill(np.hypot(px - 0.05, py - 0.05) - 0.03, aa))
-        e = e * (1.0 - 0.6 * (1.0 - _smoothstep(0.0, 0.05, eye_h - np.abs(py))))[:, None]
-        lid = accent + (base - accent) * 0.2
-        diff = lid + (e - lid) * eye[:, None]
+    elif pid == cube_skins.PATTERNS["feathers"]:
+        qx, qy = px * 4.5 + seed * 0.37, py * 4.5 + seed * 0.61
+        d1 = np.full(qx.shape, 9.0)
+        d2 = np.full(qx.shape, 9.0)
+        lx, ly = np.zeros_like(qx), np.zeros_like(qx)
+        cx1, cy1 = np.zeros_like(qx), np.zeros_like(qx)
+        for j in (-1, 0, 1):
+            cy = np.floor(qy) + j
+            sh = 0.5 * np.mod(cy, 2.0)
+            for i in (-1, 0, 1):
+                cx = np.floor(qx - sh) + i + 0.5 + sh
+                dx, dy = qx - cx, qy - (cy + 0.5)
+                dist = np.hypot(dx, dy * 0.8)
+                nearest = dist < d1
+                second = ~nearest & (dist < d2)
+                d2 = np.where(nearest, d1, np.where(second, dist, d2))
+                lx, ly = np.where(nearest, dx, lx), np.where(nearest, dy, ly)
+                cx1, cy1 = np.where(nearest, cx, cx1), np.where(nearest, cy + 0.5, cy1)
+                d1 = np.where(nearest, dist, d1)
+        h = _hash21(cx1, cy1)
+        seam = 1.0 - _smoothstep(0.0, 0.14, d2 - d1)
+        shaft = (1.0 - _smoothstep(0.02, 0.06, np.abs(lx))) * _smoothstep(-0.35, -0.1, ly)
+        bar = 1.0 - _smoothstep(0.03, 0.09, np.abs(ly + np.abs(lx) * 0.7 - 0.12))
+        f = base * ((0.7 + 0.35 * h) * (0.85 + 0.35 * (ly + 0.5)))[:, None]
+        f = _mix(f, np.broadcast_to(accent, f.shape), 0.35 * bar + 0.45 * shaft)
+        diff = f * (1.0 - 0.55 * seam)[:, None]
     elif pid == cube_skins.PATTERNS["holo"]:
         phase = np.array([0.0, 0.33, 0.67]) + ((px - py) * 0.9 + 1.6)[:, None]
         rainbow = 0.5 + 0.5 * np.cos(6.2832 * phase)

@@ -173,6 +173,17 @@ class WidgetsMixin:
             slider_thickness=max(8, ui.px(16)), slider_height_factor=0.9, slider_sel_highlight_enabled=False,
             slider_text_value_enabled=False, value_format=lambda x: "", repeat_keys=True)
         slider.snap_value = snap
+        # pygame-menu draws the handle as a plain rectangle: round it after every render
+        raw_render = slider._render
+
+        def render_round(*a, **kw):
+            result = raw_render(*a, **kw)
+            handles = getattr(slider, "_slider", None)
+            if handles and not getattr(slider, "_handles_rounded", None) is handles:
+                slider._slider = [self._round_handle(h) for h in handles]
+                slider._handles_rounded = slider._slider
+            return result
+        slider._render = render_round
         # A generous grab area around the handle (the default is the handle itself)
         grab = ui.px(26)
         raw_rect = slider._get_slider_inflate_rect
@@ -180,6 +191,16 @@ class WidgetsMixin:
             pos, inflate if inflate is not None else ((grab, grab) if kw.get("to_real_position") else None), **kw)
         self._sliders.append(slider)
         return slider
+
+    @staticmethod
+    def _round_handle(handle):
+        """Anti-aliased fully rounded copy of a flat rectangular handle surface."""
+        w, h = handle.get_size()
+        color = handle.get_at((w // 2, h // 2))
+        k = 4
+        big = pygame.Surface((w * k, h * k), pygame.SRCALPHA)
+        pygame.draw.rect(big, color, big.get_rect(), border_radius=min(w, h) * k // 2)
+        return pygame.transform.smoothscale(big, (w, h))
 
     # ================================================================ painters
     def _paint_button(self, surface, rect, d, hovered, focused, disabled):

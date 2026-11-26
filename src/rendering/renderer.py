@@ -401,16 +401,43 @@ float wob(vec2 p, float seed) {
     return sin(p.x * 7.1 + seed) * 0.5 + sin(p.y * 9.3 + p.x * 3.7 + seed * 1.7) * 0.35
          + sin((p.x - p.y) * 13.0 + seed * 2.3) * 0.2;
 }
-float glyph(float id, vec2 p) {
-    if (id < 0.5) return length(p) - 0.27;                                              // circle
-    if (id < 1.5) return min(box2(p, vec2(0.30, 0.08)), box2(p, vec2(0.08, 0.30)));      // plus
-    if (id < 2.5) { vec2 t = vec2(p.x, p.y + 0.09);                                      // triangle
-                    return max(abs(t.x) * 0.866 + t.y * 0.5, -t.y) - 0.18; }
-    if (id < 3.5) return (abs(p.x) + abs(p.y) - 0.34) * 0.7071;                          // diamond
-    if (id < 4.5) return abs(length(p) - 0.22) - 0.07;                                   // ring
-    vec2 r = vec2(p.x + p.y, p.x - p.y) * 0.7071;                                        // cross
-    return min(box2(r, vec2(0.32, 0.075)), box2(r, vec2(0.075, 0.32)));
+float glyphRaw(float id, vec2 p) {      // ankh, eye of Horus, scarab, feather of Maat, cobra, sun disk of Ra
+    if (id < 0.5) {
+        float loop = abs(length(p - vec2(0.0, 0.17)) - 0.09) - 0.04;
+        return min(loop, min(box2(p - vec2(0.0, -0.1), vec2(0.04, 0.2)), box2(p, vec2(0.15, 0.04))));
+    }
+    if (id < 1.5) {
+        float a = abs(p.y) - 0.13 * max(0.0, 1.0 - p.x * p.x / 0.09);
+        float outline = max(abs(a) - 0.027, abs(p.x) - 0.31);
+        float iris = length(p - vec2(0.03, 0.0)) - 0.065;
+        float brow = box2(p - vec2(0.0, 0.22), vec2(0.3, 0.027));
+        float tear = box2(p - vec2(0.12, -0.2), vec2(0.027, 0.065));
+        float spiral = abs(length(p - vec2(-0.08, -0.24)) - 0.045) - 0.022;
+        return min(min(outline, iris), min(brow, min(tear, spiral)));
+    }
+    if (id < 2.5) {
+        float body = (length((p - vec2(0.0, -0.03)) / vec2(0.15, 0.19)) - 1.0) * 0.15;
+        body = max(body, 0.012 - abs(p.x));
+        float head = (length((p - vec2(0.0, 0.2)) / vec2(0.09, 0.05)) - 1.0) * 0.05;
+        vec2 q = vec2(abs(p.x) - 0.2, p.y);
+        float legs = min(box2(q - vec2(0.0, -0.1), vec2(0.07, 0.016)),
+                         min(box2(q - vec2(0.0, -0.01), vec2(0.07, 0.016)), box2(q - vec2(0.0, 0.08), vec2(0.07, 0.016))));
+        return min(min(body, head), legs);
+    }
+    if (id < 3.5) {
+        float vane = (length((p - vec2(0.0, 0.05)) / vec2(0.13, 0.25)) - 1.0) * 0.13;
+        return min(abs(vane) - 0.022, box2(p - vec2(0.0, -0.02), vec2(0.02, 0.3)));
+    }
+    if (id < 4.5) {
+        float hood = (length((p - vec2(0.0, 0.12)) / vec2(0.14, 0.17)) - 1.0) * 0.14;
+        hood = max(hood, 0.022 - length(p - vec2(0.05, 0.2)));
+        float body = max(abs(p.x - 0.07 * sin(p.y * 16.0)) - 0.045, max(p.y, -p.y - 0.3));
+        return min(hood, body);
+    }
+    return min(abs(length(p) - 0.26) - 0.038, length(p) - 0.075);
 }
+
+float glyph(float id, vec2 p) { return glyphRaw(id, p * 0.72) / 0.72; }   // symbols drawn 1.4x larger
 
 // Sticker color (lit) and glow (unlit) for a point p (-0.5..0.5) on a sticker
 void skinColor(int side, vec2 p, vec3 base, vec2 look, float facing, float aa, out vec3 diff, out vec3 emis) {
@@ -430,8 +457,42 @@ void skinColor(int side, vec2 p, vec3 base, vec2 look, float facing, float aa, o
     } else if (skinPattern == 3) {     // dots
         vec2 g = fract(p * 3.0 + 0.5) - 0.5;
         diff = mix(base, skinAccent, 1.0 - smoothstep(-aa, aa, (length(g) - 0.28) / 3.0));
-    } else if (skinPattern == 4) {     // glyphs
-        diff = mix(base, skinAccent, 1.0 - smoothstep(-aa, aa, glyph(id, p)));
+    } else if (skinPattern == 4) {     // glyphs: weathered stone, hieroglyphs filled with worn teal paint
+        float fine = 1.0 - smoothstep(0.4, 1.0, aa * 90.0);      // fine detail fades out at grazing angles
+        float grain = mix(0.5, hash21(floor(p * 90.0) + seed), fine);
+        float coarse = mix(0.5, hash21(floor(p * 38.0) + seed * 1.9), fine);
+        // Desert sand: visible grain at two scales, soft wind ripples, a few glinting grains
+        vec3 stone = base * (0.86 + 0.16 * grain + 0.14 * coarse) * (0.94 + 0.08 * wob(p * 1.5, seed));
+        stone *= 1.0 + 0.045 * fine * sin((p.x * 0.45 + p.y) * 46.0 + wob(p * 2.0, seed) * 5.0);
+        stone = mix(stone, vec3(0.85, 0.72, 0.5), 0.25 * smoothstep(0.35, 0.8, wob(p * 2.7 + vec2(5.0), seed * 1.7) + 0.3));
+        stone += vec3(0.1, 0.09, 0.06) * step(0.975, hash21(floor(p * 90.0) + seed * 3.3)) * fine;
+        stone *= 1.0 - 0.25 * step(0.985, hash21(floor(p * 55.0) + seed * 1.3)) * fine;
+        // Eroded symbols: ragged edges, chunks broken out of the strokes, paint flaked away in
+        // crumbs, sand grains showing through the paint, and fine cracks
+        float chip = step(0.9, hash21(floor(p * 18.0) + seed * 0.4)) * 0.03;
+        float d = glyph(id, p) + wob(p * 3.0, seed + id) * 0.014 + chip * fine
+                + (hash21(floor(p * 45.0) + seed * 0.7) - 0.5) * 0.016 * fine;
+        float inside = 1.0 - smoothstep(-aa, aa, d);
+        float edge = 1.0 - smoothstep(0.0, 0.03, -d);
+        float wear = 0.5 + 0.5 * wob(p * 3.4 + vec2(id), seed * 1.3)
+                   + (hash21(floor(p * 40.0) + seed * 2.1) - 0.5) * 0.5 * fine
+                   + (hash21(floor(p * 90.0) + seed * 4.7) - 0.5) * 0.3 * fine + 0.22 * edge;
+        float paint = (1.0 - smoothstep(0.66, 0.78, wear))
+                    * (1.0 - 0.45 * step(0.82, hash21(floor(p * 70.0) + seed * 5.9)) * fine);
+        float crack = (1.0 - smoothstep(0.0, 0.09, abs(sin((p.x * 0.7 - p.y) * 35.0 + wob(p * 4.0, seed) * 6.0)))) * fine;
+        vec3 teal = vec3(0.09, 0.4, 0.41) * (0.8 + 0.4 * grain);
+        teal = mix(teal, vec3(0.2, 0.5, 0.45), 0.4 * (0.5 + 0.5 * wob(p * 5.0, seed * 0.9)));
+        teal *= 1.0 - 0.45 * crack;
+        vec3 bare = mix(stone * 0.6, vec3(0.84, 0.79, 0.67) * (0.9 + 0.2 * grain), 0.7 * edge);
+        // Paint stays inside the carved edge, with a thin bare rim all around
+        paint *= 1.0 - smoothstep(-aa, aa, d + 0.009);
+        vec3 groove = mix(bare, teal, paint);
+        // Relief: light from the upper left, so the wall on that side of the groove is in shadow
+        vec2 e = vec2(-0.018, 0.018);
+        float shadow = inside * smoothstep(-aa, aa, glyph(id, p + e));
+        float lit = inside * smoothstep(-aa, aa, glyph(id, p - e));
+        groove *= (1.0 - 0.55 * shadow) * (1.0 + 0.35 * lit);
+        diff = mix(stone, groove, inside);
     } else if (skinPattern == 5) {     // neon
         float line = abs(rrect(p, 0.36, 0.12));
         float core = 1.0 - smoothstep(-aa, aa, line - 0.025);
@@ -465,19 +526,31 @@ void skinColor(int side, vec2 p, vec3 base, vec2 look, float facing, float aa, o
         float pulse = 0.7 + 0.3 * sin(uTime * 1.7 + seed + n * 3.0);
         diff = skinAccent * (0.8 + 0.4 * n) + base * 0.12;
         emis = base * glow * pulse * 1.3 + vec3(1.0, 0.9, 0.6) * pow(glow, 4.0) * 0.4 * pulse;
-    } else if (skinPattern == 9) {     // eyes: they follow the camera and blink now and then
-        float phase = fract(uTime * 0.21 + hash21(vec2(seed, 3.7)));
-        float open = 1.0 - smoothstep(0.0, 0.025, phase) * (1.0 - smoothstep(0.035, 0.065, phase));
-        float eye_h = 0.40 * open * max(0.0, 1.0 - 3.6 * p.x * p.x);
-        float eye = 1.0 - smoothstep(-aa, aa, abs(p.y) - eye_h);
-        vec2 c = p - look * 0.13;
-        float ir = length(c);
-        vec3 e = mix(vec3(0.96, 0.94, 0.9), base * (0.6 + 0.6 * smoothstep(0.0, 0.19, ir)),
-                     1.0 - smoothstep(-aa, aa, ir - 0.19));
-        e = mix(e, vec3(0.02), 1.0 - smoothstep(-aa, aa, ir - 0.075));
-        e = mix(e, vec3(1.0), 1.0 - smoothstep(-aa, aa, length(c - vec2(0.05, 0.05)) - 0.03));
-        e *= 1.0 - 0.6 * (1.0 - smoothstep(0.0, 0.05, eye_h - abs(p.y)));
-        diff = mix(mix(skinAccent, base, 0.2), e, eye);
+    } else if (skinPattern == 9) {     // feathers: overlapping scales with a dark shaft and barring
+        vec2 q = p * 4.5 + vec2(seed * 0.37, seed * 0.61);
+        float d1 = 9.0;
+        float d2 = 9.0;
+        vec2 l1 = vec2(0.0);
+        vec2 c1 = vec2(0.0);
+        for (int j = -1; j <= 1; j++) {
+            float cy = floor(q.y) + float(j);
+            float sh = 0.5 * mod(cy, 2.0);
+            for (int i = -1; i <= 1; i++) {
+                vec2 c = vec2(floor(q.x - sh) + float(i) + 0.5 + sh, cy + 0.5);
+                vec2 d = q - c;
+                float dist = length(vec2(d.x, d.y * 0.8));
+                if (dist < d1) { d2 = d1; d1 = dist; l1 = d; c1 = c; }
+                else if (dist < d2) { d2 = dist; }
+            }
+        }
+        float fine = 1.0 - smoothstep(0.3, 0.8, aa * 9.0);       // thin detail fades out at grazing angles
+        float h = hash21(c1);
+        float seam = (1.0 - smoothstep(0.0, 0.14, d2 - d1)) * fine;
+        float shaft = (1.0 - smoothstep(0.02, 0.06, abs(l1.x))) * smoothstep(-0.35, -0.1, l1.y) * fine;
+        float bar = (1.0 - smoothstep(0.03, 0.09, abs(l1.y + abs(l1.x) * 0.7 - 0.12))) * fine;
+        vec3 f = base * (0.7 + 0.35 * h) * (0.85 + 0.35 * (l1.y + 0.5));
+        f = mix(f, skinAccent, 0.35 * bar + 0.45 * shaft);
+        diff = f * (1.0 - 0.55 * seam);
     } else if (skinPattern == 10) {    // hologram
         vec3 rainbow = 0.5 + 0.5 * cos(6.2832 * (vec3(0.0, 0.33, 0.67) + (p.x - p.y) * 0.9
                                                  + facing * 1.6 + uTime * 0.05));

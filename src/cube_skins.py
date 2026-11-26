@@ -9,7 +9,7 @@ same patterns on the CPU (src/rendering/skin_preview.py).
 # Pattern ids, shared with the cube shader (uniform skinPattern)
 PATTERNS = {
     "solid": 0, "stripes": 1, "checker": 2, "dots": 3, "glyphs": 4, "neon": 5, "psychedelic": 6,
-    "marble": 7, "lava": 8, "eyes": 9, "holo": 10, "static": 11, "pixel": 12, "gems": 13,
+    "marble": 7, "lava": 8, "feathers": 9, "holo": 10, "static": 11, "pixel": 12, "gems": 13,
 }
 
 DEFAULT_SKIN = "classic"
@@ -62,9 +62,9 @@ SKINS = [
           colors={0: (1.0, 0.76, 0.18), 1: (0.85, 0.94, 1.0), 2: (0.85, 0.05, 0.2),
                   3: (0.95, 0.42, 0.08), 4: (0.1, 0.25, 0.95), 5: (0.05, 0.75, 0.35)},
           body=(0.72, 0.52, 0.14), gloss=0.35, unlock="limited_time_win", animated=True),
-    _skin("hieroglyphs", "Hieroglyphs", "One color for the whole cube. Only the symbols tell the sides apart.",
-          pattern="glyphs", colors={i: (0.86, 0.74, 0.5) for i in range(6)}, accent=(0.24, 0.14, 0.07),
-          body=(0.3, 0.21, 0.11), unlock="limited_moves_win"),
+    _skin("hieroglyphs", "Hieroglyphs", "Windswept desert sand. Only the carved symbols, in chipped teal paint, tell the sides apart.",
+          pattern="glyphs", colors={i: (0.72, 0.58, 0.37) for i in range(6)}, accent=(0.24, 0.14, 0.07),
+          body=(0.55, 0.43, 0.26), unlock="limited_moves_win"),
     _skin("hologram", "Hologram", "Shifts through the rainbow as you turn it.", pattern="holo",
           colors={0: (1.0, 0.95, 0.4), 1: (0.95, 0.95, 1.0), 2: (1.0, 0.35, 0.4),
                   3: (1.0, 0.62, 0.3), 4: (0.35, 0.5, 1.0), 5: (0.35, 0.95, 0.55)},
@@ -79,10 +79,10 @@ SKINS = [
           colors={0: (1.0, 0.84, 0.3), 1: (0.97, 0.95, 1.0), 2: (0.93, 0.25, 0.32),
                   3: (1.0, 0.55, 0.25), 4: (0.3, 0.45, 0.95), 5: (0.25, 0.8, 0.5)},
           body=(0.16, 0.1, 0.26), gloss=0.1, unlock="secret_scrambler", animated=True),
-    _skin("the_watchers", "The Watchers", "Fifty four eyes. They follow you. They blink.", pattern="eyes",
-          colors={0: (0.95, 0.75, 0.1), 1: (0.62, 0.9, 1.0), 2: (0.85, 0.05, 0.12),
-                  3: (0.58, 0.22, 0.88), 4: (0.1, 0.35, 0.95), 5: (0.15, 0.75, 0.25)},
-          accent=(0.78, 0.52, 0.48), body=(0.33, 0.1, 0.1), gloss=0.1, unlock="night_owl", animated=True),
+    _skin("plumage", "Plumage", "Layered feathers in the muted colors of a nocturnal bird.", pattern="feathers",
+          colors={0: (0.88, 0.64, 0.28), 1: (0.93, 0.88, 0.76), 2: (0.68, 0.25, 0.15),
+                  3: (0.82, 0.46, 0.18), 4: (0.3, 0.42, 0.58), 5: (0.38, 0.52, 0.28)},
+          accent=(0.2, 0.12, 0.07), body=(0.2, 0.14, 0.1), gloss=0.05, unlock="night_owl"),
 ]
 SKINS_BY_ID = {skin["id"]: skin for skin in SKINS}
 

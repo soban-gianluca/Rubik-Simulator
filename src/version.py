@@ -1,3 +1,3 @@
 """Version of this build. Keep it equal to the GitHub release tag (without the leading "v")."""
-APP_VERSION = "18"
+APP_VERSION = "20"
 GITHUB_REPO = "soban-gianluca/Rubik-Simulator"

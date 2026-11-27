@@ -8,7 +8,7 @@ from OpenGL.GLU import *
 from src.ui.menu import Menu
 from src.rendering.renderer import Renderer
 from src.managers.settings_manager import SettingsManager
-from src.managers.sound_manager import SoundManager
+from src.managers.sound_manager import SoundManager, MUSIC_FADE_MS
 from src.ui.results_window import ResultsWindow
 from src.mouse_interaction import MouseInteraction
 from src.ui.game_menu_button import GameMenuButton
@@ -60,13 +60,18 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
             resource_path("utils/soundtrack/dark_bar.mp3"),
             resource_path("utils/soundtrack/lounge_layers.mp3"),
             resource_path("utils/soundtrack/midnight_simmetry.mp3"),
-            resource_path("utils/soundtrack/the_fifth_color.mp3")
+            resource_path("utils/soundtrack/the_fifth_color.mp3"),
+            resource_path("utils/soundtrack/Botanica.mp3"),
+            resource_path("utils/soundtrack/udineCentro.mp3"),
         ]
         self.current_song = random.randint(0, len(self.playlist) - 1)  # Start with random song
+        self.track_lengths = {}  # seconds, filled in the background; needed to time the fade out
+        self.music_fading_out = False
+        threading.Thread(target=self._measure_track_lengths, daemon=True).start()
         self.MUSIC_END_EVENT = pygame.USEREVENT + 1
         self.MUSIC_RESTORE_EVENT = pygame.USEREVENT + 10  # Event for restoring music volume after ducking
         
-        # --- Continue music from loading animation without restarting ---
+        # --- Start the soundtrack now that loading is done ---
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
@@ -75,10 +80,8 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
             master_volume = self.settings.get_master_volume() / 100
             pygame.mixer.music.set_volume(music_volume * master_volume)
             pygame.mixer.music.set_endevent(self.MUSIC_END_EVENT)
-            # If not playing, start a random song (happens if loading music ended or didn't start)
-            if not pygame.mixer.music.get_busy():
-                pygame.mixer.music.load(self.playlist[self.current_song])
-                pygame.mixer.music.play()
+            pygame.mixer.music.load(self.playlist[self.current_song])
+            pygame.mixer.music.play(fade_ms=MUSIC_FADE_MS)
         except Exception as e:
             print(f"Background music error: {e}")
     
@@ -316,6 +319,23 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
         """Check if the current game has any progress (moves made)"""
         return self.move_counter > 0 or self.start_time is not None
 
+    def _measure_track_lengths(self):
+        """Decode each track once to learn its length (pygame.mixer.music cannot report it)."""
+        for path in self.playlist:
+            try:
+                self.track_lengths[path] = pygame.mixer.Sound(path).get_length()
+            except Exception as e:
+                print(f"Could not measure {path}: {e}")
+
+    def update_track_fade_out(self):
+        """Fade the current track out so it ends quietly; the end event then starts the next one."""
+        if self.music_fading_out or not pygame.mixer.get_init() or not pygame.mixer.music.get_busy():
+            return
+        length = self.track_lengths.get(self.playlist[self.current_song])
+        if length and pygame.mixer.music.get_pos() >= length * 1000 - MUSIC_FADE_MS:
+            pygame.mixer.music.fadeout(MUSIC_FADE_MS)
+            self.music_fading_out = True
+
     def debug_print(self, message):
         if self.debug_mode:
             print(message)
@@ -329,14 +349,15 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
                 self.running = False
                 
             elif event.type == self.MUSIC_END_EVENT:
-                # Pick a random song from the playlist
-                self.current_song = random.randint(0, len(self.playlist) - 1)
+                # Pick a random song, never the one that just played
+                others = [i for i in range(len(self.playlist)) if i != self.current_song]
+                self.current_song = random.choice(others) if others else self.current_song
                 self.debug_print(f"Playing random song: {self.playlist[self.current_song]}")
-                
-                # Load and play the random song
+
                 try:
                     pygame.mixer.music.load(self.playlist[self.current_song])
-                    pygame.mixer.music.play()
+                    pygame.mixer.music.play(fade_ms=MUSIC_FADE_MS)
+                    self.music_fading_out = False
                 except Exception as e:
                     self.debug_print(f"Music error: {e}")
             
@@ -574,6 +595,7 @@ class Game(HintsMixin, HudMixin, DisplayMixin, MovesMixin):
         # Update sound manager music fade
         if hasattr(self, 'sound_manager'):
             self.sound_manager.update_music_fade()
+        self.update_track_fade_out()
         
         # Update cursor based on menu/results window state
         mouse_pos = pygame.mouse.get_pos()

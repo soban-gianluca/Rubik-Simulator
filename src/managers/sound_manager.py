@@ -10,6 +10,7 @@ from utils.path_helper import resource_path
 MENU_GAINS = {"menu_open": 0.5, "menu_select": 0.3, "menu_apply": 0.4}
 EFFECT_GAINS = {"winning": 0.7, "fail": 0.35, "hint": 0.4, "achievement": 0.6}
 CUBE_GAIN = 1.0
+MUSIC_FADE_MS = 3000  # fade in at the start of every track, fade out before its end
 
 
 class SoundManager:

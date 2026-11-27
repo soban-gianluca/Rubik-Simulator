@@ -1,11 +1,9 @@
 import pygame
 import time
 import threading
-import random
 from pygame.locals import *
 from OpenGL.GL import *
 from utils.path_helper import resource_path
-from src.managers.settings_manager import SettingsManager
 from src.rendering import display_manager
 from src.rendering import hdr as hdr_output
 from src.ui import ui_style as ui
@@ -58,26 +56,6 @@ class LoadingAnimation:
             "Finalizing setup",
             "Ready",
         ]
-
-        # Start background music for loading animation
-        try:
-            settings = SettingsManager()
-            playlist = [
-                resource_path("utils/soundtrack/dark_bar.mp3"),
-                resource_path("utils/soundtrack/lounge_layers.mp3"),
-                resource_path("utils/soundtrack/midnight_simmetry.mp3"),
-                resource_path("utils/soundtrack/the_fifth_color.mp3")
-            ]
-            if not pygame.mixer.get_init():
-                pygame.mixer.init()
-            # Only start music if not already playing
-            if not pygame.mixer.music.get_busy():
-                volume_level = settings.get_music_volume() / 100 * settings.get_master_volume() / 100
-                pygame.mixer.music.set_volume(volume_level)
-                pygame.mixer.music.load(random.choice(playlist))
-                pygame.mixer.music.play()
-        except Exception as e:
-            print(f"Loading screen music error: {e}")
 
     def preload_game_resources(self):
         """Step through the loading stages in a background thread"""
